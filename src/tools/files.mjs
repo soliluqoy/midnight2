@@ -234,7 +234,7 @@ export function fileTools({ roots, evidence, commit, settings, paths, platform, 
 		name: "file_publish",
 		label: "Save to folder",
 		description:
-			"Save a staged artifact (from chart_create, report_create, mail_draft…) into a selected output folder. Never overwrites unless overwrite is true and the file is still the version you read (expectHash).",
+			"Save a staged artifact (from chart_create, report_create, slide_create, mail_draft…) into a selected output folder. Never overwrites unless overwrite is true and the file is still the version you read (expectHash).",
 		parameters: Type.Object({
 			artifactId: Type.String(),
 			folder: Type.String({ description: "a selected folder path" }),

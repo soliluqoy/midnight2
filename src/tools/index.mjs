@@ -22,7 +22,7 @@ import { contextTools } from "./context.mjs";
 
 // Tools every mission gets; shell tools are left out for offline missions (the broker would block them anyway).
 const MISSION = ["plan", "step", "ask_user", "remember"];
-const LOCAL = ["recall_context", "files_find", "files_search", "files_view", "files_read", "file_publish", "files_move", "files_undo_moves", "sheet_read", "calculate", "chart_create", "report_create", "crm_query", "mail_draft", "mail_send", "open_draft"];
+const LOCAL = ["recall_context", "files_find", "files_search", "files_view", "files_read", "file_publish", "files_move", "files_undo_moves", "sheet_read", "calculate", "chart_create", "report_create", "slide_create", "crm_query", "mail_draft", "mail_send", "open_draft"];
 const WEB = ["search", "read_pages", "browser", "user_browser"];
 
 export function buildTools(s) {
