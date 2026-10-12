@@ -98,7 +98,9 @@ app.whenReady().then(async () => {
 		// Intentional screenshot of the trusted UI; the hidden native website view is tested separately.
 		const out = path.join(root, "test/visual/out"); fs.mkdirSync(out, { recursive: true });
 		win.showInactive(); // offscreen window: render native website bounds without disturbing the desktop
-		await js("await bounds();");
+		await until(() => win.isVisible());
+		// CI may constrain the window to a compact desktop, where the assistant covers the page.
+		await js("setPanel(false); await bounds();");
 		const visiblePages = win.contentView.children.filter((view) => view.webContents && view.webContents !== win.webContents && view.getVisible());
 		assert.equal(visiblePages.length, 1);
 		const actualBounds = visiblePages[0].getBounds();
@@ -106,12 +108,15 @@ app.whenReady().then(async () => {
 		assert.deepEqual(actualBounds, expectedBounds);
 		await js("await openDialog(currentApp());");
 		assert.equal(visiblePages[0].getVisible(), false, "native website is hidden behind trusted app settings");
-		await js("closeDialog(); await bounds();");
+		await js("closeDialog(); setPanel(true); await bounds();");
 		await wait(100); fs.writeFileSync(path.join(out, "apps-workspace.png"), (await win.webContents.capturePage()).toPNG());
 		win.setContentSize(780, 660); await wait(100);
+		await js("await bounds();");
 		assert.equal(await js("return getComputedStyle(document.querySelector('.site-region')).visibility;"), "hidden");
-		await js("document.getElementById('closeAssistant').click();");
+		assert.equal(visiblePages[0].getVisible(), false, "the compact assistant covers the native website");
+		await js("document.getElementById('closeAssistant').click(); await bounds();");
 		assert.equal(await js("return getComputedStyle(document.querySelector('.site-region')).visibility;"), "visible");
+		assert.equal(visiblePages[0].getVisible(), true, "closing the compact assistant restores the website");
 		process.stdout.write("[apps] PASS assistant becomes a drawer on smaller windows\n");
 		await workspace.update({ id: work.id, pinned: false });
 		assert.equal(registry.get(work.id).pinned, false);
