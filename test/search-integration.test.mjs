@@ -48,7 +48,7 @@ test("host file search works without embeddings and rechecks a result before ope
 	const platform = fakePlatform();
 	const host = await createHost({ dataDir: tempDir("search-host"), platform, modelRuntime: model.rt, core: model.core });
 	t.after(() => host.close());
-	const source = tempDir("search-source");
+	const source = fs.realpathSync.native(tempDir("search-source"));
 	const file = path.join(source, "invoice-AB42.pdf");
 	fs.writeFileSync(file, "%PDF-test filename only");
 	const root = await host.handle("sources.add", { path: source, purpose: "source" });

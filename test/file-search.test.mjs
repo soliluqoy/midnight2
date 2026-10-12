@@ -20,7 +20,8 @@ const waitUntil = async (fn) => {
 const finish = async (search) => { await waitUntil(() => !search.status().busy); return search.status(); };
 
 async function fixture(t, overrides = {}) {
-	const base = tempDir("file-search");
+	// CI may expose TEMP through an 8.3 alias; search returns canonical paths.
+	const base = fs.realpathSync.native(tempDir("file-search"));
 	const source = path.join(base, "Selected");
 	fs.mkdirSync(source);
 	const store = await openStore(path.join(base, "Data"));
