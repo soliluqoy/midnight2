@@ -552,7 +552,8 @@ function startMissionShell() {
 			toCapsule({ kind: "shell", type: "relayout" });
 		});
 
-		if (process.env.MIDNIGHT_SELFTEST) selftest(process.env.MIDNIGHT_SELFTEST);
+		// The self-test approves what it is asked, so it never runs in an installed app.
+		if (process.env.MIDNIGHT_SELFTEST && !app.isPackaged) selftest(process.env.MIDNIGHT_SELFTEST);
 		if (process.env.MIDNIGHT_SMOKE) smoke();
 		if (process.env.MIDNIGHT_PERF) perf(Number(process.env.MIDNIGHT_PERF) || 60);
 	});
@@ -649,6 +650,30 @@ function startMissionShell() {
 		check("native minimize can be restored", capsule.isVisible() && !capsule.isMinimized() && centred());
 		capsule.close();
 		check("native close hides to tray", !capsule.isDestroyed() && !capsule.isVisible());
+		// Native and archived pieces work in this build (packaged: inside app.asar with fuses, helpers unpacked).
+		const native = await supervisor.request("diagnostics.native", {}, 60000).catch((err) => ({ error: err.message }));
+		check(`sqlite-vec loads (${JSON.stringify(native)})`, native.vector === true);
+		check("ONNX Runtime loads for local search", native.onnx === true);
+		const pdfFile = path.join(app.getPath("temp"), `midnight-smoke-${process.pid}.pdf`);
+		const stream = "BT /F1 18 Tf 20 100 Td (Smoke check page) Tj ET";
+		const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>", `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"];
+		let pdf = "%PDF-1.4\n";
+		const offsets = objs.map((o, i) => { const at = pdf.length; pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; return at; });
+		const xref = pdf.length;
+		pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+		fs.writeFileSync(pdfFile, pdf, "latin1");
+		try {
+			const s = await mediaDecoder.session(pdfFile, "pdf");
+			const text = (await s.text({ page: 1 })).text;
+			const frame = await s.frame({ page: 1, max: 400, format: "jpeg" });
+			await s.close();
+			check(`media decoder reads PDFs (${text})`, text === "Smoke check page" && frame.jpeg.length > 500);
+		} catch (err) {
+			check(`media decoder reads PDFs (${err.message})`, false);
+		} finally {
+			fs.rmSync(pdfFile, { force: true });
+		}
+		if (process.platform === "win32") check("on-device OCR helper is present", createOcr().available());
 		console.log(`[smoke] engine ready in ${ms} ms · seq ${snap.seq} · missions ${Object.keys(snap.missions).length} · weather "${res.weather?.text}" · ui ${JSON.stringify(ui)} · renderer errors ${errors.length}`);
 		for (const c of checks) console.log(`[smoke] ${c.ok ? "PASS" : "FAIL"} ${c.name}`);
 		for (const e of errors) console.log(`[smoke] renderer error: ${e}`);

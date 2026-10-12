@@ -3,7 +3,7 @@ import { desktopCapturer, screen, shell } from "electron";
 import { fileURLToPath } from "node:url";
 import { COMPUTER } from "./schemas.mjs";
 
-const HELPER = fileURLToPath(new URL("./input-helper.ps1", import.meta.url));
+const HELPER = fileURLToPath(new URL("./input-helper.ps1", import.meta.url)).replace(/app\.asar([\\/])/, "app.asar.unpacked$1"); // PowerShell reads it from disk
 const MAX_W = 1568;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const BROWSERS = new Set(["chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "arc", "librewolf", "waterfox", "zen", "chromium", "thorium"]);

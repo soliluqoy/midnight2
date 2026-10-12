@@ -47,7 +47,7 @@ architecture/provenance guards) · `npm run test:smoke` (real Electron, engine i
 7. **Measurements still missing:** model task, browser task, desktop task, 24 h watch soak, battery drain, 100-mission
    leak slope (extend `MIDNIGHT_PERF`).
 8. **Accessibility audit:** screen reader pass, 100–200% DPI, multi-monitor, high contrast on the new cards.
-9. **Release engineering:** code-signing certificate in CI secrets, staged rollout, runbooks in `docs/runbooks/`
+9. **Release engineering:** signing is wired for Azure Artifact Signing (see `docs/signing.md`; needs the Azure account and repository variables), fuses and ASAR integrity are on, releases are drafts with build provenance; still to do: staged rollout, runbooks in `docs/runbooks/`
    (stop all input, disable writes, revoke, restore backup, support bundle, uninstall with data choice).
 10. ~~Retire legacy~~ done: `src/legacy/` deleted.
 11. **P2/P3** (morning runway, promise board, show-me, voice, night gardener) only after the beta gates pass.

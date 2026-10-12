@@ -57,12 +57,17 @@
 	"build": {
 		"appId": "app.midnight.capsule",
 		"productName": "midnight",
-		"asar": false,
+		"asar": true,
 		"files": [
 			"src/**/*",
 			"package.json",
 			"!src/**/*.test.*",
-			"!src/**/__pycache__/**"
+			"!src/**/__pycache__/**",
+			"!src/desktop/native/*.cs",
+			"!node_modules/onnxruntime-web/**",
+			"!node_modules/@napi-rs/**",
+			"!node_modules/@earendil-works/pi-tui/native/**",
+			"!test/**"
 		],
 		"directories": {
 			"output": "release"
@@ -84,7 +89,14 @@
 				}
 			],
 			"signAndEditExecutable": true,
-			"verifyUpdateCodeSignature": true
+			"verifyUpdateCodeSignature": true,
+			"files": [
+				"!node_modules/onnxruntime-node/bin/napi-v6/{darwin,linux}/**",
+				"!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**"
+			],
+			"signExts": [
+				".exe"
+			]
 		},
 		"mac": {
 			"target": [
@@ -96,7 +108,11 @@
 				}
 			],
 			"category": "public.app-category.productivity",
-			"identity": null
+			"identity": null,
+			"files": [
+				"!node_modules/onnxruntime-node/bin/napi-v6/{win32,linux}/**",
+				"!node_modules/onnxruntime-node/bin/napi-v6/darwin/x64/**"
+			]
 		},
 		"linux": {
 			"target": [
@@ -107,7 +123,11 @@
 					]
 				}
 			],
-			"category": "Utility"
+			"category": "Utility",
+			"files": [
+				"!node_modules/onnxruntime-node/bin/napi-v6/{win32,darwin}/**",
+				"!node_modules/onnxruntime-node/bin/napi-v6/linux/arm64/**"
+			]
 		},
 		"nsis": {
 			"oneClick": true,
@@ -126,7 +146,19 @@
 				"repo": "midnight2",
 				"releaseType": "release"
 			}
-		]
+		],
+		"asarUnpack": [
+			"**/*.node",
+			"**/*.dll",
+			"**/*.exe",
+			"**/*.ps1",
+			"src/desktop/native/**",
+			"node_modules/sqlite-vec*/**",
+			"node_modules/onnxruntime-node/bin/**",
+			"node_modules/@img/**",
+			"node_modules/sharp/**"
+		],
+		"afterPack": "scripts/after-pack.cjs"
 	},
 	"allowScripts": {
 		"esbuild@0.28.2": true,

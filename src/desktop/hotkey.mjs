@@ -7,7 +7,7 @@ export const LEGACY_HOTKEY = "CommandOrControl+Alt+M";
 export const defaultHotkey = (platform = process.platform) => platform === "win32" ? WINDOWS_HOTKEY : LEGACY_HOTKEY;
 export const migrateHotkey = (data, platform = process.platform) => platform === "win32" && (data.version ?? 0) < 3 && [LEGACY_HOTKEY, "Control+Alt+M"].includes(data.hotkey) ? WINDOWS_HOTKEY : data.hotkey;
 
-const HELPER = fileURLToPath(new URL("./hotkey-helper.ps1", import.meta.url));
+const HELPER = fileURLToPath(new URL("./hotkey-helper.ps1", import.meta.url)).replace(/app\.asar([\\/])/, "app.asar.unpacked$1");
 // Packaged apps use the asar-unpacked copy: Windows cannot execute a file inside an archive.
 export const NATIVE_HELPER = fileURLToPath(new URL("./native/midnight-hotkey.exe", import.meta.url)).replace(/app\.asar([\\/])/, "app.asar.unpacked$1");
 

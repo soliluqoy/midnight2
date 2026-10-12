@@ -322,6 +322,8 @@ export async function createHost(o) {
 			return tools.data.remove(p.scope);
 		},
 		"diagnostics.preview": () => tools.data.diagnostics(),
+		// The packaged app's native pieces load: sqlite-vec in the store and ONNX Runtime for local search.
+		"diagnostics.native": async () => ({ vector: !!store.vector, onnx: await import("@huggingface/transformers").then(() => true, (err) => err.message) }),
 		"resources.status": () => ({ queue: queue.status(), profile: settings.profile, weather: tools.resources?.weather() }),
 	};
 

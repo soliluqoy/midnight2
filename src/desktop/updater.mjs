@@ -37,10 +37,23 @@ export function verifySignature(file) {
 }
 
 /**
- * @param {{ version: string, fetchImpl?: typeof fetch, isBusy: () => Promise<boolean>, backup: () => Promise<any>, launch: (file: string) => void, openPage: (url: string) => void }} o
+ * An installer may only replace this app if it is validly signed by the same publisher that signed the running
+ * app: a release asset signed by anyone else (a stolen release token with its own certificate) is refused.
+ */
+export async function trustedInstaller(file, { current = process.execPath, verify = verifySignature } = {}) {
+	const [mine, theirs] = await Promise.all([verify(current), verify(file)]);
+	if (!theirs.valid) return { ok: false, reason: `the installer is not signed (${theirs.reason ?? theirs.status})` };
+	if (!mine.valid || !mine.signer) return { ok: false, reason: "this copy of midnight is not signed, so a signed installer cannot be matched to it" };
+	if (theirs.signer !== mine.signer) return { ok: false, reason: `the installer is signed by "${theirs.signer}", not by this app's publisher` };
+	return { ok: true, signer: theirs.signer };
+}
+
+/**
+ * @param {{ version: string, fetchImpl?: typeof fetch, isBusy: () => Promise<boolean>, backup: () => Promise<any>, launch: (file: string) => void, openPage: (url: string) => void, trust?: typeof trustedInstaller }} o
  */
 export function createUpdater(o) {
 	const fetchImpl = o.fetchImpl ?? fetch;
+	const trust = o.trust ?? trustedInstaller;
 	let last = { checkedAt: 0, latest: undefined, error: undefined };
 
 	async function check({ force = false } = {}) {
@@ -66,18 +79,23 @@ export function createUpdater(o) {
 			o.openPage(info.page);
 			return { ok: false, reason: "This release has no verified installer; the release page is open." };
 		}
-		const manifest = await (await fetchImpl(info.manifest)).text();
-		const want = /sha512:\s*(\S+)/.exec(manifest)?.[1];
-		const file = path.join(os.tmpdir(), `midnight-setup-${info.latest}.exe`);
-		const buf = Buffer.from(await (await fetchImpl(info.installer)).arrayBuffer());
+		const manifestRes = await fetchImpl(info.manifest, { signal: AbortSignal.timeout(30_000) });
+		if (!manifestRes.ok) return { ok: false, reason: `The release manifest could not be read (${manifestRes.status}).` };
+		const want = /sha512:\s*(\S+)/.exec(await manifestRes.text())?.[1];
+		// A private folder per attempt, so another program cannot swap the file between the check and the launch.
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "midnight-update-"));
+		const file = path.join(dir, `midnight-setup-${info.latest}.exe`);
+		const res = await fetchImpl(info.installer, { signal: AbortSignal.timeout(15 * 60_000) });
+		if (!res.ok) return { ok: false, reason: `The installer could not be downloaded (${res.status}).` };
+		const buf = Buffer.from(await res.arrayBuffer());
 		const got = createHash("sha512").update(buf).digest("base64");
 		if (!want || got !== want) return { ok: false, reason: "The download does not match the release manifest; nothing was installed." };
 		fs.writeFileSync(file, buf);
-		const sig = await verifySignature(file);
-		if (!sig.valid) {
-			fs.rmSync(file, { force: true });
+		const sig = await trust(file);
+		if (!sig.ok) {
+			fs.rmSync(dir, { recursive: true, force: true });
 			o.openPage(info.page);
-			return { ok: false, reason: `The installer is not signed (${sig.reason ?? sig.status}); it was not run. The release page is open.` };
+			return { ok: false, reason: `Not installed: ${sig.reason}. The release page is open.` };
 		}
 		await o.backup(); // a consistent copy of the mission store before the new version migrates it
 		o.launch(file);
