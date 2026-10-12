@@ -44,6 +44,7 @@ app.whenReady().then(async () => {
 		router = createIpcRouter({ ipcMain: { handle: (channel, fn) => { handler = fn; ipcMain.handle(channel, fn); } }, isTrusted: (e) => workspace.isTrusted(e), canCall: (_e, method) => method.startsWith("apps."), shell: shellMethods, host: () => { throw new Error("Unexpected host route"); } });
 		await workspace.open();
 		let win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("/apps.html"));
+		if (process.argv.includes("--compact")) win.setContentSize(780, 660);
 		const js = (source) => win.webContents.executeJavaScript(`(async () => { ${source} })()`);
 		win.webContents.on("console-message", (e) => { if (e.level === "error" || e.level === 3) shellErrors.push(e.message); });
 		await until(() => js("return !!window.midnightApps && document.getElementById('appList').children.length === 0;"));
@@ -105,7 +106,7 @@ app.whenReady().then(async () => {
 		assert.equal(visiblePages.length, 1);
 		const actualBounds = visiblePages[0].getBounds();
 		const expectedBounds = await js("const r=document.getElementById('siteViewport').getBoundingClientRect(); return {x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)};");
-		assert.deepEqual(actualBounds, expectedBounds);
+		for (const key of ["x", "y", "width", "height"]) assert.ok(Math.abs(actualBounds[key] - expectedBounds[key]) <= 1, `native ${key} follows the viewport within one DIP of rounding: ${JSON.stringify({ actualBounds, expectedBounds })}`);
 		await js("await openDialog(currentApp());");
 		assert.equal(visiblePages[0].getVisible(), false, "native website is hidden behind trusted app settings");
 		await js("closeDialog(); setPanel(true); await bounds();");
@@ -114,8 +115,12 @@ app.whenReady().then(async () => {
 		await js("await bounds();");
 		assert.equal(await js("return getComputedStyle(document.querySelector('.site-region')).visibility;"), "hidden");
 		assert.equal(visiblePages[0].getVisible(), false, "the compact assistant covers the native website");
-		await js("document.getElementById('closeAssistant').click(); await bounds();");
-		assert.equal(await js("return getComputedStyle(document.querySelector('.site-region')).visibility;"), "visible");
+		await js("document.getElementById('closeAssistant').click();");
+		await until(() => js("return !panelOpen && document.getElementById('assistant').hidden && getComputedStyle(document.querySelector('.site-region')).visibility === 'visible';")).catch(async (err) => {
+			err.message += await js("return JSON.stringify({panelOpen,classes:document.getElementById('workspace').className,dialog:document.getElementById('appDialog').open,visibility:getComputedStyle(document.querySelector('.site-region')).visibility,width:innerWidth});");
+			throw err;
+		});
+		await js("await bounds();");
 		assert.equal(visiblePages[0].getVisible(), true, "closing the compact assistant restores the website");
 		process.stdout.write("[apps] PASS assistant becomes a drawer on smaller windows\n");
 		await workspace.update({ id: work.id, pinned: false });
