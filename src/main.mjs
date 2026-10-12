@@ -10,6 +10,7 @@ import { createIpcRouter } from "./desktop/ipc.mjs";
 import { createMediaDecoder } from "./desktop/media-decoder.mjs";
 import { createAttachments } from "./desktop/attachments.mjs";
 import { createOcr } from "./desktop/ocr.mjs";
+import { openMcpApp } from "./desktop/mcp-app.mjs";
 import { createHotkey } from "./desktop/hotkey.mjs";
 import { MARGIN, windowBounds, windowDims } from "./desktop/window-layout.mjs";
 import { createPlatform } from "./desktop/platform.mjs";
@@ -410,6 +411,18 @@ function startMissionShell() {
 			} catch {}
 			fs.writeFileSync(r.filePath, JSON.stringify({ ...preview, shellLog }, null, 2));
 			return { file: r.filePath };
+		},
+		// Adding a connector runs a program or contacts a service: the user confirms the exact details in a system
+		// dialog the page cannot draw or click.
+		"connector.mcpAdd": async (draft) => {
+			const what = draft.kind === "stdio" ? `Run this program as "${draft.name}":\n\n${draft.command} ${(draft.args ?? []).join(" ")}` : `Connect "${draft.name}" at:\n\n${draft.url}`;
+			const r = await dialog.showMessageBox(capsule, { type: "warning", buttons: ["Add connector", "Cancel"], defaultId: 1, cancelId: 1, title: "Add a connector", message: `Add the connector "${draft.name}"?`, detail: `${what}\n\nMidnight will offer its tools to your missions. Tools ask before each use unless you review them as read-only. Only add connectors you trust.` });
+			if (r.response !== 0) return { canceled: true };
+			return supervisor.request("mcp.add", draft);
+		},
+		"mcpapp.open": async ({ artifactId }) => {
+			const view = await supervisor.request("artifact.view", { artifactId });
+			return openMcpApp(view);
 		},
 		// Routines as files: the user picks where to save and what to open in the OS dialogs.
 		"recipe.export": async ({ recipeId }) => {

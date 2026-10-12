@@ -19,6 +19,7 @@ import { createEmbeddingRuntime } from "../search/runtime.mjs";
 import { platformMedia } from "../search/media-preview.mjs";
 import { createContextService } from "../context/service.mjs";
 import { contextTools } from "./context.mjs";
+import { createMcpConnectors } from "../connectors/mcp.mjs";
 
 // Tools every mission gets; shell tools are left out for offline missions (the broker would block them anyway).
 const MISSION = ["plan", "step", "ask_user", "remember"];
@@ -56,6 +57,7 @@ export function buildTools(s) {
 	all.push(...contextTools({ context, repo: s.repo, evidence: s.evidence, commit: s.commit }).all);
 	const data = createData({ store: s.store, journal: s.journal, commit: s.commit, paths: s.paths, memory, context, version: s.version ?? "midnight" });
 	const vault = createVault({ store: s.store, platform: s.platform });
+	const mcp = createMcpConnectors({ store: s.store, vault, evidence: s.evidence, commit: s.commit, log: s.log });
 	return {
 		all,
 		fileSearch,
@@ -68,6 +70,7 @@ export function buildTools(s) {
 		recipes,
 		data,
 		vault,
+		mcp,
 		resources: undefined, // set by the host once the queue exists
 		/** Tool names offered to a mission's model. */
 		forMission(mission, settings) {

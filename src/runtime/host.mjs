@@ -136,6 +136,11 @@ export async function createHost(o) {
 		live: send,
 		toPiTool,
 		toolset: (mission) => tools.forMission(mission, settings).map((n) => toolMap.get(n)).filter(Boolean),
+		connectorTools: async (mission) => {
+			const specs = await tools.mcp.specsFor(mission);
+			for (const s of specs) toolMap.set(s.name, s); // the broker dispatches by name
+			return specs;
+		},
 		memory: tools.memory,
 		context: tools.context,
 		skills: tools.skills,
@@ -232,6 +237,18 @@ export async function createHost(o) {
 		"recipe.importFile": (p) => tools.recipes.importFile(p.routine), // only the shell's open dialog calls this
 		"skill.list": () => tools.skills.list(),
 		"connector.list": () => tools.connectors.list(),
+		"mcp.list": () => tools.mcp.list(),
+		"mcp.add": (p) => tools.mcp.add(p), // only the shell calls this, after the user confirms in a system dialog
+		"mcp.remove": (p) => tools.mcp.remove(p.id),
+		"mcp.setEnabled": (p) => tools.mcp.setEnabled(p.id, p.enabled),
+		"mcp.inspect": (p) => tools.mcp.inspect(p.id),
+		"mcp.review": (p) => tools.mcp.review(p.id, p.tool, { digest: p.digest, readOnly: p.readOnly }),
+		"artifact.view": (p) => {
+			// Only the shell's sandboxed MCP App viewer calls this.
+			const a = evidence.artifact(p.artifactId);
+			if (!a || a.type !== "mcp-app") throw new Error("no such app view");
+			return { path: a.path, name: a.name };
+		},
 		"stop.emergency": () => {
 			tools.fileSearch.cancel();
 			return coord.emergencyStop();
@@ -287,6 +304,7 @@ export async function createHost(o) {
 		"artifact.open": (p) => {
 			const a = evidence.artifact(p.artifactId);
 			if (!a) throw new Error("no such artifact");
+			if (a.type === "mcp-app") throw new Error("Open a connector's view from the mission; it is never opened in your browser.");
 			return platform.call("open.path", { path: a.publishedPath ?? a.path, reveal: !!p.reveal });
 		},
 		"query.snapshot": () => snapshot(),
@@ -368,6 +386,7 @@ export async function createHost(o) {
 		async close() {
 			tools.watches?.stop();
 			await coord.shutdown();
+			await tools.mcp?.closeAll();
 			tools.context.close();
 			await tools.fileSearch.close();
 			for (const id of runtime.running()) await runtime.abort(id).catch(() => {});

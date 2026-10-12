@@ -426,3 +426,8 @@ body[data-motion=reduced] *{animation-duration:.001s!important;animation-iterati
 .l-stack .mh #spend{margin-left:8px;max-width:200px}
 .stack-search{flex:none}
 .stack-search .inp{display:block;box-sizing:border-box;width:100%;padding:7px 10px;font-size:12px;border:1px solid var(--control-line);background:var(--field)}
+
+/* Connectors (MCP) in Settings. */
+.mcp-server{margin:0 0 6px}
+.mcp-tools{margin:2px 0 8px 14px;padding-left:10px;border-left:2px solid var(--line)}
+.mcp-tools .acct{padding:4px 0}

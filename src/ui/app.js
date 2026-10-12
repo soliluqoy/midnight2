@@ -497,7 +497,8 @@ function renderArtifacts(m) {
 			{ class: a.ok ? "" : "bad", title: `${a.type} · revision ${a.revision}${a.ok ? " · validated" : ` · did not validate: ${a.issues.join("; ")}`}${a.publishedPath ? `\nSaved: ${a.publishedPath}` : ""}\nClick to open · Alt+click to show in folder` },
 			`${a.ok ? "✓" : "!"} ${clip40(a.name, 28)} r${a.revision}`,
 		);
-		b.onclick = (e) => api.artifacts.open(a.id, e.altKey).catch((err) => announce(err.message));
+		// A connector's interactive view opens in midnight's sandboxed viewer, never in the browser.
+		b.onclick = (e) => (a.type === "mcp-app" ? api.connectors.openApp(a.id) : api.artifacts.open(a.id, e.altKey)).catch((err) => announce(err.message));
 		box.append(b);
 	}
 }

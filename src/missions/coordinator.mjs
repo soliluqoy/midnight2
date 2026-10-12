@@ -149,7 +149,9 @@ export function createCoordinator(d) {
 			return;
 		}
 		const memories = fresh.scope.pageAssistant ? [] : recalled?.memories ?? (memory ? memory.relevant(pend.input, { limit: 6 }).map((x) => x.text) : []);
-		const tools = toolset(fresh).map((spec) => toPiTool(spec, missionId, run.id));
+		// Connectors the user added (MCP) join the mission's tools; the broker gates them like any other tool.
+		const extra = d.connectorTools ? await d.connectorTools(fresh).catch((err) => (log("connectors", err.message), [])) : [];
+		const tools = [...toolset(fresh), ...extra].map((spec) => toPiTool(spec, missionId, run.id));
 		// Attached text joins the request; pictures go to the model as images when it can see them.
 		const attached = loadAttachments(pend.attachments);
 		const sees = route.model?.input?.includes("image");

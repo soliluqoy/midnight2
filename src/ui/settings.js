@@ -56,16 +56,17 @@
 
 	async function loadExtra() {
 		const safe = (p) => p.catch(() => []);
-		const [sources, grants, watches, memory, recipes, connectors, skills] = await Promise.all([
+		const [sources, grants, watches, memory, recipes, connectors, mcp, skills] = await Promise.all([
 			safe(api.sources.list()),
 			safe(api.grants.list()),
 			safe(api.watches.list()),
 			safe(api.memory.list({})),
 			safe(api.recipes.list()),
 			safe(api.connectors.list()),
+			safe(api.connectors.mcpList()),
 			safe(api.skills.list()),
 		]);
-		extra = { sources, grants, watches, memory, recipes, connectors, skills };
+		extra = { sources, grants, watches, memory, recipes, connectors, mcp, skills };
 	}
 	async function refresh() {
 		S = await api.settings.get();
@@ -452,6 +453,44 @@
 		);
 	}
 
+	let mcpTools = {}; // connector id -> inspected tools, while their list is open
+	function connectorsSection() {
+		const servers = extra.mcp ?? [];
+		const name = h("input", { class: "sinp", placeholder: "Name, e.g. GitHub", "aria-label": "Connector name" });
+		const target = h("input", { class: "sinp", placeholder: "npx -y @modelcontextprotocol/server-github   or   https://mcp.example.com/mcp", "aria-label": "Command or address" });
+		const token = h("input", { class: "sinp", type: "password", placeholder: "Access token (optional, stored encrypted)", "aria-label": "Access token" });
+		const add = async () => {
+			const t = target.value.trim();
+			const remote = /^https?:\/\//i.test(t);
+			const parts = t.match(/"[^"]*"|\S+/g)?.map((x) => x.replace(/^"|"$/g, "")) ?? [];
+			return api.connectors.mcpAdd(remote ? { name: name.value.trim() || new URL(t).host, kind: "http", url: t, ...(token.value ? { token: token.value } : {}) } : { name: name.value.trim() || parts[0] || "connector", kind: "stdio", command: parts[0] ?? "", args: parts.slice(1) });
+		};
+		return sec(
+			"connectors",
+			"CONNECTORS (MCP)",
+			h("p", { class: "hint" }, "Connect any Model Context Protocol server: a program on this computer or a remote service. Its tools ask before each use; tools that declare themselves read-only can be reviewed to run without asking until the connector changes them."),
+			...servers.map((s) => h("div", { class: "mcp-server" },
+				h("div", { class: "acct" },
+					h("div", { class: "n", title: s.kind === "stdio" ? `${s.command} ${s.args.join(" ")}` : s.url }, s.name, h("small", {}, s.kind === "stdio" ? "program on this computer" : `remote · ${new URL(s.url).host}`)),
+					toggle(s.enabled, attempt(() => api.connectors.mcpSetEnabled(s.id, !s.enabled)), `Use ${s.name}`),
+					h("button", { class: "sb", onclick: attempt(async () => { mcpTools[s.id] = mcpTools[s.id] ? undefined : await api.connectors.mcpInspect(s.id); return { ok: true }; }) }, mcpTools[s.id] ? "Hide tools" : "Show tools"),
+					h("button", { class: "sb danger", onclick: attempt(() => api.connectors.mcpRemove(s.id), "Removed.") }, "Remove"),
+				),
+				mcpTools[s.id] ? h("div", { class: "mcp-tools" },
+					h("p", { class: "hint" }, i18n.t("{server} · protocol {protocol}", { server: mcpTools[s.id].server.info?.name ?? s.name, protocol: mcpTools[s.id].server.protocol ?? "?" })),
+					...mcpTools[s.id].tools.map((t) => h("div", { class: "acct" },
+						h("div", { class: "n", title: t.description }, t.title ?? t.name, h("small", {}, t.review?.readOnly && t.review.current ? "reviewed · runs without asking" : t.review && !t.review.current ? "changed since review · asks" : t.readOnlyHint ? "read-only · asks until reviewed" : "may change data · always asks")),
+						t.app ? h("small", { class: "mono" }, "app view") : null,
+						t.readOnlyHint ? toggle(!!(t.review?.readOnly && t.review.current), attempt(async () => { const r = await api.connectors.mcpReview(s.id, t.name, t.digest, !(t.review?.readOnly && t.review.current)); mcpTools[s.id] = await api.connectors.mcpInspect(s.id); return r; }), `Run ${t.name} without asking`) : null,
+					)),
+				) : null,
+			)),
+			servers.length ? null : h("p", { class: "hint" }, "No connectors yet."),
+			name, target, token,
+			h("div", { class: "row" }, h("button", { class: "sb", onclick: attempt(add, "Connector added.") }, "Add connector")),
+		);
+	}
+
 	function resourcesSection() {
 		const st = S.settings;
 		const qh = st.quietHours ?? {};
@@ -659,7 +698,7 @@
 			),
 			page === "welcome"
 				? welcome()
-				: h("div", { class: "sbody" }, autonomySection(), modelSection(), accountsSection(), sourcesSection(), fileSearchSection(), rulesSection(), watchesSection(), memorySection(), routinesSection(), resourcesSection(), readingSection(), webSection(), behaviourSection(), dataSection()),
+				: h("div", { class: "sbody" }, autonomySection(), modelSection(), accountsSection(), sourcesSection(), fileSearchSection(), rulesSection(), watchesSection(), memorySection(), routinesSection(), connectorsSection(), resourcesSection(), readingSection(), webSection(), behaviourSection(), dataSection()),
 		);
 		if (modal) root.append(modal);
 		const body = root.querySelector(".sbody");

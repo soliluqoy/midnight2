@@ -6,6 +6,8 @@ import path from "node:path";
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { pruneImages } from "../harness-utils.mjs";
 import { corePaths } from "./paths.mjs";
+// The standalone MCP client ships with the Pi packages; connectors reach it through this single seam.
+export { McpClient, StdioTransport, StreamableHttpTransport, toLlmContent } from "@earendil-works/pi-mcp";
 
 // The package does not export its package.json; the vendor manifest records the exact pinned version.
 function coreVersion() {

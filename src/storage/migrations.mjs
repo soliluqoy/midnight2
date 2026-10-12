@@ -434,4 +434,25 @@ END;
 `,
 });
 
+// MCP connectors the user added: a local command (stdio) or a remote address (Streamable HTTP). Tokens live in the
+// vault; reviews pin a tool's digest so a changed tool asks again.
+MIGRATIONS.push({
+	version: 5,
+	name: "mcp connectors",
+	sql: `
+CREATE TABLE mcp_servers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  command TEXT,
+  args TEXT NOT NULL DEFAULT '[]',
+  url TEXT,
+  secret_ref TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  reviews TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+`,
+});
+
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;
