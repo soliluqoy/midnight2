@@ -639,5 +639,11 @@
 	"Connector name": "Nama konektor",
 	"Command or address": "Perintah atau alamat",
 	"Access token (optional, stored encrypted)": "Token akses (opsional, disimpan terenkripsi)",
-	"Access token": "Token akses"
+	"Access token": "Token akses",
+	"Let other apps use midnight": "Izinkan aplikasi lain memakai midnight",
+	"Windows agents, Claude Desktop and other MCP clients on this computer can search your chosen folders and start tasks; changes still wait for your approval here. Turning it off disconnects them.": "Agen Windows, Claude Desktop, dan klien MCP lain di komputer ini dapat mencari folder pilihan Anda dan memulai tugas; perubahan tetap menunggu persetujuan Anda di sini. Menonaktifkannya akan memutus mereka.",
+	"Register with Windows": "Daftarkan ke Windows",
+	"Copy client settings": "Salin pengaturan klien",
+	"Registered with Windows.": "Terdaftar di Windows.",
+	"Client settings copied.": "Pengaturan klien disalin."
 }

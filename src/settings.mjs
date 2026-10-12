@@ -22,6 +22,7 @@ export const DEFAULTS = {
 	highContrast: false,
 	reducedMotion: false,
 	theme: "system", // system | dark | light
+	mcpServer: false, // let other apps on this computer use midnight through its MCP connector
 	language: "", // "" = follow the system; otherwise a supported locale code such as "en" or "id"
 	autoExpand: true, // open the wide reading view when an answer is long
 	answerLength: "normal", // brief | normal | detailed

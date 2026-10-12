@@ -88,6 +88,7 @@ export const METHODS = {
 	"recipe.export": { route: "shell", params: Obj({ recipeId: Id }) },
 	"connector.mcpAdd": { route: "shell", params: Obj({ name: Text(60), kind: Type.Union([Type.Literal("stdio"), Type.Literal("http")]), command: Type.Optional(Text(1000)), args: Type.Optional(Type.Array(Text(1000), { maxItems: 30 })), url: Type.Optional(Text(2000)), token: Type.Optional(Text(4000)) }) },
 	"mcpapp.open": { route: "shell", params: Obj({ artifactId: Id }) },
+	"mcpserver.register": { route: "shell", params: None },
 	"recipe.import": { route: "shell", params: None },
 	"engine.restart": { route: "shell", params: None },
 	"update.check": { route: "shell", params: None },

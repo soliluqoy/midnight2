@@ -468,6 +468,11 @@
 		return sec(
 			"connectors",
 			"CONNECTORS (MCP)",
+			field("Let other apps use midnight", "Windows agents, Claude Desktop and other MCP clients on this computer can search your chosen folders and start tasks; changes still wait for your approval here. Turning it off disconnects them.", toggle(!!S.settings.mcpServer, () => save({ mcpServer: !S.settings.mcpServer }), "Let other apps use midnight")),
+			S.settings.mcpServer ? h("div", { class: "row" },
+				h("button", { class: "sb", onclick: attempt(async () => { const r = await api.connectors.registerWithWindows(); setStatus(r.ok ? i18n.t("Registered with Windows.") : r.reason, !r.ok); return { ok: true }; }) }, "Register with Windows"),
+				h("button", { class: "sb", title: S.mcpServer?.bridge, onclick: attempt(async () => { await api.clipboard.write(JSON.stringify({ mcpServers: { midnight: { command: S.mcpServer?.bridge, args: [] } } }, null, 2)); setStatus(i18n.t("Client settings copied.")); return { ok: true }; }) }, "Copy client settings"),
+			) : null,
 			h("p", { class: "hint" }, "Connect any Model Context Protocol server: a program on this computer or a remote service. Its tools ask before each use; tools that declare themselves read-only can be reviewed to run without asking until the connector changes them."),
 			...servers.map((s) => h("div", { class: "mcp-server" },
 				h("div", { class: "acct" },

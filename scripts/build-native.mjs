@@ -12,6 +12,8 @@ const framework = path.join(windir, "Microsoft.NET", "Framework64", "v4.0.30319"
 const winmd = (name) => path.join(windir, "System32", "WinMetadata", `${name}.winmd`);
 const TARGETS = [
 	{ source: "src/desktop/native/MidnightHotkey.cs", out: "src/desktop/native/midnight-hotkey.exe", refs: ["System.Windows.Forms.dll"] },
+	// The stdio bridge MCP clients launch to reach midnight's connector over a named pipe.
+	{ source: "src/desktop/native/MidnightMcp.cs", out: "src/desktop/native/midnight-mcp.exe", refs: ["System.Core.dll"] },
 	// Windows' built-in OCR through WinRT metadata that ships with Windows 10 and 11.
 	{
 		source: "src/desktop/native/MidnightOcr.cs",
@@ -29,6 +31,12 @@ export function compiler() {
 }
 
 export function buildNative({ quiet = false } = {}) {
+	// The MCPB manifest next to the MCP bridge carries the app's version.
+	const manifestFile = path.join(root, "src", "desktop", "native", "manifest.json");
+	const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
+	const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
+	if (manifest.version !== version) fs.writeFileSync(manifestFile, `${JSON.stringify({ ...manifest, version }, null, "	")}
+`);
 	if (process.platform !== "win32") return [];
 	const csc = compiler();
 	if (!csc) throw new Error("The .NET Framework 4 C# compiler (csc.exe) was not found; it ships with Windows 10 and 11.");

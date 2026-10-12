@@ -11,6 +11,8 @@ import { createMediaDecoder } from "./desktop/media-decoder.mjs";
 import { createAttachments } from "./desktop/attachments.mjs";
 import { createOcr } from "./desktop/ocr.mjs";
 import { openMcpApp } from "./desktop/mcp-app.mjs";
+import { startMcpServer } from "./desktop/mcp-server.mjs";
+import { execFile } from "node:child_process";
 import { createHotkey } from "./desktop/hotkey.mjs";
 import { MARGIN, windowBounds, windowDims } from "./desktop/window-layout.mjs";
 import { createPlatform } from "./desktop/platform.mjs";
@@ -48,6 +50,32 @@ function startMissionShell() {
 	let hotkeys;
 	let mediaDecoder;
 	let attachments;
+	let mcpServer;
+	const mcpTokenFile = () => path.join(app.getPath("userData"), "mcp-token");
+	const mcpManifest = () => dir("./desktop/native/manifest.json").replace(/app\.asar([\\/])/, "app.asar.unpacked$1");
+	/** midnight's own MCP connector: on only while the setting is on; turning it off revokes every client. */
+	async function syncMcpServer() {
+		const want = settings.get().mcpServer && process.platform === "win32";
+		if (want && !mcpServer) {
+			mcpServer = startMcpServer({
+				host: (method, params) => supervisor.request(method, params, 120000),
+				tokenFile: mcpTokenFile(),
+				version: app.getVersion(),
+				log,
+				onTask: (missionId, client) => {
+					if (Notification.isSupported()) {
+						const n = new Notification({ title: "midnight", body: `${client} started a task. It will ask you before changing anything.`, silent: true });
+						n.on("click", () => (summon({ toggle: false }), toCapsule({ kind: "shell", type: "open-mission", missionId })));
+						n.show();
+					}
+				},
+			});
+		} else if (!want && mcpServer) {
+			await mcpServer.close();
+			mcpServer = undefined;
+			fs.rmSync(mcpTokenFile(), { force: true });
+		}
+	}
 	let lastSize = "idle";
 	let escHeld = false;
 	const active = new Set(); // missions that are running (Esc only belongs to midnight while something runs)
@@ -346,7 +374,7 @@ function startMissionShell() {
 		"apps.viewTask": (p) => appWorkspace.viewTask(p),
 		"settings.get": async () => {
 			const [accounts, models, current] = await Promise.all([supervisor.auth("accounts").catch(() => []), supervisor.auth("models").catch(() => []), supervisor.auth("current").catch(() => ({ provider: "", model: "" }))]);
-			return { settings: settings.get(), accounts, models, current, version: app.getVersion(), dataDir: app.getPath("userData"), engine: supervisor.state() };
+			return { settings: settings.get(), accounts, models, current, version: app.getVersion(), dataDir: app.getPath("userData"), engine: supervisor.state(), mcpServer: { running: !!mcpServer, manifest: mcpManifest(), bridge: mcpManifest().replace(/manifest\.json$/, "midnight-mcp.exe") } };
 		},
 		"settings.set": async ({ patch }) => {
 			const before = settings.get();
@@ -358,6 +386,7 @@ function startMissionShell() {
 			const after = settings.set(patch);
 			if (after.launchAtLogin !== before.launchAtLogin && app.isPackaged && process.platform !== "linux") app.setLoginItemSettings({ openAtLogin: after.launchAtLogin });
 			if (after.theme !== before.theme) nativeTheme.themeSource = after.theme;
+			if (after.mcpServer !== before.mcpServer) await syncMcpServer();
 			if (after.language !== before.language) {
 				rebuildTray();
 				for (const w of BrowserWindow.getAllWindows()) if (w !== capsule && w.webContents.getURL().endsWith("/apps.html")) w.webContents.reload();
@@ -425,6 +454,14 @@ function startMissionShell() {
 			return openMcpApp(view);
 		},
 		// Routines as files: the user picks where to save and what to open in the OS dialogs.
+		// Register midnight's connector with Windows' on-device agent registry (preview; odr.exe on recent builds).
+		"mcpserver.register": () =>
+			new Promise((resolve) => {
+				if (process.platform !== "win32") return resolve({ ok: false, reason: "Windows only.", manifest: mcpManifest() });
+				execFile("odr.exe", ["mcp", "add", mcpManifest()], { windowsHide: true, timeout: 30000 }, (err, stdout, stderr) =>
+					resolve(err ? { ok: false, reason: err.code === "ENOENT" ? "This version of Windows has no agent registry (odr.exe). Other MCP clients can use the manifest below." : String(stderr || err.message).slice(0, 400), manifest: mcpManifest() } : { ok: true, output: String(stdout).slice(0, 400), manifest: mcpManifest() }),
+				);
+			}),
 		"recipe.export": async ({ recipeId }) => {
 			const routine = await supervisor.request("recipe.exportFile", { recipeId });
 			const safe = routine.label.replace(/[^\p{L}\p{N} _.-]+/gu, "").trim().slice(0, 60) || "routine";
@@ -509,6 +546,7 @@ function startMissionShell() {
 			log,
 		});
 		supervisor.start();
+		supervisor.ready().then(syncMcpServer).catch((err) => log("mcp server", err.message));
 		updater = createUpdater({
 			version: app.getVersion(),
 			isBusy: async () => active.size > 0 || !!lease.current(),
@@ -723,6 +761,7 @@ function startMissionShell() {
 			web?.dispose();
 			browsers?.dispose();
 			mediaDecoder?.dispose();
+			await mcpServer?.close();
 			app.exit(0);
 		}
 	});

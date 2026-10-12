@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld("midnight", {
 		mcpInspect: (id) => call("mcp.inspect", { id }),
 		mcpReview: (id, tool, digest, readOnly) => call("mcp.review", { id, tool, digest, readOnly }),
 		openApp: (artifactId) => call("mcpapp.open", { artifactId }),
+		registerWithWindows: m("mcpserver.register"),
 	},
 	sources: { pick: (purpose) => call("sources.pick", { purpose }), list: m("sources.list"), remove: (rootId) => call("sources.remove", { rootId }) },
 	files: { status: m("files.status"), setup: m("files.setup"), index: m("files.index"), search: m("files.search"), cancel: m("files.cancel"), clear: m("files.clear"), open: m("files.open") },
