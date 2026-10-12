@@ -410,6 +410,27 @@ function startMissionShell() {
 			fs.writeFileSync(r.filePath, JSON.stringify({ ...preview, shellLog }, null, 2));
 			return { file: r.filePath };
 		},
+		// Routines as files: the user picks where to save and what to open in the OS dialogs.
+		"recipe.export": async ({ recipeId }) => {
+			const routine = await supervisor.request("recipe.exportFile", { recipeId });
+			const safe = routine.label.replace(/[^\p{L}\p{N} _.-]+/gu, "").trim().slice(0, 60) || "routine";
+			const r = await dialog.showSaveDialog(capsule, { title: "Export routine", defaultPath: path.join(app.getPath("documents"), `${safe}.midnight-routine.json`), filters: [{ name: "midnight routine", extensions: ["json"] }] });
+			if (r.canceled || !r.filePath) return { canceled: true };
+			fs.writeFileSync(r.filePath, JSON.stringify(routine, null, 2));
+			return { file: r.filePath };
+		},
+		"recipe.import": async () => {
+			const r = await dialog.showOpenDialog(capsule, { title: "Import a routine", properties: ["openFile"], filters: [{ name: "midnight routine", extensions: ["json"] }] });
+			if (r.canceled || !r.filePaths[0]) return { canceled: true };
+			if (fs.statSync(r.filePaths[0]).size > 256 * 1024) throw new Error("This file is too large to be a routine.");
+			let routine;
+			try {
+				routine = JSON.parse(fs.readFileSync(r.filePaths[0], "utf8"));
+			} catch {
+				throw new Error("This file is not a midnight routine.");
+			}
+			return supervisor.request("recipe.importFile", { routine });
+		},
 		"engine.restart": () => supervisor.restart(),
 		"update.check": () => updater.check({ force: true }),
 		"update.install": () => updater.install(),

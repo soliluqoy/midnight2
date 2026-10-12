@@ -443,8 +443,12 @@
 					h("div", { class: "n", title: `${r.template.goal}\nUses: ${r.template.tools.join(", ")}\nEffects: ${r.template.effects.join(", ")}` }, r.label, h("small", {}, r.reviewed ? "reviewed" : "review the steps before running")),
 					r.reviewed ? null : h("button", { class: "sb", onclick: attempt(() => api.recipes.review({ recipeId: r.id }), "Reviewed.") }, "Mark reviewed"),
 					r.reviewed ? h("button", { class: "sb pri", onclick: attempt(() => api.recipes.run({ recipeId: r.id, requestId: `req_${Date.now()}` }), "Started.") }, "Run") : null,
+					h("button", { class: "sb", title: "Save this routine as a file to share", onclick: attempt(async () => { const x = await api.recipes.export(r.id); if (x?.file) setStatus(i18n.t("Saved {file}", { file: x.file })); return x; }) }, "Export"),
 				),
 			),
+			extra.recipes.length ? null : h("p", { class: "hint" }, "Save a finished mission as a routine, or import one someone shared."),
+			h("div", { class: "row" }, h("button", { class: "sb", onclick: attempt(async () => { const x = await api.recipes.import(); if (x?.recipe) setStatus(i18n.t("Imported “{label}”. Review it before it runs.", { label: x.recipe.label })); return x; }) }, "Import routine…")),
+			h("p", { class: "hint" }, "Imported routines start unreviewed and in Ask me mode, whatever the file says."),
 		);
 	}
 

@@ -614,5 +614,11 @@
 	"This month {usd} · {n} missions": "Bulan ini {usd} · {n} misi",
 	"{n} missions match “{query}”": "{n} misi cocok dengan “{query}”",
 	"No missions match. Try fewer or different words.": "Tidak ada misi yang cocok. Coba kata yang lebih sedikit atau berbeda.",
-	"archived": "diarsipkan"
+	"archived": "diarsipkan",
+	"Save this routine as a file to share": "Simpan rutinitas ini sebagai berkas untuk dibagikan",
+	"Save a finished mission as a routine, or import one someone shared.": "Simpan misi yang selesai sebagai rutinitas, atau impor yang dibagikan orang lain.",
+	"Import routine…": "Impor rutinitas…",
+	"Imported routines start unreviewed and in Ask me mode, whatever the file says.": "Rutinitas yang diimpor dimulai belum ditinjau dan dalam mode Tanya saya, apa pun isi berkasnya.",
+	"Imported “{label}”. Review it before it runs.": "“{label}” diimpor. Tinjau sebelum dijalankan.",
+	"Saved {file}": "Tersimpan {file}"
 }

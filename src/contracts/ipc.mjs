@@ -85,6 +85,8 @@ export const METHODS = {
 	"data.openFolder": { route: "shell", params: None },
 	"sources.pick": { route: "shell", params: Obj({ purpose: Type.Union([Type.Literal("source"), Type.Literal("output")]) }) },
 	"diagnostics.save": { route: "shell", params: None },
+	"recipe.export": { route: "shell", params: Obj({ recipeId: Id }) },
+	"recipe.import": { route: "shell", params: None },
 	"engine.restart": { route: "shell", params: None },
 	"update.check": { route: "shell", params: None },
 	"update.install": { route: "shell", params: None },

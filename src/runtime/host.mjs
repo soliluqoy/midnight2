@@ -228,6 +228,8 @@ export async function createHost(o) {
 		"recipe.list": () => tools.recipes.list(),
 		"recipe.review": (p) => ({ ok: tools.recipes.markReviewed(p.recipeId) }),
 		"recipe.run": (p) => tools.recipes.run(p.recipeId, { requestId: p.requestId }),
+		"recipe.exportFile": (p) => tools.recipes.exportFile(p.recipeId), // only the shell's save dialog calls this
+		"recipe.importFile": (p) => tools.recipes.importFile(p.routine), // only the shell's open dialog calls this
 		"skill.list": () => tools.skills.list(),
 		"connector.list": () => tools.connectors.list(),
 		"stop.emergency": () => {

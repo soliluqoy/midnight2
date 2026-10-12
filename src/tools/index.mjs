@@ -51,7 +51,7 @@ export function buildTools(s) {
 	names.add("recall_context");
 	const skills = createSkills({ toolNames: names });
 	const watches = createWatches({ ...s, connectors, attention, stop: { proactivePaused: () => false, ...s.stop }, coord: s.coord });
-	const recipes = createRecipes({ store: s.store, repo: s.repo, ledger: s.ledger, evidence: s.evidence, coord: s.coord });
+	const recipes = createRecipes({ store: s.store, repo: s.repo, ledger: s.ledger, evidence: s.evidence, coord: s.coord, skills, version: s.version });
 	context = createContextService({ ...s, memory, skills, recipes, runtime: embeddingRuntime, fileSearch });
 	all.push(...contextTools({ context, repo: s.repo, evidence: s.evidence, commit: s.commit }).all);
 	const data = createData({ store: s.store, journal: s.journal, commit: s.commit, paths: s.paths, memory, context, version: s.version ?? "midnight" });

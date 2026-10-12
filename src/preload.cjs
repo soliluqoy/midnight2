@@ -56,7 +56,7 @@ contextBridge.exposeInMainWorld("midnight", {
 	watches: { create: (draft) => call("watch.create", { draft }), setPaused: m("watch.setPaused"), remove: (watchId) => call("watch.delete", { watchId }), list: m("watch.list") },
 	notifications: { act: m("notification.act") },
 	memory: { list: m("memory.list"), remember: m("memory.remember"), correct: m("memory.correct"), confirm: (memoryId) => call("memory.confirm", { memoryId }), forget: (memoryId) => call("memory.forget", { memoryId }), export: m("memory.export") },
-	recipes: { list: m("recipe.list"), review: m("recipe.review"), run: m("recipe.run") },
+	recipes: { list: m("recipe.list"), review: m("recipe.review"), run: m("recipe.run"), export: (recipeId) => call("recipe.export", { recipeId }), import: m("recipe.import") },
 	skills: { list: m("skill.list") },
 	connectors: { list: m("connector.list") },
 	sources: { pick: (purpose) => call("sources.pick", { purpose }), list: m("sources.list"), remove: (rootId) => call("sources.remove", { rootId }) },
