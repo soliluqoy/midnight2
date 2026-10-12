@@ -9,6 +9,7 @@ import { createAppWorkspace } from "./desktop/app-workspace.mjs";
 import { createIpcRouter } from "./desktop/ipc.mjs";
 import { createMediaDecoder } from "./desktop/media-decoder.mjs";
 import { createAttachments } from "./desktop/attachments.mjs";
+import { createOcr } from "./desktop/ocr.mjs";
 import { createHotkey } from "./desktop/hotkey.mjs";
 import { MARGIN, windowBounds, windowDims } from "./desktop/window-layout.mjs";
 import { createPlatform } from "./desktop/platform.mjs";
@@ -486,7 +487,7 @@ function startMissionShell() {
 		supervisor = createSupervisor({
 			dataDir,
 			settings: () => hostSettings(settings.get()),
-			platform: createPlatform({ web, browsers, lease, onAct, allowedOpen, previewFile, mediaDecoder }),
+			platform: createPlatform({ web, browsers, lease, onAct, allowedOpen, previewFile, mediaDecoder, ocr: createOcr({ tempDir: app.getPath("temp") }) }),
 			onMessage: onEngineMessage,
 			onState: (s) => {
 				log("engine", s.state, s.error ?? "");

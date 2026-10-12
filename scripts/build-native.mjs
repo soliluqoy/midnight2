@@ -7,10 +7,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
-const TARGETS = [{ source: "src/desktop/native/MidnightHotkey.cs", out: "src/desktop/native/midnight-hotkey.exe", refs: ["System.Windows.Forms.dll"] }];
+const windir = process.env.WINDIR ?? "C:\\Windows";
+const framework = path.join(windir, "Microsoft.NET", "Framework64", "v4.0.30319");
+const winmd = (name) => path.join(windir, "System32", "WinMetadata", `${name}.winmd`);
+const TARGETS = [
+	{ source: "src/desktop/native/MidnightHotkey.cs", out: "src/desktop/native/midnight-hotkey.exe", refs: ["System.Windows.Forms.dll"] },
+	// Windows' built-in OCR through WinRT metadata that ships with Windows 10 and 11.
+	{
+		source: "src/desktop/native/MidnightOcr.cs",
+		out: "src/desktop/native/midnight-ocr.exe",
+		refs: [...["Windows.Foundation", "Windows.Media", "Windows.Graphics", "Windows.Storage", "Windows.Globalization"].map(winmd), ...["System.Runtime.WindowsRuntime.dll", "System.Runtime.dll", "System.Threading.Tasks.dll", "System.Runtime.InteropServices.WindowsRuntime.dll"].map((d) => path.join(framework, d))],
+	},
+];
 
 export function compiler() {
-	const windir = process.env.WINDIR ?? "C:\\Windows";
 	for (const dir of ["Framework64", "Framework"]) {
 		const csc = path.join(windir, "Microsoft.NET", dir, "v4.0.30319", "csc.exe");
 		if (fs.existsSync(csc)) return csc;

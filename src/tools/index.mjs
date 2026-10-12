@@ -45,7 +45,7 @@ export function buildTools(s) {
 	let context;
 	const shell = shellTools({ platform: s.platform, evidence: s.evidence, commit: s.commit, selectPassages: (...args) => context.focusPages(...args) });
 	const fileSearch = createFileSearch({ ...s, runtime: embeddingRuntime });
-	const groups = [missionTools(coordProxy), fileTools(s).all, fileSearchTools({ ...s, search: fileSearch, decodeMedia }).all, workTools(s).all, connectorTools({ connectors, evidence: s.evidence, commit: s.commit, platform: s.platform }).all, shell.all];
+	const groups = [missionTools(coordProxy), fileTools({ ...s, decodeMedia }).all, fileSearchTools({ ...s, search: fileSearch, decodeMedia }).all, workTools(s).all, connectorTools({ connectors, evidence: s.evidence, commit: s.commit, platform: s.platform }).all, shell.all];
 	const all = groups.flat();
 	const names = new Set(all.map((t) => t.name));
 	names.add("recall_context");

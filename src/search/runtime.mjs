@@ -235,13 +235,16 @@ export function createEmbeddingRuntime({ settings, paths, decodeMedia, workerFac
 				segments.push({ vector, text: text.slice(0, 6000), locator: { ...locator, modality: "image" } });
 				onProgress?.({ phase: "embedding", message: "Reading media", segments: segments.length, locator });
 			};
-			if (kind === "image") await imageSegment(await media.frame({ max: 1600 }), {});
+			// Words in pictures and scanned pages: Windows OCR text joins the passage, so exact words find them too.
+			const ocrText = async (o) => (media.ocr ? (await media.ocr(o).catch(() => null))?.text ?? "" : "");
+			if (kind === "image") await imageSegment(await media.frame({ max: 1600 }), {}, await ocrText({}));
 			else if (kind === "pdf") {
 				const pages = media.info.pages ?? 0;
 				truncated = pages > maximum;
 				for (let page = 1; page <= Math.min(pages, maximum); page++) {
 					checkSignal(signal);
-					const { text } = await media.text({ page });
+					let { text } = await media.text({ page });
+					if (text.trim().length < 20) text = [text, await ocrText({ page })].filter(Boolean).join("\n");
 					await imageSegment(await media.frame({ page, max: 1600 }), { page }, text);
 				}
 			} else if (kind === "audio") truncated = await audioSegments(media, maximum, segments, { signal, onProgress });

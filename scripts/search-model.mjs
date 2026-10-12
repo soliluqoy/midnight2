@@ -9,6 +9,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createMediaDecoder } from "../src/desktop/media-decoder.mjs";
+import { createOcr } from "../src/desktop/ocr.mjs";
+import { fileURLToPath } from "node:url";
 import { createContextService } from "../src/context/service.mjs";
 import { createEvidence } from "../src/evidence/store.mjs";
 import { createMemory } from "../src/memory/store.mjs";
@@ -64,7 +66,12 @@ async function run() {
 	const source = path.join(base, "Selected");
 	fs.mkdirSync(source);
 	const decoder = createMediaDecoder({ log: (...a) => console.log("[decoder]", ...a) });
-	const decodeMedia = async (filePath, kind) => decoder.session(filePath, kind);
+	const ocrEngine = process.platform === "win32" ? createOcr() : undefined;
+	// The same session shape the engine gets through platform calls, including OCR of a decoded page or picture.
+	const decodeMedia = async (filePath, kind) => {
+		const s = await decoder.session(filePath, kind);
+		return { ...s, ocr: ocrEngine?.available() ? async (o) => ocrEngine.image((await s.frame({ ...o, max: 2400, format: "jpeg" })).jpeg) : undefined };
+	};
 	const settings = { embedding: { enabled: true, assist: true, dimensions: 768, device: "cpu" } };
 	const runtime = createEmbeddingRuntime({ paths: { dataDir }, settings, decodeMedia });
 	const store = await openStore(path.join(base, "Data"));
@@ -85,6 +92,8 @@ async function run() {
 		fs.writeFileSync(path.join(source, "red.png"), nativeImage.createFromBuffer(red, { width: 64, height: 64 }).toPNG());
 		fs.writeFileSync(path.join(source, "tone.wav"), wav(2, 440));
 		fs.writeFileSync(path.join(source, "minutes.pdf"), pdf(["Board minutes: the budget was approved", "Appendix about penguins in Antarctica"]));
+		const ocr = process.platform === "win32" ? createOcr() : undefined;
+		if (ocr?.available()) fs.copyFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "test", "fixtures", "ocr-invoice.png"), path.join(source, "receipt.png"));
 
 		await check("indexes text, image, audio and PDF pages with normalized vectors", async () => {
 			assert.equal(search.index().started, true);
@@ -92,15 +101,16 @@ async function run() {
 			while (search.status().busy && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
 			const status = search.status();
 			assert.equal(status.state, "ready", JSON.stringify({ error: status.error, warnings: status.warnings }));
-			assert.equal(status.counts.files, 5);
-			assert.equal(status.counts.segments, 6);
+			const pictures = ocr?.available() ? 1 : 0;
+			assert.equal(status.counts.files, 5 + pictures);
+			assert.equal(status.counts.segments, 6 + pictures);
 			for (const row of store.all("SELECT embedding FROM search_segments")) {
 				const v = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
 				assert.equal(v.length, 768);
 				assert.ok(Math.abs(Math.hypot(...v) - 1) < 0.001);
 			}
 			assert.equal(store.vector, true, "sqlite-vec loaded");
-			assert.equal(Number(store.get("SELECT COUNT(*) AS n FROM search_vec_768").n), 6);
+			assert.equal(Number(store.get("SELECT COUNT(*) AS n FROM search_vec_768").n), 6 + pictures);
 		});
 		await check("retrieves by meaning without shared words", async () => {
 			for (const [query, expected, kind] of [["public transportation", "railway.txt", "document"], ["ingredients for dessert", "baking.txt", "document"], ["antarctic birds", "minutes.pdf", "document"]]) {
@@ -113,6 +123,13 @@ async function run() {
 			const audio = store.all("SELECT locator FROM search_segments WHERE locator LIKE '%audio%'");
 			assert.equal(audio.length, 1);
 			assert.equal(JSON.parse(audio[0].locator).seconds, 0);
+		});
+		await check("words inside pictures are found through on-device OCR", async () => {
+			if (!ocr?.available()) return console.log("[search-model] (OCR is Windows-only; skipped)");
+			const hit = (await search.search({ query: "invoice 4821" })).results.find((r) => r.name === "receipt.png");
+			assert.ok(hit, "the picture is found by the words in it");
+			assert.match(hit.text, /Invoice 4821/);
+			assert.match(hit.match, /words|both/);
 		});
 		await check("previews render real JPEGs from the decoder", async () => {
 			for (const [file, kind, locator] of [["red.png", "image", {}], ["minutes.pdf", "document", { page: 2 }]]) {

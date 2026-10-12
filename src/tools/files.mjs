@@ -10,6 +10,7 @@ import { within } from "../policy/grants.mjs";
 import { realTarget } from "../policy/roots.mjs";
 import { readDocx } from "./documents/docx.mjs";
 import { readXlsx } from "./documents/xlsx.mjs";
+import { readZip, xmlUnescape } from "./documents/zip.mjs";
 import { unifiedDiff } from "./diff.mjs";
 
 const TEXTUAL = /\.(md|markdown|txt|csv|tsv|json|jsonl|html?|xml|svg|ya?ml|ini|toml|log|css|js|mjs|ts|py|ps1|sh|sql)$/i;
@@ -123,7 +124,9 @@ export function ambiguity(files) {
 	return [...groups.values()].filter((g) => g.length > 1).map((g) => g.map((f) => f.path));
 }
 
-export function fileTools({ roots, evidence, commit, settings, paths }) {
+const PICTURE = new Set([".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff", ".webp"]);
+
+export function fileTools({ roots, evidence, commit, settings, paths, platform, decodeMedia }) {
 	const allRoots = () => roots.list();
 	const backupDir = path.join(paths.backups, "files");
 
@@ -162,7 +165,7 @@ export function fileTools({ roots, evidence, commit, settings, paths }) {
 	const filesRead = {
 		name: "files_read",
 		label: "Read file",
-		description: "Read a text-like file inside a selected folder: txt, md, csv, json, docx (text, headings, tables). For spreadsheets use sheet_read. Macros are never run.",
+		description: "Read a file inside a selected folder as text: txt, md, csv, json, docx (text, headings, tables), pptx (slide text), pdf (page text; scanned pages are read with on-device OCR) and pictures (on-device OCR of the words in them). For spreadsheets use sheet_read. Macros are never run.",
 		parameters: Type.Object({ path: Type.String(), maxChars: Type.Optional(Type.Integer({ minimum: 500, maximum: 60000 })) }),
 		classify: (a) => ({ effect: "read.local", paths: [a.path], target: a.path, canonical: { path: path.resolve(a.path) }, feed: `files › read ${path.basename(a.path)}`, resources: [{ key: `file:${path.resolve(a.path).toLowerCase()}`, mode: "read" }] }),
 		async execute(a, ctx) {
@@ -179,8 +182,18 @@ export function fileTools({ roots, evidence, commit, settings, paths }) {
 			} else if ([".xlsx", ".xlsm"].includes(ext)) {
 				const b = readXlsx(buf);
 				text = `Workbook with sheets: ${b.sheets.map((s) => `${s.name}${s.hidden ? " (hidden)" : ""} ${s.maxRow}x${s.maxCol}`).join(", ")}. Use sheet_read for values.`;
-			} else if ([".pdf", ".png", ".jpg", ".jpeg", ".pptx", ".exe", ".dll", ".zip"].includes(ext)) {
-				throw new Error(`${ext} files are not read as text here`);
+			} else if (ext === ".pdf") {
+				text = await readPdf(real, a.maxChars ?? 20000, ctx.signal);
+			} else if (PICTURE.has(ext)) {
+				if (!platform) throw new Error("Text recognition is unavailable here.");
+				const r = await platform.call("ocr.file", { path: real }, { signal: ctx.signal });
+				text = r.text?.trim() ? `[Text recognized on this computer (OCR, ${r.language}); check names and numbers against the picture.]\n\n${r.text}` : "[No text was recognized in this picture. Use files_view to look at it.]";
+			} else if (ext === ".pptx") {
+				const zip = readZip(buf);
+				const slides = [...zip.entries.keys()].filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((x, y) => Number(/slide(\d+)/.exec(x)[1]) - Number(/slide(\d+)/.exec(y)[1]));
+				text = slides.map((n, i) => `## Slide ${i + 1}\n${[...zip.text(n).matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)].map((m) => xmlUnescape(m[1])).join("\n")}`).join("\n\n");
+			} else if ([".exe", ".dll", ".zip", ".msi"].includes(ext) || buf.includes(0)) {
+				throw new Error(`${ext || "this"} file is not readable as text`);
 			} else text = buf.toString("utf8");
 			const max = a.maxChars ?? 20000;
 			const hash = fileHash(buf);
@@ -188,6 +201,34 @@ export function fileTools({ roots, evidence, commit, settings, paths }) {
 			return { content: [{ type: "text", text: `${real} (${hash.slice(0, 19)}…, modified ${st.mtime.toISOString().slice(0, 16)})\n\n${text.length > max ? `${text.slice(0, max)}\n[truncated ${text.length - max} chars]` : text}` }], details: { path: real, hash } };
 		},
 	};
+
+	/** PDF text page by page; pages without a text layer (scans) are read with on-device OCR. */
+	async function readPdf(file, maxChars, signal) {
+		if (!decodeMedia) throw new Error("PDF reading is unavailable here.");
+		const pdf = await decodeMedia(file, "pdf", { signal });
+		try {
+			const out = [];
+			let chars = 0;
+			let scanned = 0;
+			const pages = pdf.info.pages ?? 0;
+			for (let page = 1; page <= pages && chars < maxChars; page++) {
+				let { text } = await pdf.text({ page });
+				if (text.trim().length < 20 && pdf.ocr) {
+					const r = await pdf.ocr({ page }).catch(() => null);
+					if (r?.text?.trim()) {
+						text = r.text;
+						scanned++;
+					}
+				}
+				out.push(`## Page ${page}\n${text}`);
+				chars += text.length;
+			}
+			const head = `[PDF, ${pages} page${pages === 1 ? "" : "s"}${scanned ? `; ${scanned} scanned page${scanned === 1 ? " was" : "s were"} read with OCR, so check names and numbers` : ""}${out.length < pages ? `; showing pages 1–${out.length}` : ""}]`;
+			return `${head}\n\n${out.join("\n\n")}`;
+		} finally {
+			await pdf.close();
+		}
+	}
 
 	const publish = {
 		name: "file_publish",

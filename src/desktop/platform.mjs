@@ -52,6 +52,12 @@ export function createPlatform(d) {
 				},
 				"media.frame": (a) => mediaSession(a.id).frame({ page: a.page, seconds: a.seconds, max: Math.min(2400, Math.max(64, Number(a.max) || 1600)), format: a.format === "jpeg" ? "jpeg" : "rgb" }),
 				"media.text": (a) => mediaSession(a.id).text({ page: a.page }),
+				// OCR of a decoded page or frame (scanned PDFs, video stills), through Windows' built-in engine.
+				"media.ocr": async (a) => {
+					if (!d.ocr?.available()) return { text: "", unavailable: true };
+					const frame = await mediaSession(a.id).frame({ page: a.page, seconds: a.seconds, max: 2400, format: "jpeg" });
+					return d.ocr.image(frame.jpeg);
+				},
 				"media.audio": (a) => mediaSession(a.id).audio({ start: Number(a.start) || 0, seconds: Math.min(120, Math.max(0.1, Number(a.seconds) || 30)) }),
 				"media.close": async (a) => {
 					const e = media.get(a.id);
@@ -108,6 +114,10 @@ export function createPlatform(d) {
 				if (err) throw new Error(err);
 			}
 			return { ok: true };
+		},
+		"ocr.file": (a) => {
+			if (!d.ocr?.available()) throw new Error("Text recognition uses Windows' built-in OCR and is available on Windows only for now.");
+			return d.ocr.file(path.resolve(String(a.path ?? "")));
 		},
 		"vault.encrypt": (a) => (safeStorage.isEncryptionAvailable() ? { available: true, ciphertext: safeStorage.encryptString(String(a.text)).toString("base64") } : { available: false }),
 		"vault.decrypt": (a) => (safeStorage.isEncryptionAvailable() ? { available: true, text: safeStorage.decryptString(Buffer.from(String(a.ciphertext), "base64")) } : { available: false }),

@@ -11,6 +11,7 @@ export function platformMedia(platform) {
 			frame: (o = {}) => call("media.frame", o),
 			text: (o = {}) => call("media.text", o),
 			audio: (o = {}) => call("media.audio", o),
+			ocr: (o = {}) => call("media.ocr", o),
 			close: () => platform.call("media.close", { id }).catch(() => {}),
 		};
 	};

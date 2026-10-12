@@ -55,6 +55,6 @@ architecture/provenance guards) · `npm run test:smoke` (real Electron, engine i
 ## Known limits (be honest about these)
 
 - Demo CRM/mail are fixtures; no real account is connected yet. Real sends need step 5.
-- OCR and PDF text extraction are not implemented; PPTX output is not implemented.
+- OCR uses Windows' built-in engine (`midnight-ocr.exe`) and is Windows-only; macOS and Linux read PDF text layers but not scans or pictures.
 - Pixel baselines are machine-specific; CI only checks that every state renders without errors.
 - Updates install only signed builds; current CI builds are unsigned, so the updater opens the release page instead.
