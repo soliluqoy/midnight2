@@ -20,7 +20,7 @@ import { makeModel, fakePlatform, fauxAssistantMessage, fauxText, fauxToolCall, 
 // Deliberately disjoint words share a vector. These fixtures test retrieval wiring, not Gemma quality.
 const vectorFor = text => /railway|transportation|commuter|trains/i.test(text) ? [1, 0, 0] : /cake|dessert|baking/i.test(text) ? [0, 1, 0] : [0, 0, 1];
 async function fixture(t, opts = {}) {
-	const dir = tempDir("context"), store = await openStore(dir), journal = createJournal(store);
+	const dir = fs.realpathSync.native(tempDir("context")), store = await openStore(dir), journal = createJournal(store);
 	const { commit, emit } = createUnitOfWork(store, journal);
 	const memory = createMemory(store, emit, commit), roots = createRoots(store);
 	const evidence = createEvidence(store, journal, emit, { workspaces: path.join(dir, "workspaces") });

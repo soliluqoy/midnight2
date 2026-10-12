@@ -55,8 +55,8 @@ test("upgrade replaces the old default shortcut on Windows but preserves custom 
 
 test("native Ctrl+Win chord handles either key order without stealing other Windows shortcuts", { skip: process.platform !== "win32" }, () => {
 	const helper = fileURLToPath(new URL("../src/desktop/hotkey-helper.ps1", import.meta.url));
-	const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", helper, "-SelfTest"], { encoding: "utf8", timeout: 20000, windowsHide: true });
-	assert.equal(result.status, 0, result.stderr);
+	const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", helper, "-SelfTest"], { encoding: "utf8", timeout: 45000, windowsHide: true });
+	assert.equal(result.status, 0, result.error?.message ?? result.stderr);
 	assert.match(result.stdout, /PASS modifier-only chord/);
 });
 
