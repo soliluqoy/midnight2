@@ -660,5 +660,6 @@
 	"Speak instead of typing: a microphone button and Ctrl+Shift+Space. Whisper runs on this computer; your voice is never uploaded.": "Bicara alih-alih mengetik: tombol mikrofon dan Ctrl+Shift+Space. Whisper berjalan di komputer ini; suara Anda tidak pernah diunggah.",
 	"Whisper is installed. Dictation follows midnight's language (English or Bahasa Indonesia).": "Whisper sudah terpasang. Dikte mengikuti bahasa midnight (Inggris atau Bahasa Indonesia).",
 	"Installing… {done} / {total} MB": "Memasang… {done} / {total} MB",
-	"Install Whisper ({size} MB)": "Pasang Whisper ({size} MB)"
+	"Install Whisper ({size} MB)": "Pasang Whisper ({size} MB)",
+	"Windows agent connector": "Konektor agen Windows"
 }

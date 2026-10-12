@@ -245,6 +245,7 @@ export async function createHost(o) {
 		"mcp.remove": (p) => tools.mcp.remove(p.id),
 		"mcp.setEnabled": (p) => tools.mcp.setEnabled(p.id, p.enabled),
 		"mcp.inspect": (p) => tools.mcp.inspect(p.id),
+		"mcp.windows": () => tools.discoverWindowsConnectors(),
 		"mcp.review": (p) => tools.mcp.review(p.id, p.tool, { digest: p.digest, readOnly: p.readOnly }),
 		"artifact.view": (p) => {
 			// Only the shell's sandboxed MCP App viewer calls this.

@@ -454,8 +454,13 @@
 	}
 
 	let mcpTools = {}; // connector id -> inspected tools, while their list is open
+	let windowsConnectors; // what Windows' agent registry offers, looked up once per Settings visit
 	function connectorsSection() {
 		const servers = extra.mcp ?? [];
+		if (windowsConnectors === undefined) {
+			windowsConnectors = null;
+			api.connectors.windowsConnectors().then((r) => ((windowsConnectors = r), render())).catch(() => {});
+		}
 		const name = h("input", { class: "sinp", placeholder: "Name, e.g. GitHub", "aria-label": "Connector name" });
 		const target = h("input", { class: "sinp", placeholder: "npx -y @modelcontextprotocol/server-github   or   https://mcp.example.com/mcp", "aria-label": "Command or address" });
 		const token = h("input", { class: "sinp", type: "password", placeholder: "Access token (optional, stored encrypted)", "aria-label": "Access token" });
@@ -491,6 +496,9 @@
 				) : null,
 			)),
 			servers.length ? null : h("p", { class: "hint" }, "No connectors yet."),
+			// Windows' own agent connectors (File Explorer, Settings and apps that registered one), when this Windows has the registry.
+			...(windowsConnectors?.connectors ?? []).filter((c) => !servers.some((s) => s.kind === "stdio" && s.command === c.command && JSON.stringify(s.args) === JSON.stringify(c.args))).map((c) =>
+				h("div", { class: "acct" }, h("div", { class: "n", title: c.description }, c.name, h("small", {}, "Windows agent connector")), h("button", { class: "sb", onclick: attempt(() => api.connectors.mcpAdd({ name: c.name, kind: "stdio", command: c.command, args: c.args }), "Connector added.") }, "Add"))),
 			name, target, token,
 			h("div", { class: "row" }, h("button", { class: "sb", onclick: attempt(add, "Connector added.") }, "Add connector")),
 		);

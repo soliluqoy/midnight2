@@ -150,7 +150,7 @@ const NS = {
 	grants: ["create", "revoke", "list"],
 	memory: ["list", "remember", "correct", "confirm", "forget", "export"],
 	recipes: ["list", "review", "run", "export", "import"],
-	connectors: ["list", "mcpList", "mcpAdd", "mcpRemove", "mcpSetEnabled", "mcpInspect", "mcpReview", "openApp"],
+	connectors: ["list", "windowsConnectors", "mcpList", "mcpAdd", "mcpRemove", "mcpSetEnabled", "mcpInspect", "mcpReview", "openApp"],
 	skills: ["list"],
 	resources: ["status"],
 	data: ["clearBrowser", "openFolder", "export", "remove", "diagnostics", "saveDiagnostics"],

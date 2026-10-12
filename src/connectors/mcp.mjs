@@ -2,6 +2,7 @@
 // over Streamable HTTP) becomes a set of mission tools. Server text is untrusted: descriptions are framed as data,
 // every tool asks before running unless the user reviewed it as read-only, and a review is pinned to a digest of
 // the tool's name, description, schema and annotations, so a server that changes a tool loses the review.
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { McpClient, StdioTransport, StreamableHttpTransport, toLlmContent } from "../runtime/adapter.mjs";
 import { newId } from "../contracts/events.mjs";
@@ -14,6 +15,35 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(
 export const toolDigest = (t) => `sha256:${createHash("sha256").update(stableStringify({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema ?? {}, annotations: t.annotations ?? {} })).digest("hex")}`;
 /** The MCP Apps extension: a tool may point at a ui:// resource holding an interactive view of its result. */
 const uiResourceOf = (t) => t._meta?.ui?.resourceUri ?? t._meta?.["ui/resourceUri"];
+
+/**
+ * Agent connectors registered in Windows' on-device agent registry (preview; `odr.exe list` prints JSON whose
+ * entries carry an MCPB manifest). Returns what is needed to add one as a stdio connector; midnight's own entry is
+ * left out. Empty when the registry is not available on this version of Windows.
+ */
+export function discoverWindowsConnectors({ execImpl = execFile, platform = process.platform } = {}) {
+	if (platform !== "win32") return Promise.resolve({ available: false, connectors: [] });
+	return new Promise((resolve) => {
+		execImpl("odr.exe", ["list"], { windowsHide: true, timeout: 20_000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+			if (err) return resolve({ available: false, connectors: [], reason: err.code === "ENOENT" ? "This version of Windows has no agent registry (odr.exe needs build 26220 or later)." : String(err.message).slice(0, 300) });
+			let list;
+			try {
+				list = JSON.parse(String(stdout));
+			} catch {
+				return resolve({ available: true, connectors: [], reason: "The agent registry returned something midnight could not read." });
+			}
+			const entries = Array.isArray(list) ? list : Array.isArray(list?.servers) ? list.servers : [];
+			const connectors = entries
+				.map((e) => {
+					const m = e.manifest ?? {};
+					const cfg = m.server?.mcp_config ?? {};
+					return { id: String(e.id ?? m.name ?? ""), name: String(m.display_name ?? m.name ?? e.id ?? "").slice(0, 60), description: String(m.description ?? "").slice(0, 300), command: typeof cfg.command === "string" ? cfg.command : "", args: Array.isArray(cfg.args) ? cfg.args.map(String).slice(0, 30) : [] };
+				})
+				.filter((c) => c.command && c.name && c.name.toLowerCase() !== "midnight");
+			resolve({ available: true, connectors });
+		});
+	});
+}
 
 /** Provider-safe tool name (letters, digits, _ and -, at most 64 characters), unique per server and tool. */
 export function mcpToolName(serverName, toolName) {

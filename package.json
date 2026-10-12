@@ -42,6 +42,7 @@
 		"typebox": "1.3.27"
 	},
 	"devDependencies": {
+		"@electron/fuses": "^2.1.3",
 		"electron": "44.4.5",
 		"electron-builder": "26.15.3"
 	},

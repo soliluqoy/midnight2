@@ -118,6 +118,7 @@ export const METHODS = {
 	"mcp.remove": { route: "host", params: Obj({ id: Id }) },
 	"mcp.setEnabled": { route: "host", params: Obj({ id: Id, enabled: Type.Boolean() }) },
 	"mcp.inspect": { route: "host", params: Obj({ id: Id }) },
+	"mcp.windows": { route: "host", params: None },
 	"mcp.review": { route: "host", params: Obj({ id: Id, tool: Text(200), digest: Type.String({ pattern: "^sha256:[0-9a-f]{64}$" }), readOnly: Type.Boolean() }) },
 	"memory.confirm": { route: "host", params: Obj({ memoryId: Id }) },
 	"stop.emergency": { route: "host", params: None },

@@ -19,7 +19,7 @@ import { createEmbeddingRuntime } from "../search/runtime.mjs";
 import { platformMedia } from "../search/media-preview.mjs";
 import { createContextService } from "../context/service.mjs";
 import { contextTools } from "./context.mjs";
-import { createMcpConnectors } from "../connectors/mcp.mjs";
+import { createMcpConnectors, discoverWindowsConnectors } from "../connectors/mcp.mjs";
 
 // Tools every mission gets; shell tools are left out for offline missions (the broker would block them anyway).
 const MISSION = ["plan", "step", "ask_user", "remember"];
@@ -71,6 +71,7 @@ export function buildTools(s) {
 		data,
 		vault,
 		mcp,
+		discoverWindowsConnectors: s.discoverWindowsConnectors ?? discoverWindowsConnectors,
 		resources: undefined, // set by the host once the queue exists
 		/** Tool names offered to a mission's model. */
 		forMission(mission, settings) {

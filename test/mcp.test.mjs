@@ -82,3 +82,18 @@ test("a server that changes a reviewed tool loses the review, and its descriptio
 		await host.close();
 	}
 });
+
+test("Windows agent connectors are discovered from odr.exe list, without midnight itself", async () => {
+	const { discoverWindowsConnectors } = await import("../src/connectors/mcp.mjs");
+	const listed = JSON.stringify([
+		{ id: "MicrosoftWindows.FileExplorer", manifest: { name: "file-explorer", display_name: "File Explorer", description: "Find and organize files", server: { mcp_config: { command: "C:/Windows/SystemApps/fe/mcp.exe", args: ["--stdio"] } } } },
+		{ id: "midnight", manifest: { name: "midnight", server: { mcp_config: { command: "C:/Users/me/midnight-mcp", args: [] } } } },
+		{ id: "broken", manifest: { name: "no command" } },
+	]);
+	const found = await discoverWindowsConnectors({ platform: "win32", execImpl: (_cmd, args, _o, cb) => (assert.deepEqual(args, ["list"]), cb(null, listed)) });
+	assert.deepEqual(found, { available: true, connectors: [{ id: "MicrosoftWindows.FileExplorer", name: "File Explorer", description: "Find and organize files", command: "C:/Windows/SystemApps/fe/mcp.exe", args: ["--stdio"] }] });
+	const missing = await discoverWindowsConnectors({ platform: "win32", execImpl: (_c, _a, _o, cb) => cb(Object.assign(new Error("spawn odr.exe ENOENT"), { code: "ENOENT" })) });
+	assert.equal(missing.available, false);
+	assert.match(missing.reason, /no agent registry/);
+	assert.deepEqual(await discoverWindowsConnectors({ platform: "linux" }), { available: false, connectors: [] });
+});

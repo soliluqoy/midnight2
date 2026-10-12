@@ -66,6 +66,7 @@ contextBridge.exposeInMainWorld("midnight", {
 		mcpRemove: (id) => call("mcp.remove", { id }),
 		mcpSetEnabled: (id, enabled) => call("mcp.setEnabled", { id, enabled }),
 		mcpInspect: (id) => call("mcp.inspect", { id }),
+		windowsConnectors: m("mcp.windows"),
 		mcpReview: (id, tool, digest, readOnly) => call("mcp.review", { id, tool, digest, readOnly }),
 		openApp: (artifactId) => call("mcpapp.open", { artifactId }),
 		registerWithWindows: m("mcpserver.register"),
