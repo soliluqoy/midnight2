@@ -6,3 +6,4 @@ dist/
 test/visual/out/
 .reference/
 __pycache__/
+src/desktop/native/*.exe

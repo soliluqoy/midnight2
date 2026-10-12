@@ -3,7 +3,8 @@ import { EventEmitter } from "node:events";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { createHotkey, defaultHotkey, LEGACY_HOTKEY, migrateHotkey, WINDOWS_HOTKEY } from "../src/desktop/hotkey.mjs";
+import { createHotkey, defaultHotkey, LEGACY_HOTKEY, listenerCommand, migrateHotkey, NATIVE_HELPER, WINDOWS_HOTKEY } from "../src/desktop/hotkey.mjs";
+import { buildNative } from "../scripts/build-native.mjs";
 import { GUTTER, windowBounds, windowDims } from "../src/desktop/window-layout.mjs";
 
 const area = { x: 0, y: 0, width: 1920, height: 1040 };
@@ -54,6 +55,14 @@ test("upgrade replaces the old default shortcut on Windows but preserves custom 
 });
 
 test("native Ctrl+Win chord handles either key order without stealing other Windows shortcuts", { skip: process.platform !== "win32" }, () => {
+	buildNative({ quiet: true });
+	const native = spawnSync(NATIVE_HELPER, ["--self-test"], { encoding: "utf8", timeout: 45000, windowsHide: true });
+	assert.equal(native.status, 0, native.error?.message ?? native.stderr);
+	assert.match(native.stdout, /PASS modifier-only chord/);
+	// The listener runs the compiled exe, never PowerShell with an execution-policy bypass, once it is built.
+	assert.deepEqual(listenerCommand(42), { command: NATIVE_HELPER, args: ["--parent-pid", "42"] });
+	assert.equal(listenerCommand(42, () => false).command, "powershell.exe", "unbuilt checkouts fall back to the script");
+	// The development fallback loads the same C# source.
 	const helper = fileURLToPath(new URL("../src/desktop/hotkey-helper.ps1", import.meta.url));
 	const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", helper, "-SelfTest"], { encoding: "utf8", timeout: 45000, windowsHide: true });
 	assert.equal(result.status, 0, result.error?.message ?? result.stderr);

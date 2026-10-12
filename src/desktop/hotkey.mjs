@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export const WINDOWS_HOTKEY = "Control+Super";
@@ -7,6 +8,14 @@ export const defaultHotkey = (platform = process.platform) => platform === "win3
 export const migrateHotkey = (data, platform = process.platform) => platform === "win32" && (data.version ?? 0) < 3 && [LEGACY_HOTKEY, "Control+Alt+M"].includes(data.hotkey) ? WINDOWS_HOTKEY : data.hotkey;
 
 const HELPER = fileURLToPath(new URL("./hotkey-helper.ps1", import.meta.url));
+// Packaged apps use the asar-unpacked copy: Windows cannot execute a file inside an archive.
+export const NATIVE_HELPER = fileURLToPath(new URL("./native/midnight-hotkey.exe", import.meta.url)).replace(/app\.asar([\\/])/, "app.asar.unpacked$1");
+
+/** The native listener (no PowerShell, no execution-policy bypass); the script is a fallback for unbuilt checkouts. */
+export function listenerCommand(parentPid = process.pid, exists = fs.existsSync) {
+	if (exists(NATIVE_HELPER)) return { command: NATIVE_HELPER, args: ["--parent-pid", String(parentPid)] };
+	return { command: "powershell.exe", args: ["-NoLogo", "-NoProfile", "-MTA", "-ExecutionPolicy", "Bypass", "-File", HELPER, "-ParentPid", String(parentPid)] };
+}
 
 // Electron accelerators require a non-modifier key. Ctrl+Win uses a small, unprivileged Windows hook instead.
 // Changing shortcuts is transactional: don't release the working shortcut until the replacement is ready.
@@ -36,7 +45,8 @@ export function createHotkey({ globalShortcut, onTrigger, onError = () => {}, pl
 			};
 			const timeout = setTimeout(() => { fail(new Error("The Ctrl+Win listener did not start. Use the tray icon to open midnight.")); release(entry); }, readyTimeout);
 			try {
-				entry.process = spawnImpl("powershell.exe", ["-NoLogo", "-NoProfile", "-MTA", "-ExecutionPolicy", "Bypass", "-File", HELPER, "-ParentPid", String(process.pid)], { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+				const listener = listenerCommand();
+				entry.process = spawnImpl(listener.command, listener.args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
 				pending = entry;
 				entry.process.stdout.setEncoding("utf8");
 				entry.process.stdout.on("data", (chunk) => {
