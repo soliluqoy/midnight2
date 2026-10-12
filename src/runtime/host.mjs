@@ -295,7 +295,7 @@ export async function createHost(o) {
 			actions: ledger.forMission(p.missionId).map((i) => ({ ...i, receipt: ledger.latestReceipt(i.id) })),
 			questions: repo.openQuestions(p.missionId),
 		}),
-		"query.history": (p) => repo.list({ limit: p.limit ?? 50 }).map((m) => viewOf(m.id)).filter(Boolean),
+		"query.history": (p) => (p.query?.trim() ? repo.search(p.query, { limit: p.limit ?? 50 }) : repo.list({ limit: p.limit ?? 50 })).map((m) => viewOf(m.id)).filter(Boolean),
 		"data.export": () => tools.data.exportAll(),
 		"data.delete": (p) => {
 			if (p.scope === "all") tools.fileSearch.clear();

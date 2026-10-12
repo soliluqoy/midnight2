@@ -59,6 +59,14 @@ export function createMissionRepo(store, emit) {
 		get: (id) => row(store.get("SELECT * FROM missions WHERE id = ?", id)),
 		list: ({ includeArchived = false, limit = 200 } = {}) =>
 			store.all(`SELECT * FROM missions ${includeArchived ? "" : "WHERE archived = 0"} ORDER BY updated_at DESC LIMIT ?`, limit).map(row),
+		/** Missions whose title, request or recorded answer contains every word of `query`, newest first. */
+		search(query, { limit = 50 } = {}) {
+			const words = String(query).toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8);
+			if (!words.length) return [];
+			const like = (w) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+			const clause = words.map(() => "(lower(m.title) LIKE ? ESCAPE '\\' OR lower(m.goal) LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM payloads p WHERE p.mission_id = m.id AND p.kind = 'answer' AND lower(p.body) LIKE ? ESCAPE '\\'))").join(" AND ");
+			return store.all(`SELECT m.* FROM missions m WHERE ${clause} ORDER BY m.updated_at DESC LIMIT ?`, ...words.flatMap((w) => [like(w), like(w), like(w)]), limit).map(row);
+		},
 		withStatus: (...states) => store.all(`SELECT * FROM missions WHERE status IN (${states.map(() => "?").join(",")})`, ...states).map(row),
 		setStatus(id, to, reason = "") {
 			const m = api.get(id);

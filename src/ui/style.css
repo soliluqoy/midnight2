@@ -420,3 +420,9 @@ body[data-motion=reduced] *{animation-duration:.001s!important;animation-iterati
 .sends h6{margin:0 0 6px;font-size:11px;font-weight:600;color:var(--muted)}
 .sends .facts{margin:0}.sends .hint{margin:4px 0 0}
 @media (forced-colors:active){#askPreview.diff .diff-add,#askPreview.diff .diff-del{forced-color-adjust:none;background:Canvas;color:CanvasText;text-decoration:underline}#askPreview.diff .diff-del{text-decoration:line-through}.sends{border:1px solid CanvasText}}
+
+/* Cost and history search in Missions. */
+.mh .cost{white-space:nowrap}
+.l-stack .mh #spend{margin-left:8px;max-width:200px}
+.stack-search{flex:none}
+.stack-search .inp{display:block;box-sizing:border-box;width:100%;padding:7px 10px;font-size:12px;border:1px solid var(--control-line);background:var(--field)}

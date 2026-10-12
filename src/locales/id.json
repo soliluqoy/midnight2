@@ -603,5 +603,16 @@
 	"No filled-in fields were found; the page or app decides what it sends.": "Tidak ditemukan kolom yang terisi; halaman atau aplikasi yang menentukan apa yang dikirim.",
 	"This replaces the existing file (a backup is kept).": "Ini menggantikan berkas yang ada (cadangan disimpan).",
 	"This adds a new file; nothing is overwritten.": "Ini menambahkan berkas baru; tidak ada yang ditimpa.",
-	"No changes: the new version is identical.": "Tidak ada perubahan: versi baru identik."
+	"No changes: the new version is identical.": "Tidak ada perubahan: versi baru identik.",
+	"Tokens and cost so far": "Token dan biaya sejauh ini",
+	"Model cost of missions started this month": "Biaya model untuk misi yang dimulai bulan ini",
+	"Search all missions and answers…": "Cari semua misi dan jawaban…",
+	"Search missions": "Cari misi",
+	"cost unknown": "biaya tidak diketahui",
+	"{usd} · {tokens} tokens": "{usd} · {tokens} token",
+	"{usd} of {cap}": "{usd} dari {cap}",
+	"This month {usd} · {n} missions": "Bulan ini {usd} · {n} misi",
+	"{n} missions match “{query}”": "{n} misi cocok dengan “{query}”",
+	"No missions match. Try fewer or different words.": "Tidak ada misi yang cocok. Coba kata yang lebih sedikit atau berbeda.",
+	"archived": "diarsipkan"
 }

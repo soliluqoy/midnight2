@@ -281,6 +281,9 @@ function onLive(e) {
 	} else if (e.type === "text") {
 		l.text += e.delta;
 		l.streaming = true;
+	} else if (e.type === "usage") {
+		l.usage = e.usage;
+		if (e.missionId === current) renderCost(snap.missions[e.missionId]);
 	} else if (e.type === "tool_start") {
 		const set = (lit[e.missionId] ??= new Set());
 		set.add(e.name === "computer" ? "cDesk" : e.name === "user_browser" ? "cYours" : /^(files_|sheet_|file_)/.test(e.name) ? "cFiles" : ["search", "read_pages", "browser"].includes(e.name) ? "cBrowser" : "");
@@ -403,12 +406,34 @@ const elapsed = (ms) => {
 	const s = Math.max(0, Math.floor(ms / 1000));
 	return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
+// ---------- cost: live while a mission runs, recorded once it settles ----------
+const money = (usd) => (usd >= 0.1 ? `$${usd.toFixed(2)}` : `$${usd.toFixed(3)}`);
+/** What a mission has cost: the engine's settled budget, plus the live run's usage while it is still running. */
+function spendOf(m) {
+	const spent = m?.budget?.spent ?? {};
+	const run = RUNNING.has(m?.status) ? live[m.id]?.usage : undefined;
+	return { usd: (spent.costUsd ?? 0) + (run?.costUsd ?? 0), tokens: (spent.tokens ?? 0) + (run?.tokens ?? 0), unknown: !!(spent.unknownCostCalls || run?.unknownCost) };
+}
+function costText(m) {
+	const s = spendOf(m);
+	if (!s.tokens && !s.usd) return "";
+	const tokens = s.tokens >= 1000 ? `${(s.tokens / 1000).toFixed(s.tokens >= 10000 ? 0 : 1)}k` : String(s.tokens);
+	const usd = s.unknown && !s.usd ? i18n.t("cost unknown") : `${money(s.usd)}${s.unknown ? "+" : ""}`;
+	const cap = m?.budget?.limits?.costUsd;
+	return i18n.t("{usd} · {tokens} tokens", { usd: cap ? i18n.t("{usd} of {cap}", { usd, cap: money(cap) }) : usd, tokens });
+}
+function renderCost(m) {
+	if (!m) return;
+	$("mCost").textContent = costText(m);
+}
+
 function tick() {
 	const m = mission();
 	if (!m) return;
 	const t0 = runStart[m.id] ?? Date.parse(m.createdAt);
 	const end = TERMINAL.has(m.status) || NEEDS.has(m.status) ? Date.parse(m.updatedAt) : Date.now();
 	$("mTime").textContent = elapsed(end - t0);
+	renderCost(m);
 }
 
 function renderLights() {
@@ -905,14 +930,45 @@ function renderContinue() {
 
 // ---------- the mission stack ----------
 function card(m, kind, sub) {
+	const cost = spendOf(m);
+	const when = new Date(m.updatedAt);
+	const today = when.toDateString() === new Date().toDateString();
 	return el(
 		"button",
 		{ class: "card", role: "listitem", "data-k": kind, "data-mission": m.id, onclick: () => openMission(m.id), "aria-label": `${m.title}, ${sub}` },
 		el("i", { "aria-hidden": "true" }),
 		el("div", {}, el("b", {}, m.title), el("span", {}, sub)),
-		el("em", {}, new Date(m.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })),
+		el("em", {}, `${cost.usd || cost.tokens ? `${money(cost.usd)} · ` : ""}${today ? when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : when.toLocaleDateString([], { month: "short", day: "numeric" })}`),
 	);
 }
+/** Model cost of missions started this calendar month, from the snapshot the launcher already has. */
+function renderSpend() {
+	const start = new Date();
+	start.setDate(1);
+	start.setHours(0, 0, 0, 0);
+	const month = Object.values(snap.missions).filter((m) => Date.parse(m.createdAt) >= start.getTime());
+	const usd = month.reduce((sum, m) => sum + spendOf(m).usd, 0);
+	$("spend").textContent = month.length ? i18n.t("This month {usd} · {n} missions", { usd: money(usd), n: month.length }) : "";
+}
+let historyQuery = "";
+let historyResults;
+let historyTimer;
+$("historySearch").addEventListener("input", (e) => {
+	clearTimeout(historyTimer);
+	historyQuery = e.target.value.trim();
+	historyTimer = setTimeout(async () => {
+		const q = historyQuery;
+		historyResults = q ? await api.query.history({ query: q, limit: 50 }).catch((err) => (showErr(err), [])) : undefined;
+		if (q === historyQuery) renderStack();
+	}, 200);
+});
+$("historySearch").addEventListener("keydown", (e) => {
+	if (e.key === "Escape" && e.target.value) {
+		e.stopPropagation();
+		e.target.value = "";
+		e.target.dispatchEvent(new Event("input"));
+	}
+});
 async function renderStack() {
 	const revision = ++stackRevision;
 	const list = Object.values(snap.missions).filter((m) => !m.archived);
@@ -920,6 +976,16 @@ async function renderStack() {
 	const [watches, resources] = await Promise.all([api.watches.list().catch(() => []), api.resources.status().catch(() => ({}))]);
 	if (revision !== stackRevision || cur !== "stack") return;
 	const box = document.createDocumentFragment();
+	renderSpend();
+	if (historyQuery && historyResults) {
+		box.append(el("h6", {}, i18n.t("{n} missions match “{query}”", { n: historyResults.length, query: historyQuery })));
+		if (!historyResults.length) box.append(el("div", { class: "empty" }, "No missions match. Try fewer or different words."));
+		for (const m of historyResults) snap.missions[m.id] ??= m; // older or archived results open like any mission
+		for (const m of historyResults) box.append(card(m, m.status === "succeeded" ? "ok" : NEEDS.has(m.status) ? "needs" : RUNNING.has(m.status) ? "active" : "warn", `${i18n.t(HOME_STATUS[m.status] ?? m.status).toLowerCase()}${m.archived ? ` · ${i18n.t("archived")}` : ""}${m.outcome?.summary ? ` · ${i18n.t(m.outcome.summary)}` : ""}`));
+		const target = $("stack");
+		target.replaceChildren(box);
+		return;
+	}
 	const by = (a, b) => (a.updatedAt < b.updatedAt ? 1 : -1);
 	const needs = list.filter((m) => NEEDS.has(m.status)).sort(by);
 	const act = list.filter((m) => RUNNING.has(m.status) || ["paused", "waiting-resource", "waiting-time"].includes(m.status)).sort(by);

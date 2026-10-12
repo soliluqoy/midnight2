@@ -92,7 +92,7 @@ const variants = {
 			{ id: "c2", kind: "artifact", label: "A validated chart was produced", state: "passed", detail: "" },
 			{ id: "c3", kind: "receipt", label: "An external effect has a verified receipt", state: "passed", detail: "" },
 		],
-		budget: { text: "41k tokens · $0.086 · 11 actions" },
+		budget: { text: "41k tokens · $0.086 · 11 actions", spent: { tokens: 41200, costUsd: 0.086, toolCalls: 11 }, limits: { costUsd: 2 } },
 		outcome: { status: "succeeded", summary: "3/3 checks passed" },
 	},
 	partial: {

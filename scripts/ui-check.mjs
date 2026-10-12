@@ -22,6 +22,7 @@ const contrast = (a, b) => {
 	return (light + 0.05) / (dark + 0.05);
 };
 ipcMain.handle("fixture:size", () => null);
+const json = (v) => JSON.stringify(v);
 
 app.whenReady().then(async () => {
 	nativeTheme.themeSource = "dark"; // the checks below are for the default dark appearance; light has its own checks
@@ -497,6 +498,27 @@ app.whenReady().then(async () => {
 			assert.match(sends.title, /shop\.example · POST/);
 			assert.deepEqual(sends.rows, ["Email=you@example.test", "Password=••••••••", "Quantity=2"]);
 			assert.match(sends.extra, /3 hidden fields/);
+		}],
+		["missions show their cost live and searched history opens older missions", async () => {
+			await js(`__fixture.variant('done'); await setState('mission');`);
+			await sleep(300);
+			assert.equal(await js(`return document.getElementById('mCost').textContent;`), "$0.086 of $2.00 · 41k tokens");
+			await js(`__fixture.variant('running'); missionApi.openMission('m1'); __fixture.emit({kind:'live',missionId:'m1',type:'usage',usage:{tokens:2500,costUsd:0.012}});`);
+			await sleep(100);
+			assert.match(await js(`return document.getElementById('mCost').textContent;`), /^\$0\.\d{3}/, "a running mission shows what it has spent so far");
+			const old = { id: "m9", title: "Antarctic field report", goal: "Summarize the Antarctic field report", status: "succeeded", archived: true, createdAt: "2025-02-01T10:00:00Z", updatedAt: "2025-02-01T10:05:00Z", steps: [], approvals: [], artifacts: [], plan: { nodes: [] }, feed: [], budget: { spent: { tokens: 9000, costUsd: 0.02 } }, outcome: { status: "succeeded", summary: "1/1 checks passed" } };
+			await js(`__fixture.configure({'query.history':{result:[${json(old)}]}}); await setState('stack'); const s=document.getElementById('historySearch'); s.value='penguin'; s.dispatchEvent(new Event('input'));`);
+			await sleep(450);
+			assert.deepEqual((await calls("query.history")).at(-1).args[0], { query: "penguin", limit: 50 });
+			const found = await js(`return [...document.querySelectorAll('#stack .card')].map((c)=>c.querySelector('b').textContent + ' | ' + c.querySelector('span').textContent + ' | ' + c.querySelector('em').textContent);`);
+			assert.equal(found.length, 1);
+			assert.match(found[0], /^Antarctic field report \| completed · archived/);
+			assert.match(found[0], /\$0\.020 · \w+ \d+$|\$0\.020 · \d+ \w+$/, "older missions show their cost and date");
+			await js(`document.querySelector('#stack .card').click();`);
+			await sleep(200);
+			assert.equal(await js(`return cur + ':' + document.getElementById('mTitle').textContent;`), "mission:Antarctic field report");
+			assert.match(await js(`return document.getElementById('spend').textContent;`), /This month \$/);
+			await js(`await setState('stack'); const s=document.getElementById('historySearch'); s.value=''; s.dispatchEvent(new Event('input'));`);
 		}],
 		["small-screen plans scroll without hiding the header or footer", async () => {
 			await js(`document.documentElement.style.setProperty('--h-mission','390px'); __fixture.variant('approval'); await setState('mission');`);

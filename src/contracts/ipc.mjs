@@ -140,7 +140,7 @@ export const METHODS = {
 	"query.snapshot": { route: "host", params: None },
 	"query.events": { route: "host", params: Obj({ afterSeq: Type.Integer({ minimum: 0 }) }) },
 	"query.mission": { route: "host", params: Obj({ missionId: Id }) },
-	"query.history": { route: "host", params: Obj({ limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })), before: Type.Optional(Type.String({ maxLength: 40 })) }) },
+	"query.history": { route: "host", params: Obj({ limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })), before: Type.Optional(Type.String({ maxLength: 40 })), query: Type.Optional(Text(200)) }) },
 	"data.export": { route: "host", params: None },
 	"data.delete": { route: "host", params: Obj({ scope: Type.Union(["history", "memory", "all"].map((s) => Type.Literal(s))) }) },
 	"diagnostics.preview": { route: "host", params: None },

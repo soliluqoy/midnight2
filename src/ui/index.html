@@ -60,11 +60,12 @@
     <div class="mh">
       <i class="dot" aria-hidden="true"></i>
       <div class="t"><small data-i18n>MIDNIGHT</small><b data-i18n>Missions</b></div>
-      <span class="mono" id="weather"></span>
+      <span class="mono" id="weather"></span><span class="mono" id="spend" title="Model cost of missions started this month" data-i18n-title></span>
       <button class="ib" id="gearStack" title="Settings" aria-label="Settings" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 3h4l.6 2.5 1.4.7 2.4-.7 2.1 3.6-1.8 1.8v2.2l1.8 1.8-2.1 3.6-2.4-.7-1.4.7L14 21h-4l-.6-2.5-1.4-.7-2.4.7-2.1-3.6 1.8-1.8v-2.2L3.5 9.1l2.1-3.6 2.4.7 1.4-.7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
       <button class="ib" id="bNew" title="New task (Ctrl+L)" aria-label="New task" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></button>
       <button class="ib" id="bMinStack" title="Minimize to tray" aria-label="Minimize to tray" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></button>
     </div>
+    <div class="stack-search"><input id="historySearch" class="inp" type="search" placeholder="Search all missions and answers…" aria-label="Search missions" data-i18n-placeholder data-i18n-aria-label autocomplete="off"></div>
     <div class="stack" id="stack" role="list"></div>
   </div>
 
@@ -73,6 +74,7 @@
     <div class="mh">
       <i class="dot" aria-hidden="true"></i>
       <div class="t"><small id="mLabel" data-i18n>MISSION</small><b id="mTitle" data-i18n>New mission</b></div>
+      <span class="mono cost" id="mCost" title="Tokens and cost so far" data-i18n-title></span>
       <span class="time" id="mTime">0:00</span>
       <button class="ib" id="bStack" title="All missions" aria-label="All missions" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"/></svg></button>
       <button class="ib" id="bLog" title="Show the activity log" aria-label="Show the activity log" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5h16M4 10h16M4 15h10M4 20h10"/></svg></button>

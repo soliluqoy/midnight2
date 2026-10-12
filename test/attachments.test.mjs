@@ -80,3 +80,22 @@ test("a task's attachments reach the model: text in the request as data, picture
 	assert.equal(JSON.stringify(host.repo.get(missionId).scope).includes(PIXEL), false, "picture data is not kept in the mission row");
 	await host.close();
 });
+
+test("mission history search finds every word in titles, requests and answers, including archived missions", async () => {
+	const model = await makeModel();
+	const { host } = await startHost({ model });
+	model.faux.setResponses([fauxAssistantMessage([fauxText("The penguin census counted 4,200 birds.")]), fauxAssistantMessage([fauxText("Invoices are filed.")])]);
+	const a = await host.handle("mission.create", { text: "Summarize the Antarctic field report", requestId: "h1" });
+	await settled(host, a.missionId);
+	const b = await host.handle("mission.create", { text: "File the March invoices", requestId: "h2" });
+	await settled(host, b.missionId);
+	await host.handle("mission.archive", { missionId: a.missionId });
+	const ids = async (query) => (await host.handle("query.history", { query })).map((m) => m.id);
+	assert.deepEqual(await ids("penguin census"), [a.missionId], "words in the answer match, and archived missions are included");
+	assert.deepEqual(await ids("antarctic"), [a.missionId], "the request matches regardless of case");
+	assert.deepEqual(await ids("march invoices"), [b.missionId]);
+	assert.deepEqual(await ids("penguin invoices"), [], "every word must match");
+	assert.deepEqual(await ids("100%_"), [], "LIKE wildcards are literal");
+	assert.deepEqual((await host.handle("query.history", {})).map((m) => m.id), [b.missionId], "no query lists recent, unarchived missions");
+	await host.close();
+});
