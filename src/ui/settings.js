@@ -20,9 +20,10 @@
 		for (const [k, v] of Object.entries(props)) {
 			if (k === "class") el.className = v;
 			else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
-			else if (v !== undefined && v !== false) el.setAttribute(k, v === true ? "" : v);
+			else if (v !== undefined && v !== false) el.setAttribute(k, v === true ? "" : ["title", "aria-label", "placeholder"].includes(k) ? t(v) : v);
 		}
-		for (const k of kids.flat()) if (k != null) el.append(k.nodeType ? k : document.createTextNode(k));
+		// Text children go through the interface language (English is the key; untranslated text stays English).
+		for (const k of kids.flat()) if (k != null) el.append(k.nodeType ? k : document.createTextNode(typeof k === "string" ? t(k) : k));
 		return el;
 	};
 
@@ -528,6 +529,8 @@
 		return sec(
 			"reading",
 			"READING",
+			field("Theme", "Follows Windows unless you choose", segmented(st.theme ?? "system", [{ value: "system", label: "System" }, { value: "dark", label: "Dark" }, { value: "light", label: "Light" }], (v) => save({ theme: v }), "Theme")),
+			field("Language", "Midnight reloads to switch", segmented(st.language ?? "", [{ value: "", label: "System" }, { value: "en", label: "English" }, { value: "id", label: "Bahasa Indonesia" }], (v) => save({ language: v }), "Language")),
 			field("Text size", "Ctrl + / Ctrl − / Ctrl 0 anywhere in midnight", segmented(near, sizes, (v) => save({ textSize: v }), "Text size")),
 			field("High contrast", "Brighter text, stronger edges", toggle(st.highContrast, () => save({ highContrast: !st.highContrast }), "High contrast")),
 			field("Reduce motion", "Instant view changes, no animated status light", toggle(st.reducedMotion, () => save({ reducedMotion: !st.reducedMotion }), "Reduce motion")),
@@ -601,11 +604,13 @@
 		const p = m.prompt;
 		let value = "";
 		const done = (v) => {
+			focusTrap.release(box);
 			modal.remove();
 			modal = undefined;
 			api.auth.answer(m.id, v);
 		};
-		const box = h("div", { class: "box", role: "dialog" }, h("p", {}, p.message));
+		const message = h("p", { id: `authPrompt${m.id}` }, p.message);
+		const box = h("div", { class: "box", role: "dialog", "aria-modal": "true", "aria-labelledby": message.id }, message);
 		if (p.kind === "select") box.append(h("div", { class: "opts" }, ...p.options.map((o) => h("button", { class: "sb", onclick: () => done(o.id) }, o.label, o.description ? h("small", { class: "mono" }, `  ${o.description}`) : null))));
 		else {
 			const input = h("input", { class: "sinp", type: p.kind === "secret" ? "password" : "text", placeholder: p.placeholder ?? "" });
@@ -620,6 +625,7 @@
 		modal?.remove();
 		modal = h("div", { class: "modal" }, box);
 		root.append(modal);
+		focusTrap.contain(box, { focus: p.kind === "select" }); // a text prompt focuses its input instead
 	}
 
 	api.on((m) => {

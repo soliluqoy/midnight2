@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, powerMonitor, screen, shell, Tray } from "electron";
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, shell, Tray } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { createAppRegistry } from "./apps/registry.mjs";
 import { createAppWorkspace } from "./desktop/app-workspace.mjs";
 import { createIpcRouter } from "./desktop/ipc.mjs";
 import { createMediaDecoder } from "./desktop/media-decoder.mjs";
+import { createAttachments } from "./desktop/attachments.mjs";
 import { createHotkey } from "./desktop/hotkey.mjs";
 import { MARGIN, windowBounds, windowDims } from "./desktop/window-layout.mjs";
 import { createPlatform } from "./desktop/platform.mjs";
@@ -15,6 +16,7 @@ import { previewFile, closeFilePreviews } from "./desktop/file-preview.mjs";
 import { createSupervisor } from "./desktop/supervisor.mjs";
 import { createUpdater } from "./desktop/updater.mjs";
 import { hostSettings, loadSettings } from "./settings.mjs";
+import { catalog, LANGUAGES, resolveLanguage, translator } from "./i18n.mjs";
 import { armHelper, disarmHelper, noteForeground, stopComputer } from "./tools/computer.mjs";
 import { userContext } from "./tools/userbrowser.mjs";
 import { createWeb } from "./tools/web.mjs";
@@ -43,6 +45,7 @@ function startMissionShell() {
 	let updater;
 	let hotkeys;
 	let mediaDecoder;
+	let attachments;
 	let lastSize = "idle";
 	let escHeld = false;
 	const active = new Set(); // missions that are running (Esc only belongs to midnight while something runs)
@@ -146,16 +149,20 @@ function startMissionShell() {
 		return nativeImage.createFromBuffer(buf, { width: n, height: n });
 	}
 	let proactivePaused = false;
-	function rebuildTray(stopped = false) {
+	let trayStopped = false;
+	const language = () => resolveLanguage(settings.get().language, app.getPreferredSystemLanguages?.() ?? [app.getLocale()]);
+	function rebuildTray(stopped = trayStopped) {
 		if (!tray) return;
+		trayStopped = stopped;
+		const t = translator(language());
 		tray.setContextMenu(
 			Menu.buildFromTemplate([
-				{ label: "Ask midnight", click: summon },
-				{ label: "Settings…", click: openSettings },
-				{ label: "Show background browser", click: () => browsers.peek() },
+				{ label: t("Ask midnight"), click: summon },
+				{ label: t("Settings…"), click: openSettings },
+				{ label: t("Show background browser"), click: () => browsers.peek() },
 				{ type: "separator" },
 				{
-					label: "Pause proactive work",
+					label: t("Pause proactive work"),
 					type: "checkbox",
 					checked: proactivePaused,
 					click: (item) => {
@@ -164,11 +171,11 @@ function startMissionShell() {
 					},
 				},
 				stopped
-					? { label: "Resume after emergency stop", click: () => supervisor.request("stop.clear", {}).then(() => rebuildTray(false)).catch(() => {}) }
-					: { label: "Emergency stop", click: emergencyStop },
-				{ label: "Restart engine", click: () => supervisor.restart() },
+					? { label: t("Resume after emergency stop"), click: () => supervisor.request("stop.clear", {}).then(() => rebuildTray(false)).catch(() => {}) }
+					: { label: t("Emergency stop"), click: emergencyStop },
+				{ label: t("Restart engine"), click: () => supervisor.restart() },
 				{
-					label: "Check for updates…",
+					label: t("Check for updates…"),
 					click: async () => {
 						const r = await updater.check({ force: true });
 						toCapsule({ kind: "shell", type: "update", ...r });
@@ -176,7 +183,7 @@ function startMissionShell() {
 					},
 				},
 				{ type: "separator" },
-				{ label: "Quit", click: () => app.quit() },
+				{ label: t("Quit"), click: () => app.quit() },
 			]),
 		);
 	}
@@ -292,6 +299,8 @@ function startMissionShell() {
 	}
 
 	async function hostCall(method, params) {
+		// Attachment ids from the renderer become their content here; the engine never sees renderer-supplied files.
+		if ((method === "mission.create" || method === "mission.followUp") && params.attachments) params = { ...params, attachments: attachments.take(params.attachments) };
 		if ((method === "mission.create" || method === "mission.followUp") && settings.get().shareContext && !appWorkspace?.ownsMission(params.missionId)) {
 			params = { ...params, context: await Promise.race([userContext().catch(() => ""), new Promise((r) => setTimeout(() => r(""), 800))]) };
 		}
@@ -304,6 +313,10 @@ function startMissionShell() {
 	const shellMethods = {
 		"ui.size": ({ state }) => place(state),
 		"ui.dims": () => dims(),
+		"ui.strings": () => {
+			const locale = language();
+			return { locale, strings: catalog(locale), languages: LANGUAGES };
+		},
 		"ui.focus": () => capsule.isVisible() && capsule.focus(),
 		"ui.hide": hideCapsule,
 		"ui.show": () => summon({ toggle: false }),
@@ -314,6 +327,9 @@ function startMissionShell() {
 			return settings.get().textSize;
 		},
 		"clipboard.read": () => clipboard.readText().slice(0, 30000),
+		"attachments.add": ({ path: filePath }) => attachments.add(filePath),
+		"attachments.paste": () => attachments.paste(),
+		"attachments.remove": ({ id }) => attachments.remove(id),
 		"clipboard.write": ({ text }) => clipboard.writeText(text),
 		"open.external": ({ url }) => (/^https?:\/\//i.test(url) ? shell.openExternal(url) : undefined),
 		"browser.peek": () => browsers.peek(),
@@ -340,6 +356,11 @@ function startMissionShell() {
 			}
 			const after = settings.set(patch);
 			if (after.launchAtLogin !== before.launchAtLogin && app.isPackaged && process.platform !== "linux") app.setLoginItemSettings({ openAtLogin: after.launchAtLogin });
+			if (after.theme !== before.theme) nativeTheme.themeSource = after.theme;
+			if (after.language !== before.language) {
+				rebuildTray();
+				for (const w of BrowserWindow.getAllWindows()) if (w !== capsule && w.webContents.getURL().endsWith("/apps.html")) w.webContents.reload();
+			}
 			if (after.textSize !== before.textSize) {
 				applyZoom();
 				toCapsule({ kind: "shell", type: "relayout" });
@@ -397,10 +418,25 @@ function startMissionShell() {
 
 	app.whenReady().then(async () => {
 		app.setAppUserModelId("midnight.app"); // lets notifications show while the capsule is tucked away
+		nativeTheme.themeSource = settings.get().theme; // every window's prefers-color-scheme follows this
 		if (process.platform === "darwin") app.dock?.hide();
 		web = createWeb(settings); // windows are created lazily on first use (plan ch. 09: no eager warmup)
 		browsers = createBrowsers();
 		mediaDecoder = createMediaDecoder({ log });
+		attachments = createAttachments({
+			nativeImage,
+			clipboard,
+			async readPdfText(filePath) {
+				const pdf = await mediaDecoder.session(filePath, "pdf");
+				try {
+					const pages = [];
+					for (let page = 1; page <= Math.min(pdf.info.pages ?? 0, 200); page++) pages.push(`Page ${page}\n${(await pdf.text({ page })).text}`);
+					return pages.join("\n\n");
+				} finally {
+					await pdf.close();
+				}
+			},
+		});
 		lease = createScreenLease({
 			userIdleMs: () => powerMonitor.getSystemIdleTime() * 1000,
 			arm: (epoch) => (process.platform === "win32" ? armHelper(epoch) : Promise.resolve()),
@@ -422,7 +458,7 @@ function startMissionShell() {
 		router = createIpcRouter({
 			ipcMain,
 			isTrusted: (event) => (event.sender === capsule?.webContents && event.senderFrame === capsule.webContents.mainFrame && (event.senderFrame?.url ?? "").split("#")[0] === UI_URL) || appWorkspace.isTrusted(event),
-			canCall: (event, method) => event.sender === capsule?.webContents || method.startsWith("apps."),
+			canCall: (event, method) => event.sender === capsule?.webContents || method.startsWith("apps.") || method === "ui.strings",
 			shell: shellMethods,
 			host: hostCall,
 			log,

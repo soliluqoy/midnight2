@@ -34,7 +34,8 @@ test("IPC: unknown methods, bad versions, replays, oversize and bad params are r
 	assert.match(validateRequest({ v: 2, seq: 1, method: "mission.create", params: {} }).error, /version/);
 	assert.match(validateRequest({ v: 1, seq: 1, method: "shell.exec", params: {} }).error, /unknown method/);
 	assert.match(validateRequest({ v: 1, seq: 1, method: "mission.create", params: { text: "hi", requestId: "r1" } }, { lastSeq: 5 }).error, /replayed/);
-	assert.match(validateRequest({ v: 1, seq: 9, method: "mission.create", params: { text: "x".repeat(70000), requestId: "r" } }).error, /too large/);
+	assert.match(validateRequest({ v: 1, seq: 9, method: "mission.create", params: { text: "x".repeat(300000), requestId: "r" } }).error, /too large/);
+	assert.equal(validateRequest({ v: 1, seq: 10, method: "clipboard.write", params: { text: "x".repeat(200000) } }).ok, true, "the largest allowed clipboard text fits");
 	assert.match(validateRequest({ v: 1, seq: 9, method: "grant.revoke", params: { grantId: "../../x" } }).error, /invalid params/);
 });
 

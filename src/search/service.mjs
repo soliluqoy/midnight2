@@ -13,9 +13,9 @@ import { createEmbeddingRuntime } from "./runtime.mjs";
 
 export const SEARCH_LIMITS = Object.freeze({ maxFiles: 5000, maxEntries: 20000, maxDepth: 12, maxSegments: 20000, maxSegmentsPerFile: 120, maxTextChars: 300000, maxFileBytes: 512 * 1024 * 1024, maxTextFileBytes: 20 * 1024 * 1024 });
 const SKIP_DIR = /^(node_modules|\.git|\.svn|\$recycle\.bin|system volume information|appdata|\.cache|cache|temp|tmp|__pycache__|\.venv|venv|windows|windows\.old|program files(?:\s*\(x86\))?|programdata|recovery|boot|build|dist|vendor)$/i;
-const SECRET_NAME = /(^\.env(\..*)?$|\.pem$|\.key$|\.pfx$|\.p12$|^id_(rsa|ed25519|ecdsa)|\.kdbx$|credentials|secret|password|token)/i;
+export const SECRET_NAME = /(^\.env(\..*)?$|\.pem$|\.key$|\.pfx$|\.p12$|^id_(rsa|ed25519|ecdsa)|\.kdbx$|credentials|secret|password|token)/i;
 // Reject whole documents containing recognizable private key material or live credential assignments.
-const SECRET_TEXT = /-----BEGIN (?:[A-Z ]*PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----|\b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16})\b|(?:api[_ -]?key|access[_ -]?token|client[_ -]?secret|password|authorization)\s*[=:]\s*["']?(?:Bearer\s+)?[A-Za-z0-9_+./=-]{12,}/i;
+export const SECRET_TEXT = /-----BEGIN (?:[A-Z ]*PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----|\b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16})\b|(?:api[_ -]?key|access[_ -]?token|client[_ -]?secret|password|authorization)\s*[=:]\s*["']?(?:Bearer\s+)?[A-Za-z0-9_+./=-]{12,}/i;
 const TEXT_EXTS = new Set([".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".jsonl", ".log", ".html", ".htm", ".xml", ".yaml", ".yml", ".rst"]);
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"]);
 const AUDIO_EXTS = new Set([".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac", ".aiff", ".aif", ".opus", ".wma"]);

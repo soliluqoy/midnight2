@@ -7,3 +7,12 @@ main { flex: 1; min-height: 0; display: flex; justify-content: center; align-ite
 img, video { max-width: 100%; max-height: 100%; object-fit: contain; }
 audio { width: min(100%, 640px); }
 #error { color: #f0b6aa; margin: 0 24px 18px; }
+@media (prefers-color-scheme: light) {
+  :root { color-scheme: light; background: #f7f6fa; color: #1d1b24; }
+  #position { color: #5340a3; }
+  #error { color: #b3261e; }
+}
+@media (forced-colors: active) {
+  :root { background: Canvas; color: CanvasText; }
+  #position, #error { color: CanvasText; }
+}

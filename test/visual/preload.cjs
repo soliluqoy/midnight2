@@ -125,8 +125,9 @@ const fileResults = [
 ];
 // contextBridge cannot clone proxies: list every method, defaulting to a no-op.
 const NS = {
-	ui: ["size", "dims", "focus", "hide", "show", "textSize"],
+	ui: ["size", "dims", "focus", "hide", "show", "textSize", "strings"],
 	clipboard: ["read", "write"],
+	attachments: ["fromFiles", "paste", "remove"],
 	apps: ["state", "open", "add", "update", "remove", "layout", "command", "ask", "stop", "viewTask"],
 	settings: ["get", "set"],
 	query: ["snapshot", "events", "mission", "history"],
@@ -179,6 +180,7 @@ contextBridge.exposeInMainWorld(
 	fill({
 		ui: proxy({ size: (s) => ipcRenderer.invoke("fixture:size", s), dims: ok(dims), focus: noop, textSize: ok(1) }),
 		clipboard: proxy({ read: ok(""), write: noop }),
+		attachments: proxy({ fromFiles: ok([{ status: "fulfilled", value: { id: "att_1", name: "notes.txt", kind: "text", size: 2048 } }]), paste: ok({ id: "att_2", name: "Pasted picture.jpg", kind: "image", size: 40000, thumbnail: "data:image/gif;base64,R0lGODlhAQABAAAAACw=" }), remove: ok({ removed: true }) }),
 		apps: proxy({ state: ok({ apps: [] }) }),
 		settings: proxy({ get: () => Promise.resolve(settings), set: (patch) => { Object.assign(settings.settings, patch); return Promise.resolve({ settings: settings.settings, current: settings.current }); } }),
 		query: proxy({ snapshot: () => Promise.resolve(snapshot()), mission: ok({ evidence: [{ kind: "calculation", source: "Q3 vs Q2 change (%)", locator: {}, capturedAt: t(2), derived: { formula: "round((q3 - q2) / q2 * 100, 1)", inputs: { q2: 1287, q3: 1421 }, result: 10.4 } }], actions: [] }) }),

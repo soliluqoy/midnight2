@@ -1,7 +1,7 @@
 // The capsule's only bridge to the shell (plan ch. 04, R01): one named function per allowed method, a versioned
 // envelope with a per-page sequence number, and no generic invoke. Must match src/contracts/ipc.mjs (a sandboxed
 // preload cannot import it).
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 const V = 1;
 const CHANNEL = "midnight:v1";
@@ -16,8 +16,14 @@ async function call(method, params = {}) {
 const m = (method) => (params) => call(method, params);
 
 contextBridge.exposeInMainWorld("midnight", {
-	ui: { size: (state) => call("ui.size", { state }), dims: m("ui.dims"), focus: m("ui.focus"), hide: m("ui.hide"), show: m("ui.show"), textSize: (z) => call("ui.textSize", { z }) },
+	ui: { size: (state) => call("ui.size", { state }), dims: m("ui.dims"), focus: m("ui.focus"), hide: m("ui.hide"), show: m("ui.show"), textSize: (z) => call("ui.textSize", { z }), strings: m("ui.strings") },
 	clipboard: { read: m("clipboard.read"), write: (text) => call("clipboard.write", { text }) },
+	// Only real File objects from a drop or paste have a disk path (page scripts cannot forge one); the shell reads them.
+	attachments: {
+		fromFiles: (files) => Promise.allSettled([...(files ?? [])].map((f) => webUtils.getPathForFile(f)).filter(Boolean).map((p) => call("attachments.add", { path: p }))),
+		paste: m("attachments.paste"),
+		remove: (id) => call("attachments.remove", { id }),
+	},
 	openExternal: (url) => call("open.external", { url }),
 	peekBrowser: m("browser.peek"),
 	apps: { state: m("apps.state"), open: m("apps.open"), add: m("apps.add"), update: m("apps.update"), remove: m("apps.remove"), layout: m("apps.layout"), command: m("apps.command"), ask: m("apps.ask"), stop: m("apps.stop"), viewTask: m("apps.viewTask") },

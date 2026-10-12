@@ -24,6 +24,7 @@ let clipboardRevision = 0;
 const homeDrafts = { chat: "", search: "" };
 let hasSearchDraft = false;
 let taskFileContext;
+let attached = []; // files and pictures for the next task: { id, name, kind, size, thumbnail, truncated }
 let continueKey = "";
 let readEvidence = false;
 let viewRevision = 0;
@@ -37,12 +38,16 @@ const command = (e) => e.ctrlKey || e.metaKey;
 const commandName = /Mac/.test(navigator.platform) ? "Cmd" : "Ctrl";
 
 function checked(result) {
-	if (result?.ok === false) throw new Error(result.error || result.reason || "The request could not be completed.");
+	if (result?.ok === false) throw new Error(i18n.t(result.error || result.reason || "The request could not be completed."));
 	return result;
 }
 window.checkedResult = checked;
 
 function syncLayers() {
+	// The open decision card (approval or question) contains keyboard focus whenever the mission is on screen.
+	const decision = (cur === "mission" || cur === "read") && { ask: $("fAsk"), q: $("fQ") }[cap.dataset.f];
+	if (decision) focusTrap.contain(decision, { focus: false });
+	else focusTrap.release();
 	for (const layer of document.querySelectorAll(".lay")) {
 		const active = layer.classList.contains(`l-${cur === "read" ? "mission" : cur === "search" ? "chat" : cur}`);
 		layer.inert = !active;
@@ -165,13 +170,14 @@ function applyPrefs(s) {
 	document.body.dataset.motion = prefs.reducedMotion ? "reduced" : "";
 	const chip = $("chipCtx");
 	chip.dataset.p = prefs.privacy;
-	chip.textContent = prefs.privacy === "offline" ? "offline" : prefs.privacy === "local" ? "local" : "cloud";
-	chip.title =
+	chip.textContent = i18n.t(prefs.privacy === "offline" ? "offline" : prefs.privacy === "local" ? "local" : "cloud");
+	chip.title = i18n.t(
 		prefs.privacy === "cloud"
 			? "Your request and the files you let midnight read go to the AI provider you chose. Missions, rules and files stay on this computer."
 			: prefs.privacy === "local"
 				? "Only your local model runs. Web tools may still fetch public pages."
-				: "Offline: local model and local files only. Nothing goes to the network.";
+				: "Offline: local model and local files only. Nothing goes to the network.",
+	);
 }
 
 // ---------- engine events ----------
@@ -259,7 +265,7 @@ function onMissionChange(before, m, type) {
 function finishView(m) {
 	if (m.trigger?.kind && m.trigger.kind !== "user") return; // proactive work stays quiet: it waits in the queue
 	if ((cur === "idle" || parked) && m.id === current) {
-		notify(m.status === "succeeded" ? "Done" : m.outcome?.status === "cancelled" ? "Cancelled" : "Needs a look", m.answer || m.outcome?.summary || "");
+		notify(i18n.t(m.status === "succeeded" ? "Done" : m.outcome?.status === "cancelled" ? "Cancelled" : "Needs a look"), m.answer || i18n.t(m.outcome?.summary || ""));
 	} else if (m.id === current && cur === "mission" && prefs.autoExpand && m.status === "succeeded" && (m.answer ?? "").length > 1200) {
 		setState("read");
 	}
@@ -329,6 +335,8 @@ function onShell(m) {
 			break;
 		case "settings":
 			settingsRevision++;
+			// A new interface language reloads the page; every view is restored from the engine's projection.
+			if (prefs.language !== undefined && m.settings.language !== prefs.language) return location.reload();
 			applyPrefs(m.settings);
 			window.setAccel(m.settings.hotkey);
 			break;
@@ -349,11 +357,11 @@ function onShell(m) {
 			// The shell already revoked the screen; pause the mission you are looking at if it is the one working.
 			const target = m.missionId ?? (mission() && RUNNING.has(mission().status) ? current : undefined);
 			if (target) api.missions.pause({ missionId: target }).catch(() => {});
-			announce("You took over. Midnight stopped using the screen.");
+			announce(i18n.t("You took over. Midnight stopped using the screen."));
 			break;
 		}
 		case "emergency":
-			announce("Emergency stop: nothing new will run until you resume it from the tray.");
+			announce(i18n.t("Emergency stop: nothing new will run until you resume it from the tray."));
 			resnapshot();
 			break;
 		case "update":
@@ -386,9 +394,9 @@ const el = (tag, props = {}, ...kids) => {
 	for (const [k, v] of Object.entries(props)) {
 		if (k === "class") e.className = v;
 		else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
-		else if (v !== undefined && v !== false) e.setAttribute(k, v === true ? "" : v);
+		else if (v !== undefined && v !== false) e.setAttribute(k, v === true ? "" : ["title", "aria-label", "placeholder"].includes(k) ? i18n.t(v) : v);
 	}
-	for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(c));
+	for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(typeof c === "string" ? i18n.t(c) : c));
 	return e;
 };
 const elapsed = (ms) => {
@@ -411,7 +419,7 @@ function renderStrip() {
 	const s = snap.screen;
 	const strip = $("screenStrip");
 	strip.hidden = !s;
-	if (s) strip.textContent = `${clip40(snap.missions[s.missionId]?.title ?? s.title ?? "A mission", 34)} has the screen · Esc to take over`;
+	if (s) strip.textContent = i18n.t("{title} has the screen · Esc to take over", { title: clip40(snap.missions[s.missionId]?.title ?? s.title ?? i18n.t("A mission"), 34) });
 }
 
 const STEP_STATES = { todo: "todo", active: "active", done: "done", skipped: "skipped", failed: "failed" };
@@ -497,6 +505,11 @@ function drawAnswer() {
 	});
 }
 $("ans").addEventListener("click", (e) => {
+	const copy = e.target.closest(".code-copy");
+	if (copy) {
+		copyCode(copy, (text) => api.clipboard.write(text));
+		return;
+	}
 	const a = e.target.closest("a[href]");
 	if (!a) return;
 	e.preventDefault();
@@ -528,7 +541,7 @@ function renderMission() {
 	if (!m) return;
 	$("mTitle").textContent = m.title;
 	$("mTitle").title = m.goal ?? m.title;
-	$("mLabel").textContent = RUNNING.has(m.status) && m.label && m.label !== "MISSION" ? m.label : LABEL[m.status] ?? m.label ?? "MISSION";
+	$("mLabel").textContent = i18n.t(RUNNING.has(m.status) && m.label && m.label !== "MISSION" ? m.label : LABEL[m.status] ?? m.label ?? "MISSION");
 	$("prompt").textContent = m.lastInput ?? m.goal ?? "";
 	renderSteps(m);
 	renderFeed(m);
@@ -543,7 +556,13 @@ function renderMission() {
 }
 
 function foot(f) {
+	const appeared = cap.dataset.f !== f;
 	cap.dataset.f = f;
+	// A decision (approval, question, confirmation) holds keyboard focus until it is answered or the view changes.
+	const card = f === "ask" ? $("fAsk") : f === "q" ? $("fQ") : null;
+	// Approvals take focus on the card itself (never on Approve); questions keep focus in their answer input.
+	if (card && (cur === "mission" || cur === "read")) focusTrap.contain(card, { focus: f === "ask" && (appeared || focusTrap.active !== card) && !card.contains(document.activeElement) });
+	else focusTrap.release();
 }
 
 const displayedApprovals = new Map();
@@ -569,8 +588,8 @@ document.addEventListener("visibilitychange", acknowledgeVisibleApproval);
 function renderFooter(m) {
 	visibleApproval = undefined;
 	if (engine === "down") {
-		$("waitNote").textContent = "Midnight's engine stopped. Your missions are saved; restart it to continue.";
-		$("waitMain").textContent = "Restart engine";
+		$("waitNote").textContent = i18n.t("Midnight's engine stopped. Your missions are saved; restart it to continue.");
+		$("waitMain").textContent = i18n.t("Restart engine");
 		$("waitMain").onclick = () => api.engine.restart();
 		$("waitAlt").hidden = true;
 		return foot("wait");
@@ -581,18 +600,18 @@ function renderFooter(m) {
 	if (m.status === "waiting-input" && m.waiting?.kind === "confirm") return renderConfirm(m);
 	if (m.status === "needs-reconciliation") return renderReconcile(m);
 	if (m.status === "waiting-resource" || m.status === "waiting-time") {
-		$("waitNote").textContent = m.waiting?.reason || "Waiting for resources.";
-		$("waitMain").textContent = /budget/i.test(m.waiting?.reason ?? "") ? "Extend budget" : "Try now";
+		$("waitNote").textContent = i18n.t(m.waiting?.reason || "Waiting for resources.");
+		$("waitMain").textContent = i18n.t(/budget/i.test(m.waiting?.reason ?? "") ? "Extend budget" : "Try now");
 		$("waitMain").onclick = () => (/budget/i.test(m.waiting?.reason ?? "") ? api.missions.extendBudget({ missionId: m.id }) : api.missions.resume({ missionId: m.id })).catch(showErr);
-		$("waitAlt").textContent = "Stop here";
+		$("waitAlt").textContent = i18n.t("Stop here");
 		$("waitAlt").onclick = () => api.missions.cancel({ missionId: m.id }).catch(showErr);
 		return foot("wait");
 	}
 	if (m.status === "paused") {
-		$("waitNote").textContent = m.recovery?.finished?.length ? `Paused. Finished so far: ${m.recovery.finished.slice(0, 3).join(", ")}.` : "Paused. Nothing new runs until you resume it.";
-		$("waitMain").textContent = "Resume";
+		$("waitNote").textContent = m.recovery?.finished?.length ? i18n.t("Paused. Finished so far: {items}.", { items: m.recovery.finished.slice(0, 3).join(", ") }) : i18n.t("Paused. Nothing new runs until you resume it.");
+		$("waitMain").textContent = i18n.t("Resume");
 		$("waitMain").onclick = () => api.missions.resume({ missionId: m.id }).catch(showErr);
-		$("waitAlt").textContent = "Cancel";
+		$("waitAlt").textContent = i18n.t("Cancel");
 		$("waitAlt").onclick = () => api.missions.cancel({ missionId: m.id }).catch(showErr);
 		return foot("wait");
 	}
@@ -603,7 +622,7 @@ function renderFooter(m) {
 		else if (m.status === "verifying") note.append("checking the result…");
 		else if (m.status === "recovering") note.append(m.recovery?.next ?? "recovering after a restart…");
 		else note.append("working · ", el("b", {}, "Esc"), " to take over");
-		$("stop").textContent = snap.screen?.missionId === m.id ? "Take over" : "Stop";
+		$("stop").textContent = i18n.t(snap.screen?.missionId === m.id ? "Take over" : "Stop");
 		return foot("run");
 	}
 	if (TERMINAL.has(m.status)) return renderDone(m);
@@ -613,22 +632,22 @@ function renderFooter(m) {
 function renderApproval(m, a) {
 	visibleApproval = a;
 	const d = a.display ?? {};
-	$("askTitle").textContent = d.title ?? "Midnight needs your OK";
+	$("askTitle").textContent = i18n.t(d.title ?? "Midnight needs your OK");
 	const facts = $("askFacts");
 	facts.textContent = "";
-	const row = (k, v) => v && facts.append(el("dt", {}, k), el("dd", {}, v));
+	const row = (k, v) => v && facts.append(el("dt", {}, k), el("dd", {}, document.createTextNode(i18n.t(v))));
 	row("WHAT", d.effectLabel);
 	row("ACCOUNT", d.account);
-	if (d.recipients?.length) row(`TO (${d.recipients.length})`, d.recipients.join(", "));
+	if (d.recipients?.length) row(i18n.t("TO ({n})", { n: d.recipients.length }), d.recipients.join(", "));
 	if (d.attachments?.length) row("FILES", d.attachments.map((x) => `${x.name} r${x.revision} · ${String(x.hash ?? "").slice(7, 15)}`).join("\n"));
 	if (!d.recipients?.length && d.target && !d.plan) row("TARGET", d.target);
 	$("askPreviewBox").hidden = !d.preview;
 	$("askPreview").textContent = d.preview ?? "";
 	$("askPreviewBox").open = !!d.plan;
-	$("askConsequence").textContent = d.consequence ?? "";
-	$("askWhy").textContent = d.why && d.why !== "needs your OK" ? d.why : "";
-	$("askYes").textContent = d.verb ?? "Approve";
-	$("askNo").textContent = d.decline ?? "Decline";
+	$("askConsequence").textContent = i18n.t(d.consequence ?? "");
+	$("askWhy").textContent = d.why && d.why !== "needs your OK" ? i18n.t(d.why) : "";
+	$("askYes").textContent = i18n.t(d.verb ?? "Approve");
+	$("askNo").textContent = i18n.t(d.decline ?? "Decline");
 	const send = d.effect === "external.communication";
 	$("askEdit").hidden = !send;
 	$("askRoutine").hidden = !d.routine || !!d.plan;
@@ -654,7 +673,7 @@ function renderApproval(m, a) {
 	$("askRoutine").onclick = decide("allow-routine");
 	$("askEdit").onclick = async () => {
 		if (!(await decide("keep-draft")())) return;
-		$("reply").value = "Change the draft: ";
+		$("reply").value = i18n.t("Change the draft: ");
 		setTimeout(() => $("reply").focus(), 300);
 	};
 	foot("ask");
@@ -694,7 +713,7 @@ function renderQuestion(m, q) {
 function renderConfirm(m) {
 	renderedContent.delete($("qOpts"));
 	const c = (m.checks ?? []).find((x) => x.kind === "confirm" && x.state === "waiting");
-	$("qText").textContent = c ? `${c.label}?` : "Does this look right?";
+	$("qText").textContent = c ? `${i18n.t(c.label)}?` : i18n.t("Does this look right?");
 	const box = $("qOpts");
 	box.textContent = "";
 	box.append(
@@ -706,8 +725,8 @@ function renderConfirm(m) {
 
 function renderReconcile(m) {
 	const r = m.recovery ?? { finished: [], uncertain: [], next: "" };
-	$("recH").textContent = r.uncertain?.length ? "The request may have completed" : "Checking before trying again";
-	$("recText").textContent = r.finished?.length ? `Finished: ${r.finished.join(", ")}.` : "Nothing else was finished.";
+	$("recH").textContent = i18n.t(r.uncertain?.length ? "The request may have completed" : "Checking before trying again");
+	$("recText").textContent = r.finished?.length ? i18n.t("Finished: {items}.", { items: r.finished.join(", ") }) : i18n.t("Nothing else was finished.");
 	const items = $("recItems");
 	items.textContent = "";
 	for (const u of r.uncertain ?? []) {
@@ -731,7 +750,7 @@ const DONE_H = { succeeded: "Done", "partially-succeeded": "Partly done", failed
 function renderDone(m) {
 	const o = m.outcome ?? { status: m.status, summary: "" };
 	const h = $("doneH");
-	h.textContent = DONE_H[m.status] ?? "Finished";
+	h.textContent = i18n.t(DONE_H[m.status] ?? "Finished");
 	h.dataset.o = m.status;
 	const checks = $("checks");
 	checks.textContent = "";
@@ -740,7 +759,7 @@ function renderDone(m) {
 	rc.textContent = "";
 	const chip = (t, title) => rc.append(el("span", { title: title ?? "" }, t));
 	const steps = m.steps ?? [];
-	if (steps.length) chip(`${steps.filter((s) => s.state === "done").length}/${steps.length} steps reported`, "Steps the model reported; the checks below are what Midnight verified");
+	if (steps.length) chip(i18n.t("{done}/{total} steps reported", { done: steps.filter((s) => s.state === "done").length, total: steps.length }), "Steps the model reported; the checks below are what Midnight verified");
 	if (m.sites?.length) chip(`${m.sites.length} site${m.sites.length === 1 ? "" : "s"}`, m.sites.join("\n"));
 	if (m.budget?.text) chip(m.budget.text);
 	$("doneText").textContent = !m.answer && o.summary ? o.summary : m.status !== "succeeded" && o.summary ? o.summary : "";
@@ -753,7 +772,8 @@ function renderDone(m) {
 
 function focusFooter() {
 	const f = cap.dataset.f;
-	const target = { ask: "askYes", q: "qOpts", rec: "recItems", wait: "waitMain", done: "reply", run: "stop" }[f];
+	if (f === "ask") return $("fAsk").focus({ preventScroll: true }); // read the request first; Enter never approves by default
+	const target = { q: "qOpts", rec: "recItems", wait: "waitMain", done: "reply", run: "stop" }[f];
 	const node = target && $(target);
 	(node?.querySelector?.("button, textarea") ?? node)?.focus?.({ preventScroll: true });
 }
@@ -784,10 +804,10 @@ function openMission(id) {
 	renderMission();
 	setState("mission");
 }
-async function startMission(text) {
+async function startMission(text, attachments = []) {
 	remember(text);
 	try {
-		const r = await api.missions.create({ text, requestId: reqId() });
+		const r = await api.missions.create(attachments.length ? { text, requestId: reqId(), attachments } : { text, requestId: reqId() });
 		current = r.missionId;
 		live[current] = { text: "", streaming: false };
 		lit[current] = new Set();
@@ -824,9 +844,10 @@ function copyAnswer() {
 	const l = live[current];
 	const t = l?.streaming ? l.text : mission()?.answer || l?.text;
 	if (!t) return;
-	api.clipboard.write(t);
-	$("copy").textContent = "Copied ✓";
-	setTimeout(() => ($("copy").textContent = "Copy"), 1400);
+	api.clipboard.write(t).then(
+		() => ($("copy").textContent = i18n.t("Copied ✓")),
+		(err) => { $("copy").textContent = i18n.t("Copy failed"); showErr(err); },
+	).finally(() => setTimeout(() => ($("copy").textContent = i18n.t("Copy")), 1400));
 }
 
 function notify(title, body) {
@@ -854,9 +875,9 @@ function renderContinue() {
 	const focused = target.contains(document.activeElement) ? document.activeElement.dataset.mission : undefined;
 	$("homeContinue").hidden = !recent.length;
 	target.replaceChildren(...recent.map((m) => {
-		const status = HOME_STATUS[m.status] ?? m.status;
+		const status = i18n.t(HOME_STATUS[m.status] ?? m.status);
 		const kind = NEEDS.has(m.status) ? "needs" : RUNNING.has(m.status) ? "active" : m.status === "succeeded" ? "ok" : TERMINAL.has(m.status) ? "warn" : "idle";
-		return el("button", { class: "continue-mission", "data-mission": m.id, "data-k": kind, title: `${m.title} · ${status}`, "aria-label": `Open ${m.title}, ${status}`, onclick: () => openMission(m.id) },
+		return el("button", { class: "continue-mission", "data-mission": m.id, "data-k": kind, title: `${m.title} · ${status}`, "aria-label": i18n.t("Open {title}, {status}", { title: m.title, status }), onclick: () => openMission(m.id) },
 			el("span", { class: "mission-dot", "aria-hidden": "true" }), el("span", { class: "continue-title" }, m.title),
 			el("span", { class: "continue-status" }, status), el("span", { class: "continue-arrow", "aria-hidden": "true" }, "→"));
 	}));
@@ -890,7 +911,7 @@ async function renderStack() {
 		if (!items.length) box.append(el("div", { class: "empty" }, title === "NEEDS YOU" ? "Nothing needs you." : "None."));
 		else box.append(...items);
 	};
-	section("NEEDS YOU", needs.map((m) => card(m, "needs", m.status === "waiting-approval" ? `needs your OK · ${m.approvals?.[0]?.display?.title ?? ""}` : m.status === "needs-reconciliation" ? "an action's outcome is unknown" : m.waiting?.reason || "needs an answer")));
+	section("NEEDS YOU", needs.map((m) => card(m, "needs", m.status === "waiting-approval" ? `${i18n.t("needs your OK")} · ${i18n.t(m.approvals?.[0]?.display?.title ?? "")}` : m.status === "needs-reconciliation" ? "an action's outcome is unknown" : m.waiting?.reason || "needs an answer")));
 	section("ACTIVE", act.map((m) => card(m, "active", m.status === "paused" ? "paused" : m.queued ?? m.waiting?.reason ?? (m.status === "running" ? "working" : m.status))));
 	box.append(el("h6", {}, "WATCHING"));
 	if (!watches.length && !notes.length) box.append(el("div", { class: "empty" }, "No watches. Add one in Settings → Watches."));
@@ -912,7 +933,7 @@ async function renderStack() {
 		);
 	}
 	for (const w of watches) box.append(el("div", { class: "card", "data-k": "watch", role: "listitem" }, el("i", { "aria-hidden": "true" }), el("div", {}, el("b", {}, w.label), el("span", {}, w.status)), el("em", {}, "")));
-	section("HISTORY", hist.map((m) => card(m, m.status === "succeeded" ? "ok" : "warn", `${(DONE_H[m.status] ?? m.status).toLowerCase()}${m.outcome?.summary ? ` · ${m.outcome.summary}` : ""}`)));
+	section("HISTORY", hist.map((m) => card(m, m.status === "succeeded" ? "ok" : "warn", `${i18n.t(DONE_H[m.status] ?? m.status).toLowerCase()}${m.outcome?.summary ? ` · ${i18n.t(m.outcome.summary)}` : ""}`)));
 	const target = $("stack");
 	const scroll = target.scrollTop;
 	const focused = document.activeElement.closest?.("[data-mission]")?.dataset.mission;
@@ -931,7 +952,7 @@ async function toggleEvidence() {
 	const box = $("evidence");
 	if (!readEvidence) return (box.hidden = true);
 	box.hidden = false;
-	box.textContent = "Loading…";
+	box.textContent = i18n.t("Loading…");
 	try {
 		const r = await api.query.mission(id);
 		if (revision !== evidenceRevision || current !== id || !readEvidence) return;
@@ -982,12 +1003,12 @@ async function checkClipboard() {
 	}
 	c.hidden = !clip || cur === "search";
 	if (clip) {
-		c.title = clip.kind === "url" ? `Prepare a summary of ${clip.value}` : `Prepare a summary of copied text: ${t.slice(0, 200)}…`;
+		c.title = clip.kind === "url" ? i18n.t("Prepare a summary of {url}", { url: clip.value }) : i18n.t("Prepare a summary of copied text: {text}…", { text: t.slice(0, 200) });
 	}
 }
 $("chipClip").onclick = () => {
 	if (cur !== "chat" || !clip) return;
-	const t = clip.kind === "url" ? `Summarize this page: ${clip.value}` : `Summarize this text I copied (key points, then anything I should act on):\n\n${clip.value}`;
+	const t = clip.kind === "url" ? i18n.t("Summarize this page: {url}", { url: clip.value }) : `${i18n.t("Summarize this text I copied (key points, then anything I should act on):")}\n\n${clip.value}`;
 	const box = $("box");
 	if (!box.value.includes(t)) box.value = box.value.trim() ? `${box.value}\n\n${t}` : t;
 	box.focus();
@@ -1005,11 +1026,12 @@ function renderHomeMode() {
 	for (const id of ["chipModel", "chipCtx", "sendTask"]) $(id).hidden = files;
 	$("chipClip").hidden = files || !clip;
 	$("taskFile").hidden = files || !taskFileContext;
+	renderAttachments();
 	$("taskFileName").textContent = taskFileContext?.name ?? "";
 	$("taskFileName").title = taskFileContext?.text ?? "";
-	$("boxLabel").textContent = files ? "Search files on this computer" : "Ask or give a task";
-	$("homeFiles").title = `Search files on this computer (${commandName}+K)`;
-	$("box").placeholder = files ? "Find a file by name, words or a description…" : taskFileContext ? `What would you like to do with ${taskFileContext.name}?` : "Ask a question or give midnight a task…";
+	$("boxLabel").textContent = i18n.t(files ? "Search files on this computer" : "Ask or give a task");
+	$("homeFiles").title = i18n.t("Search files on this computer ({key}+K)", { key: commandName });
+	$("box").placeholder = files ? i18n.t("Find a file by name, words or a description…") : taskFileContext ? i18n.t("What would you like to do with {name}?", { name: taskFileContext.name }) : i18n.t("Ask a question or give midnight a task…");
 	if (files) {
 		$("box").maxLength = 1000;
 		$("box").setAttribute("aria-controls", "fileResults");
@@ -1023,15 +1045,71 @@ async function submitTask() {
 	if (cur !== "chat") return;
 	const box = $("box");
 	let text = box.value.trim();
+	const sending = attached.map((a) => a.id);
+	if (!text && sending.length) text = i18n.t("Look at the attached files.");
 	if (!text) return;
 	const context = taskFileContext;
 	if (context && !text.includes(context.text)) text += `\n\nFile context:\n${context.text}`;
 	box.value = "";
-	if (await startMission(text)) {
+	if (await startMission(text, sending)) {
 		if (taskFileContext === context) taskFileContext = undefined;
+		attached = attached.filter((a) => !sending.includes(a.id));
+		renderAttachments();
 	}
 	renderHomeMode();
 }
+
+// ---------- files and pictures dropped or pasted into Ask ----------
+const fileSize = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
+function renderAttachments() {
+	const list = $("attachList");
+	list.hidden = !attached.length || cur === "search";
+	list.replaceChildren(...attached.map((a) => el("div", { class: "attach-chip", role: "listitem", title: a.name },
+		a.thumbnail ? el("img", { src: a.thumbnail, alt: "" }) : el("span", { class: "attach-icon", "aria-hidden": "true" }, "▤"),
+		el("span", { class: "attach-name" }, a.name),
+		el("small", {}, a.truncated ? i18n.t("{size} · first part", { size: fileSize(a.size) }) : fileSize(a.size)),
+		el("button", { class: "attach-remove", "aria-label": i18n.t("Remove {name}", { name: a.name }), title: "Remove", onclick: () => removeAttachment(a.id) }, "×"),
+	)));
+}
+function removeAttachment(id) {
+	attached = attached.filter((a) => a.id !== id);
+	renderAttachments();
+	api.attachments.remove(id).catch(() => {});
+	$("box").focus({ preventScroll: true });
+}
+async function attach(promise) {
+	try {
+		const results = await promise;
+		for (const r of Array.isArray(results) ? results : [{ status: "fulfilled", value: results }]) {
+			if (r.status === "fulfilled" && r.value?.id) attached.push(r.value);
+			else if (r.status === "rejected") showErr(r.reason);
+		}
+	} catch (err) {
+		showErr(err);
+	}
+	renderAttachments();
+	if (cur === "chat") announce(i18n.t("{n} attached", { n: attached.length }));
+}
+$("box").addEventListener("paste", (e) => {
+	if (cur !== "chat") return;
+	const files = [...(e.clipboardData?.files ?? [])];
+	if (!files.length) return; // plain text pastes normally
+	e.preventDefault();
+	// A copied file from Explorer has a disk path; a screenshot or copied picture is read from the clipboard by the shell.
+	attach(api.attachments.fromFiles(files).then((r) => (r.some((x) => x.status === "fulfilled") || !files.some((f) => f.type.startsWith("image/")) ? r : api.attachments.paste())));
+});
+let dragDepth = 0;
+for (const [type, fn] of Object.entries({
+	dragenter: (e) => { if (cur === "chat" && e.dataTransfer?.types?.includes("Files")) { dragDepth++; cap.dataset.drop = "1"; } },
+	dragleave: () => { if (--dragDepth <= 0) { dragDepth = 0; delete cap.dataset.drop; } },
+	dragover: (e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = cur === "chat" ? "copy" : "none"; },
+	drop: (e) => {
+		e.preventDefault(); // never navigate to a dropped file
+		dragDepth = 0;
+		delete cap.dataset.drop;
+		if (cur === "chat" && e.dataTransfer?.files?.length) attach(api.attachments.fromFiles([...e.dataTransfer.files]));
+	},
+})) window.addEventListener(type, fn);
 $("sendTask").onclick = submitTask;
 $("box").onkeydown = (e) => {
 	const box = $("box");
@@ -1156,8 +1234,8 @@ $("saveRecipe").onclick = async () => {
 	const m = mission();
 	if (!m) return;
 	const r = await api.missions.saveRecipe({ missionId: m.id, label: m.title }).catch((err) => ({ ok: false, error: err.message }));
-	announce(r.ok ? "Saved as a routine. Review it in Settings → Routines before it runs." : r.error);
-	$("saveRecipe").textContent = r.ok ? "Saved ✓" : "Save routine";
+	announce(i18n.t(r.ok ? "Saved as a routine. Review it in Settings → Routines before it runs." : r.error));
+	$("saveRecipe").textContent = i18n.t(r.ok ? "Saved ✓" : "Save routine");
 };
 $("login").onclick = () => openSettings("accounts");
 $("gearStack").onclick = () => openSettings();
@@ -1197,7 +1275,7 @@ function setChip(c) {
 	mood();
 }
 window.setAccel = (a) => {
-	$("hint").textContent = `${a.replace("CommandOrControl", commandName).replace("Control", "Ctrl").replace("Super", "Win")} · Esc hides`;
+	$("hint").textContent = i18n.t("{key} · Esc hides", { key: a.replace("CommandOrControl", commandName).replace("Control", "Ctrl").replace("Super", "Win") });
 };
 window.applyPrefs = applyPrefs;
 window.missionApi = { openMission, current: () => current };
@@ -1220,7 +1298,7 @@ function renderPinnedApps(apps = []) {
 		button.className = "launcher-app-pin";
 		button.append(el("span", { class: "app-icon", "aria-hidden": "true" }, app.name[0]?.toUpperCase() || "W"), el("span", {}, app.name));
 		button.title = `${app.name}${app.profile ? ` · ${app.profile}` : ""}`;
-		button.setAttribute("aria-label", `Open ${button.title}`);
+		button.setAttribute("aria-label", i18n.t("Open {name}", { name: button.title }));
 		button.onclick = () => api.apps.open({ id: app.id }).catch(showErr);
 		return button;
 	}));
@@ -1229,6 +1307,7 @@ $("openApps").onclick = () => api.apps.open({}).catch(showErr);
 $("addWebsite").onclick = () => api.apps.open({ add: true }).catch(showErr);
 
 async function init() {
+	await i18n.load(api.ui.strings);
 	wake();
 	api.apps?.state().then((s) => renderPinnedApps(s.apps)).catch(showErr);
 	syncLayers();

@@ -11,46 +11,47 @@
 <div id="cap" data-s="idle" data-m="idle" data-f="none">
   <!-- Native drag region; controls remain clickable. Closing/minimizing only hides to the tray. -->
   <header class="window-bar">
-    <div class="window-title" title="Drag to move midnight"><span class="start-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span><strong>midnight</strong><span class="badge" id="badge" hidden></span><span class="st" id="idleSt">starting</span></div>
-    <button class="window-control" id="windowMin" title="Minimize to tray (keeps working)" aria-label="Minimize to tray"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></button>
-    <button class="window-control close" id="windowClose" title="Hide to tray (keeps working)" aria-label="Hide to tray"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    <div class="window-title" title="Drag to move midnight" data-i18n-title><span class="start-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span><strong data-i18n>midnight</strong><span class="badge" id="badge" hidden></span><span class="st" id="idleSt" data-i18n>starting</span></div>
+    <button class="window-control" id="windowMin" title="Minimize to tray (keeps working)" aria-label="Minimize to tray" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></button>
+    <button class="window-control close" id="windowClose" title="Hide to tray (keeps working)" aria-label="Hide to tray" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
   </header>
-  <nav class="start-rail" aria-label="Main navigation">
-    <button class="rail-button" id="navHome" title="Start / new task" aria-label="Start / new task" aria-current="page"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
-    <button class="rail-button" id="navMissions" title="All missions" aria-label="All missions"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"/></svg></button>
+  <nav class="start-rail" aria-label="Main navigation" data-i18n-aria-label>
+    <button class="rail-button" id="navHome" title="Start / new task" aria-label="Start / new task" aria-current="page" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
+    <button class="rail-button" id="navMissions" title="All missions" aria-label="All missions" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"/></svg></button>
     <div class="rail-spacer"></div>
-    <button class="rail-button" id="navSettings" title="Settings" aria-label="Settings"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 3h4l.6 2.5 1.4.7 2.4-.7 2.1 3.6-1.8 1.8v2.2l1.8 1.8-2.1 3.6-2.4-.7-1.4.7L14 21h-4l-.6-2.5-1.4-.7-2.4.7-2.1-3.6 1.8-1.8v-2.2L3.5 9.1l2.1-3.6 2.4.7 1.4-.7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+    <button class="rail-button" id="navSettings" title="Settings" aria-label="Settings" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 3h4l.6 2.5 1.4.7 2.4-.7 2.1 3.6-1.8 1.8v2.2l1.8 1.8-2.1 3.6-2.4-.7-1.4.7L14 21h-4l-.6-2.5-1.4-.7-2.4.7-2.1-3.6 1.8-1.8v-2.2L3.5 9.1l2.1-3.6 2.4.7 1.4-.7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
   </nav>
 
   <!-- One home view and input for tasks and local file search. -->
   <div class="lay l-chat" id="l-chat">
     <div class="ask-bar">
-      <label class="sr" id="boxLabel" for="box">Ask or give a task</label>
-      <textarea id="box" class="inp" rows="2" aria-labelledby="boxLabel" placeholder="Ask a question or give midnight a task…"></textarea>
-      <div id="taskFile" class="task-file" hidden><span id="taskFileName"></span><small>Shared with your model on Send</small><button id="removeTaskFile" aria-label="Remove file from task" title="Remove file from task">×</button></div>
+      <label class="sr" id="boxLabel" for="box" data-i18n>Ask or give a task</label>
+      <textarea id="box" class="inp" rows="2" aria-labelledby="boxLabel" placeholder="Ask a question or give midnight a task…" data-i18n-placeholder></textarea>
+      <div id="attachList" class="attach-list" role="list" aria-label="Attached files" data-i18n-aria-label hidden></div>
+      <div id="taskFile" class="task-file" hidden><span id="taskFileName"></span><small data-i18n>Shared with your model on Send</small><button id="removeTaskFile" aria-label="Remove file from task" title="Remove file from task" data-i18n-title data-i18n-aria-label>×</button></div>
       <div class="ask-meta">
-        <div class="seg home-mode" role="group" aria-label="Input mode"><button id="homeAsk" class="on" aria-pressed="true" title="Ask or give a task">Ask</button><button id="homeFiles" aria-pressed="false" title="Search files on this computer (Ctrl+K)">Files</button></div>
-        <button class="chip" id="chipModel" title="Change model">model</button><span class="chip ctx" id="chipCtx" title="Where this mission's data goes">cloud</span><button class="chip clip" id="chipClip" title="Prepare a summary of copied content" hidden>Summarize</button><span class="sr" id="hint">Ctrl+Win · Esc hides</span><button class="pb pri" id="sendTask" title="Start task (Enter)">Send ↵</button>
+        <div class="seg home-mode" role="group" aria-label="Input mode" data-i18n-aria-label><button id="homeAsk" class="on" aria-pressed="true" title="Ask or give a task" data-i18n data-i18n-title>Ask</button><button id="homeFiles" aria-pressed="false" title="Search files on this computer (Ctrl+K)" data-i18n data-i18n-title>Files</button></div>
+        <button class="chip" id="chipModel" title="Change model" data-i18n data-i18n-title>model</button><span class="chip ctx" id="chipCtx" title="Where this mission's data goes" data-i18n data-i18n-title>cloud</span><button class="chip clip" id="chipClip" title="Prepare a summary of copied content" hidden data-i18n data-i18n-title>Summarize</button><span class="sr" id="hint" data-i18n>Ctrl+Win · Esc hides</span><button class="pb pri" id="sendTask" title="Start task (Enter)" data-i18n data-i18n-title>Send ↵</button>
       </div>
     </div>
     <div class="start-body" id="homeBrowse">
       <section class="launcher-apps" aria-labelledby="appsHeading">
-        <div class="home-section-head"><h2 id="appsHeading">Your apps</h2><button id="openApps" class="home-link" title="Open saved websites">View all ↗</button></div>
-        <div class="launcher-app-row"><div id="pinnedApps" class="launcher-app-pins"></div><button id="addWebsite" class="launcher-add-app"><span class="app-icon" aria-hidden="true">+</span><span>Add website</span></button></div>
+        <div class="home-section-head"><h2 id="appsHeading" data-i18n>Your apps</h2><button id="openApps" class="home-link" title="Open saved websites" data-i18n data-i18n-title>View all ↗</button></div>
+        <div class="launcher-app-row"><div id="pinnedApps" class="launcher-app-pins"></div><button id="addWebsite" class="launcher-add-app"><span class="app-icon" aria-hidden="true">+</span><span data-i18n>Add website</span></button></div>
       </section>
       <section id="homeContinue" class="home-continue" aria-labelledby="continueHeading" hidden>
-        <div class="home-section-head"><h2 id="continueHeading">Continue</h2><button id="bStackChat" class="home-link">All missions</button></div>
+        <div class="home-section-head"><h2 id="continueHeading" data-i18n>Continue</h2><button id="bStackChat" class="home-link" data-i18n>All missions</button></div>
         <div id="continueMissions" class="continue-missions"></div>
       </section>
     </div>
     <div class="home-search" id="homeSearch" hidden>
-      <div class="file-search-head"><select id="fileKind" aria-label="File type"><option value="">All files</option><option value="document">Documents</option><option value="image">Images</option><option value="audio">Audio</option><option value="video">Video</option></select><span id="fileSummary" role="status">Describe what you remember.</span><button id="manageSearch" class="home-link" aria-expanded="false" aria-controls="fileManagement">Manage search</button></div>
+      <div class="file-search-head"><select id="fileKind" aria-label="File type" data-i18n-aria-label><option value="" data-i18n>All files</option><option value="document" data-i18n>Documents</option><option value="image" data-i18n>Images</option><option value="audio" data-i18n>Audio</option><option value="video" data-i18n>Video</option></select><span id="fileSummary" role="status" data-i18n>Describe what you remember.</span><button id="manageSearch" class="home-link" aria-expanded="false" aria-controls="fileManagement" data-i18n>Manage search</button></div>
       <div id="fileManagement" class="file-management" hidden>
-        <div class="file-tools"><button class="sb" id="fileFolders">Choose folders</button><button class="sb" id="fileSetup">Install local search</button><button class="sb" id="fileIndex">Index selected folders</button><button class="sb" id="fileStop" hidden>Stop</button><button class="sb" id="fileClear">Clear index</button></div>
+        <div class="file-tools"><button class="sb" id="fileFolders" data-i18n>Choose folders</button><button class="sb" id="fileSetup" data-i18n>Install local search</button><button class="sb" id="fileIndex" data-i18n>Index selected folders</button><button class="sb" id="fileStop" hidden data-i18n>Stop</button><button class="sb" id="fileClear" data-i18n>Clear index</button></div>
         <p class="file-note" id="fileSetupNote"></p>
-        <div class="file-progress" role="status" aria-live="polite"><span id="fileStatus">Checking local search…</span><span id="fileActivity" hidden></span><progress id="fileProgress" aria-label="Local search progress" hidden></progress></div>
+        <div class="file-progress" role="status" aria-live="polite"><span id="fileStatus" data-i18n>Checking local search…</span><span id="fileActivity" hidden></span><progress id="fileProgress" aria-label="Local search progress" hidden data-i18n-aria-label></progress></div>
       </div>
-      <div class="file-content"><div class="file-list" id="fileResults" role="listbox" aria-label="Matching files" aria-busy="false"></div><section class="file-preview" id="filePreview" aria-label="Selected file preview"></section></div>
+      <div class="file-content"><div class="file-list" id="fileResults" role="listbox" aria-label="Matching files" aria-busy="false" data-i18n-aria-label></div><section class="file-preview" id="filePreview" aria-label="Selected file preview" data-i18n-aria-label></section></div>
     </div>
   </div>
 
@@ -58,11 +59,11 @@
   <div class="lay l-stack" id="l-stack">
     <div class="mh">
       <i class="dot" aria-hidden="true"></i>
-      <div class="t"><small>MIDNIGHT</small><b>Missions</b></div>
+      <div class="t"><small data-i18n>MIDNIGHT</small><b data-i18n>Missions</b></div>
       <span class="mono" id="weather"></span>
-      <button class="ib" id="gearStack" title="Settings" aria-label="Settings"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 3h4l.6 2.5 1.4.7 2.4-.7 2.1 3.6-1.8 1.8v2.2l1.8 1.8-2.1 3.6-2.4-.7-1.4.7L14 21h-4l-.6-2.5-1.4-.7-2.4.7-2.1-3.6 1.8-1.8v-2.2L3.5 9.1l2.1-3.6 2.4.7 1.4-.7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
-      <button class="ib" id="bNew" title="New task (Ctrl+L)" aria-label="New task"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></button>
-      <button class="ib" id="bMinStack" title="Minimize to tray" aria-label="Minimize to tray"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></button>
+      <button class="ib" id="gearStack" title="Settings" aria-label="Settings" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 3h4l.6 2.5 1.4.7 2.4-.7 2.1 3.6-1.8 1.8v2.2l1.8 1.8-2.1 3.6-2.4-.7-1.4.7L14 21h-4l-.6-2.5-1.4-.7-2.4.7-2.1-3.6 1.8-1.8v-2.2L3.5 9.1l2.1-3.6 2.4.7 1.4-.7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      <button class="ib" id="bNew" title="New task (Ctrl+L)" aria-label="New task" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button class="ib" id="bMinStack" title="Minimize to tray" aria-label="Minimize to tray" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></button>
     </div>
     <div class="stack" id="stack" role="list"></div>
   </div>
@@ -71,70 +72,70 @@
   <div class="lay l-mission" id="l-mission">
     <div class="mh">
       <i class="dot" aria-hidden="true"></i>
-      <div class="t"><small id="mLabel">MISSION</small><b id="mTitle">New mission</b></div>
+      <div class="t"><small id="mLabel" data-i18n>MISSION</small><b id="mTitle" data-i18n>New mission</b></div>
       <span class="time" id="mTime">0:00</span>
-      <button class="ib" id="bStack" title="All missions" aria-label="All missions"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"/></svg></button>
-      <button class="ib" id="bLog" title="Show the activity log" aria-label="Show the activity log"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5h16M4 10h16M4 15h10M4 20h10"/></svg></button>
-      <button class="ib" id="bPeek" title="Show the background browser" aria-label="Show the background browser"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 6.5h.1M10 6.5h.1"/></svg></button>
-      <button class="ib" id="bRead" title="Reading view (Ctrl+E)" aria-label="Reading view"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-6 6M10 20H4v-6M4 20l6-6"/></svg></button>
-      <button class="ib" id="bMin" title="Minimize to tray (keeps working)" aria-label="Minimize to tray"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></button>
+      <button class="ib" id="bStack" title="All missions" aria-label="All missions" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"/></svg></button>
+      <button class="ib" id="bLog" title="Show the activity log" aria-label="Show the activity log" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5h16M4 10h16M4 15h10M4 20h10"/></svg></button>
+      <button class="ib" id="bPeek" title="Show the background browser" aria-label="Show the background browser" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 6.5h.1M10 6.5h.1"/></svg></button>
+      <button class="ib" id="bRead" title="Reading view (Ctrl+E)" aria-label="Reading view" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-6 6M10 20H4v-6M4 20l6-6"/></svg></button>
+      <button class="ib" id="bMin" title="Minimize to tray (keeps working)" aria-label="Minimize to tray" data-i18n-title data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></button>
     </div>
     <div class="mission-body" id="missionBody">
     <div class="strip" id="screenStrip" hidden></div>
-    <div class="mp"><small>YOU ASKED</small><span id="prompt"></span></div>
-    <ul class="steps" id="steps" aria-label="Plan"></ul>
-    <div class="conn"><span id="cBrowser" title="midnight's background web tools">web</span><span id="cFiles" title="your selected folders">files</span><span id="cYours" title="your own browser">your browser</span><span id="cDesk" title="mouse and keyboard on your desktop">desktop</span></div>
-    <div class="feed" id="feed" aria-label="Activity"></div>
+    <div class="mp"><small data-i18n>YOU ASKED</small><span id="prompt"></span></div>
+    <ul class="steps" id="steps" aria-label="Plan" data-i18n-aria-label></ul>
+    <div class="conn"><span id="cBrowser" title="midnight's background web tools" data-i18n data-i18n-title>web</span><span id="cFiles" title="your selected folders" data-i18n data-i18n-title>files</span><span id="cYours" title="your own browser" data-i18n data-i18n-title>your browser</span><span id="cDesk" title="mouse and keyboard on your desktop" data-i18n data-i18n-title>desktop</span></div>
+    <div class="feed" id="feed" aria-label="Activity" data-i18n-aria-label></div>
     <div class="ans" id="ans" hidden></div>
     <div class="evidence" id="evidence" hidden></div>
     <div class="arts" id="arts" hidden></div>
     </div>
     <div class="foot">
       <div class="f-run" id="fRun">
-        <span class="mono" id="runNote">working · <b>Esc</b> to take over</span>
-        <button class="pb" id="pause">Pause</button>
-        <button class="pb warm" id="stop">Take over</button>
+        <span class="mono" id="runNote">working · <b data-i18n>Esc</b> to take over</span>
+        <button class="pb" id="pause" data-i18n>Pause</button>
+        <button class="pb warm" id="stop" data-i18n>Take over</button>
       </div>
-      <div class="f-ask" id="fAsk" role="dialog" aria-labelledby="askTitle">
+      <div class="f-ask" id="fAsk" tabindex="-1" role="dialog" aria-labelledby="askTitle" aria-describedby="askConsequence">
         <h5><i>!</i><span id="askTitle"></span></h5>
         <dl class="facts" id="askFacts"></dl>
-        <details id="askPreviewBox"><summary>Preview</summary><pre id="askPreview"></pre></details>
+        <details id="askPreviewBox"><summary data-i18n>Preview</summary><pre id="askPreview"></pre></details>
         <p id="askConsequence" class="cons"></p>
         <div class="row"><span class="mono" id="askWhy"></span>
-          <button class="pb" id="askNo">Decline</button><button class="pb" id="askEdit" hidden>Edit</button><button class="pb" id="askRoutine" hidden>Allow this routine</button><button class="pb pri" id="askYes">Approve</button></div>
+          <button class="pb" id="askNo" data-i18n>Decline</button><button class="pb" id="askEdit" hidden data-i18n>Edit</button><button class="pb" id="askRoutine" hidden data-i18n>Allow this routine</button><button class="pb pri" id="askYes" data-i18n>Approve</button></div>
       </div>
-      <div class="f-q" id="fQ" role="dialog" aria-labelledby="qText">
+      <div class="f-q" id="fQ" tabindex="-1" role="dialog" aria-labelledby="qText">
         <h5><i>?</i><span id="qText"></span></h5>
         <div class="opts" id="qOpts"></div>
       </div>
       <div class="f-rec" id="fRec">
-        <h5 id="recH">Checking before trying again</h5>
+        <h5 id="recH" data-i18n>Checking before trying again</h5>
         <p id="recText"></p>
         <div id="recItems"></div>
-        <div class="row"><span class="mono" id="recNext"></span><button class="pb" id="recCancel">Cancel mission</button></div>
+        <div class="row"><span class="mono" id="recNext"></span><button class="pb" id="recCancel" data-i18n>Cancel mission</button></div>
       </div>
       <div class="f-wait" id="fWait">
         <span class="mono" id="waitNote"></span>
-        <button class="pb" id="waitAlt">Cancel</button><button class="pb pri" id="waitMain">Resume</button>
+        <button class="pb" id="waitAlt" data-i18n>Cancel</button><button class="pb pri" id="waitMain" data-i18n>Resume</button>
       </div>
       <div class="f-done" id="fDone">
-        <div class="row"><h5 id="doneH">Done</h5><div class="rc" id="receipts"></div></div>
-        <ul class="checks" id="checks" aria-label="Outcome checks"></ul>
+        <div class="row"><h5 id="doneH" data-i18n>Done</h5><div class="rc" id="receipts"></div></div>
+        <ul class="checks" id="checks" aria-label="Outcome checks" data-i18n-aria-label></ul>
         <p id="doneText"></p>
-        <textarea id="reply" class="inp reply" rows="1" aria-label="Ask a follow-up" placeholder="Ask a follow-up…  (Enter)"></textarea>
-        <div class="row"><span class="mono" id="doneSub"></span><button class="pb" id="saveRecipe" hidden title="Save as a reusable routine">Save routine</button><button class="pb" id="copy" title="Copy answer (Ctrl+Shift+C)">Copy</button><button class="pb pri" id="again" title="Ctrl+L">New task</button></div>
+        <textarea id="reply" class="inp reply" rows="1" aria-label="Ask a follow-up" placeholder="Ask a follow-up…  (Enter)" data-i18n-aria-label data-i18n-placeholder></textarea>
+        <div class="row"><span class="mono" id="doneSub"></span><button class="pb" id="saveRecipe" hidden title="Save as a reusable routine" data-i18n data-i18n-title>Save routine</button><button class="pb" id="copy" title="Copy answer (Ctrl+Shift+C)" data-i18n data-i18n-title>Copy</button><button class="pb pri" id="again" title="Ctrl+L" data-i18n data-i18n-title>New task</button></div>
       </div>
       <div class="f-login" id="fLogin">
-        <span class="mono" id="loginNote">Sign in to an AI provider to start.</span>
-        <button class="pb pri" id="login">Open settings</button>
+        <span class="mono" id="loginNote" data-i18n>Sign in to an AI provider to start.</span>
+        <button class="pb pri" id="login" data-i18n>Open settings</button>
       </div>
     </div>
   </div>
   <!-- settings and first-run -->
   <div class="lay l-settings" id="l-settings"></div>
-  <div class="ui-error" id="uiError" role="alert" hidden><span id="errorText"></span><button class="ib" id="errorDismiss" aria-label="Dismiss error"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+  <div class="ui-error" id="uiError" role="alert" hidden><span id="errorText"></span><button class="ib" id="errorDismiss" aria-label="Dismiss error" data-i18n-aria-label><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
 </div>
-<script src="md.js"></script>
+<script src="i18n.js"></script><script src="focus.js"></script><script src="md.js"></script>
 <script src="app.js"></script>
 <script src="settings.js"></script>
 <script src="search.js"></script>

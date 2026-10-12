@@ -1,6 +1,6 @@
 // Interaction regressions against the actual renderer, with delayed/rejected bridge responses.
 import assert from "node:assert/strict";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -24,6 +24,7 @@ const contrast = (a, b) => {
 ipcMain.handle("fixture:size", () => null);
 
 app.whenReady().then(async () => {
+	nativeTheme.themeSource = "dark"; // the checks below are for the default dark appearance; light has its own checks
 	const win = new BrowserWindow({ width: 1300, height: 1400, show: false, webPreferences: { preload: path.join(root, "test/visual/preload.cjs"), contextIsolation: true, sandbox: true, offscreen: true } });
 	const js = (code) => win.webContents.executeJavaScript(`(async () => { ${code} })()`);
 	const errors = [];
@@ -73,6 +74,44 @@ app.whenReady().then(async () => {
 					assert.ok(marker.outline ? contrast(over(marker.outlineColor, adjacent), adjacent) >= 3 : marker.changed && contrast(over(marker.border, background), background) >= 3, `${selector} has a distinguishable focus marker`);
 				}
 			} finally { win.webContents.debugger.detach(); }
+		}],
+		["light appearance keeps text readable and high-contrast edges visible", async () => {
+			nativeTheme.themeSource = "light";
+			try {
+				await reset();
+				await js(`await setState('chat'); document.activeElement.blur();`);
+				await sleep(200);
+				const scheme = await js(`return matchMedia('(prefers-color-scheme: light)').matches && getComputedStyle(document.documentElement).colorScheme;`);
+				assert.equal(scheme, "light", "the light tokens apply");
+				const text = await js(`const s=getComputedStyle(document.documentElement),c=k=>s.getPropertyValue(k).trim();return {paper:c('--paper'),surface:c('--surface'),ink:c('--ink'),muted:c('--muted'),faint:c('--faint'),accent:c('--accent'),onAccent:c('--on-accent'),shell:getComputedStyle(cap).backgroundColor};`);
+				const hex = (h) => (h.length === 4 ? [...h.slice(1)].map((x) => parseInt(x + x, 16)) : [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
+				for (const k of ["ink", "muted", "faint"]) for (const bg of ["paper", "surface"]) assert.ok(contrast(hex(text[k]), hex(text[bg])) >= 4.5, `${k} on ${bg} reaches 4.5:1 in light`);
+				assert.ok(contrast(hex(text.onAccent), hex(text.accent)) >= 4.5, "primary button text reaches 4.5:1 in light");
+				assert.deepEqual(color(text.shell).slice(0, 3), hex(text.paper), "the launcher surface is the light paper");
+				await js(`applyPrefs({highContrast:true});`);
+				await sleep(200);
+				const edges = await js(`return [...document.querySelectorAll('.continue-mission,.home-mode,#box,#chipModel,#sendTask')].map(el=>{const s=getComputedStyle(el);return {name:el.id || el.textContent.trim(),width:parseFloat(s.borderTopWidth),style:s.borderTopStyle,border:s.borderTopColor,background:s.backgroundColor,shell:getComputedStyle(cap).backgroundColor};});`);
+				for (const edge of edges) {
+					const shell = color(edge.shell), background = over(edge.background, shell), border = over(edge.border, background);
+					assert.ok(edge.width > 0 && edge.style !== "none" && contrast(border, background) >= 3 && contrast(border, shell) >= 3, `${edge.name} has visible edges in light high contrast`);
+				}
+			} finally {
+				nativeTheme.themeSource = "dark";
+			}
+		}],
+		["Windows High Contrast (forced colors) gives every control a system-colored edge", async () => {
+			win.webContents.debugger.attach("1.3");
+			try {
+				await win.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] });
+				await js(`await setState('chat'); document.activeElement.blur();`);
+				await sleep(200);
+				assert.equal(await js(`return matchMedia('(forced-colors: active)').matches;`), true);
+				const missing = await js(`return [...document.querySelectorAll('#cap button:not([hidden]), #box')].filter(el=>el.offsetParent).filter(el=>{const s=getComputedStyle(el);return !(parseFloat(s.borderTopWidth)>0 && s.borderTopStyle!=='none');}).map(el=>el.id||el.className);`);
+				assert.deepEqual(missing, [], "every visible control has a border in forced colors");
+			} finally {
+				await win.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [] }).catch(() => {});
+				win.webContents.debugger.detach();
+			}
 		}],
 		["high contrast makes mission and action boundaries distinguishable", async () => {
 			await js(`await setState('chat'); applyPrefs({highContrast:true}); document.activeElement.blur();`);
@@ -404,6 +443,47 @@ app.whenReady().then(async () => {
 			assert.equal(await js("return document.querySelector('#sec-watches [aria-label=\"On change\"] [aria-checked=true]').textContent;"), "Prepare an update");
 			await js(`document.querySelector('#sec-rules [aria-label=Action]').click(); __fixture.emit({kind:'auth-event',event:{type:'info',message:'Background update'}}); document.querySelector('#sec-rules [aria-label=Action]').click();`);
 			assert.equal(await js("return document.querySelectorAll('.dd-menu').length;"), 1);
+		}],
+		["an approval takes keyboard focus on its card, keeps Tab inside it, and never starts on Approve", async () => {
+			await js(`__fixture.variant('approval'); await setState('mission');`);
+			await sleep(400);
+			assert.equal(await js(`return document.activeElement?.id;`), "fAsk", "focus moves to the approval card itself");
+			win.webContents.debugger.attach("1.3");
+			try {
+				const seen = new Set();
+				for (let i = 0; i < 12; i++) {
+					await win.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+					await win.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+					const at = await js(`const a=document.activeElement; return {inside: document.getElementById('fAsk').contains(a), id: a.id || a.tagName};`);
+					assert.ok(at.inside, `Tab ${i + 1} stays in the approval card (${at.id})`);
+					seen.add(at.id);
+				}
+				assert.ok(seen.has("askYes") && seen.has("askNo"), "both decisions are reachable by keyboard");
+				await win.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, modifiers: 8 });
+				assert.ok(await js(`return document.getElementById('fAsk').contains(document.activeElement);`), "Shift+Tab wraps inside too");
+			} finally { win.webContents.debugger.detach(); }
+			await js(`await setState('chat');`);
+			await sleep(100);
+			assert.equal(await js(`return focusTrap.active === undefined;`), true, "leaving the mission releases focus");
+		}],
+		["dropped and pasted files become removable chips and are sent with the task", async () => {
+			await js(`await setState('chat'); document.getElementById('box').value='';`);
+			await js(`const dt=new DataTransfer(); dt.items.add(new File(['hello'],'notes.txt',{type:'text/plain'})); window.dispatchEvent(new DragEvent('dragenter',{dataTransfer:dt})); window.dispatchEvent(new DragEvent('drop',{dataTransfer:dt,cancelable:true}));`);
+			await sleep(100);
+			assert.equal(await js(`return [...document.querySelectorAll('#attachList .attach-chip .attach-name')].map(n=>n.textContent).join();`), "notes.txt");
+			assert.equal(await js(`return cap.dataset.drop === undefined;`), true, "the drop highlight clears");
+			await js(`const dt=new DataTransfer(); dt.items.add(new File([new Uint8Array([137,80,78,71])],'image.png',{type:'image/png'})); __fixture.configure({'attachments.fromFiles':{result:[]}}); document.getElementById('box').dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,cancelable:true}));`);
+			await sleep(100);
+			assert.equal((await calls("attachments.paste")).length, 1, "a pasted picture without a file path is read from the clipboard by the shell");
+			assert.equal(await js(`return document.querySelectorAll('#attachList .attach-chip').length;`), 2);
+			await js(`document.querySelector('#attachList .attach-remove').click();`);
+			await sleep(50);
+			assert.deepEqual((await calls("attachments.remove")).map((c) => c.args[0]), ["att_1"]);
+			await js(`document.getElementById('box').value=''; document.getElementById('sendTask').click();`);
+			await sleep(150);
+			const create = (await calls("missions.create")).at(-1).args[0];
+			assert.deepEqual(create.attachments, ["att_2"], "only the remaining attachment is sent");
+			assert.ok(create.text.length > 0, "a task with only attachments still has a request");
 		}],
 		["small-screen plans scroll without hiding the header or footer", async () => {
 			await js(`document.documentElement.style.setProperty('--h-mission','390px'); __fixture.variant('approval'); await setState('mission');`);

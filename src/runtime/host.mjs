@@ -212,8 +212,8 @@ export async function createHost(o) {
 			if (repo.list().some((m) => m.scope.pageAssistant?.appId === page.appId && !["succeeded", "partially-succeeded", "failed", "cancelled"].includes(m.status))) throw new Error("This app already has an active conversation. Finish or stop it first.");
 			return coord.createMission({ text: p.text, requestId: p.requestId, context, contextEvidence, mode: "prepare", scope: { pageAssistant: { appId: page.appId } }, trigger: { kind: "user", appId: page.appId, appName: page.appName, profile: page.profile } });
 		},
-		"mission.create": (p) => coord.createMission({ text: p.text, requestId: p.requestId, mode: p.mode, skill: p.skill, privacy: p.privacy, context: p.context }),
-		"mission.followUp": (p) => coord.followUp(p.missionId, p.text, p.requestId, p.context),
+		"mission.create": (p) => coord.createMission({ text: p.text, requestId: p.requestId, mode: p.mode, skill: p.skill, privacy: p.privacy, context: p.context, attachments: p.attachments }),
+		"mission.followUp": (p) => coord.followUp(p.missionId, p.text, p.requestId, p.context, p.attachments),
 		"mission.steer": (p) => coord.steer(p.missionId, p.text),
 		"mission.pause": (p) => coord.pause(p.missionId),
 		"mission.resume": (p) => coord.resume(p.missionId),

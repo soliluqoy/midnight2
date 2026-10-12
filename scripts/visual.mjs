@@ -3,7 +3,7 @@
 //   npx electron scripts/visual.mjs            compare with test/visual/baseline
 //   UPDATE=1 npx electron scripts/visual.mjs   (re)write baselines after an intended design change
 //   VISUAL_ERRORS_ONLY=1 ...                   render every state and fail only on renderer errors (other machines' fonts)
-import { app, BrowserWindow, ipcMain, nativeImage } from "electron";
+import { BrowserWindow, app, ipcMain, nativeImage, nativeTheme } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 app.setPath("userData", fs.mkdtempSync(path.join(os.tmpdir(), "midnight-visual-")));
 const baseDir = path.join(root, "test", "visual", "baseline");
-const outDir = path.join(root, "test", "visual", "out");
+const outDir = path.join(root, "test", "visual", "out", ...(process.env.VISUAL_THEME === "light" ? ["light"] : []));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const STATES = [
@@ -36,6 +36,10 @@ const STATES = [
 ];
 
 app.whenReady().then(async () => {
+	// Baselines are the default dark appearance, whatever the machine's theme. VISUAL_THEME=light renders the light
+	// appearance into test/visual/out/light (errors only; there are no light baselines).
+	const light = process.env.VISUAL_THEME === "light";
+	nativeTheme.themeSource = light ? "light" : "dark";
 	fs.mkdirSync(outDir, { recursive: true });
 	fs.mkdirSync(baseDir, { recursive: true });
 	const win = new BrowserWindow({

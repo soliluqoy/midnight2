@@ -52,7 +52,7 @@ export function createPiRuntime({ modelRuntime, sessionsDir, cwd = sessionsDir, 
 		 * Run one input to settlement. Resolves with { answer, stopReason, error, usage, sessionFile, aborted }.
 		 * A finished run is only a runtime fact; the coordinator decides whether the mission succeeded.
 		 */
-		async run(missionId, { runId, input, model, thinking = "low", systemPrompt, tools, gate, sessionFile, onSession }) {
+		async run(missionId, { runId, input, images, model, thinking = "low", systemPrompt, tools, gate, sessionFile, onSession }) {
 			if (live.has(missionId)) throw new Error("this mission already has a run in progress");
 			const dir = path.join(sessionsDir, missionId);
 			fs.mkdirSync(dir, { recursive: true });
@@ -123,7 +123,7 @@ export function createPiRuntime({ modelRuntime, sessionsDir, cwd = sessionsDir, 
 			let error;
 			let aborted = false;
 			try {
-				await session.prompt(input);
+				await session.prompt(input, images?.length ? { images } : undefined);
 			} catch (err) {
 				error = String(err?.message ?? err);
 			}

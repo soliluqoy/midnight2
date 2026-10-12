@@ -7,7 +7,8 @@ import { Value } from "typebox/value";
 export const IPC_VERSION = 1;
 export const IPC_CHANNEL = "midnight:v1";
 export const EVENT_CHANNEL = "midnight:ev";
-export const MAX_REQUEST_BYTES = 64 * 1024;
+// Large enough for the largest allowed text (clipboard.write: 200,000 characters) with the envelope.
+export const MAX_REQUEST_BYTES = 256 * 1024;
 
 const Id = Type.String({ minLength: 1, maxLength: 80, pattern: "^[A-Za-z0-9_.:-]+$" });
 const Text = (max = 20000) => Type.String({ maxLength: max });
@@ -56,8 +57,12 @@ export const METHODS = {
 	"ui.hide": { route: "shell", params: None },
 	"ui.show": { route: "shell", params: None },
 	"ui.textSize": { route: "shell", params: Obj({ z: Type.Number({ minimum: 0.5, maximum: 2 }) }) },
+	"ui.strings": { route: "shell", params: None },
 	"clipboard.read": { route: "shell", params: None },
 	"clipboard.write": { route: "shell", params: Obj({ text: Text(200000) }) },
+	"attachments.add": { route: "shell", params: Obj({ path: Text(2000) }) },
+	"attachments.paste": { route: "shell", params: None },
+	"attachments.remove": { route: "shell", params: Obj({ id: Id }) },
 	"open.external": { route: "shell", params: Obj({ url: Text(4000) }) },
 	"browser.peek": { route: "shell", params: None },
 	"apps.state": { route: "shell", params: None },
@@ -85,8 +90,8 @@ export const METHODS = {
 	"update.install": { route: "shell", params: None },
 
 	// host: missions, decisions, rules, memory, history
-	"mission.create": { route: "host", params: Obj({ text: Text(), requestId: Id, mode: Type.Optional(Type.Union(["ask", "prepare", "rules"].map((m) => Type.Literal(m)))), skill: Type.Optional(Id), privacy: Type.Optional(Type.Union(["cloud", "local", "offline"].map((m) => Type.Literal(m)))) }) },
-	"mission.followUp": { route: "host", params: Obj({ missionId: Id, text: Text(), requestId: Id }) },
+	"mission.create": { route: "host", params: Obj({ text: Text(), requestId: Id, attachments: Type.Optional(Type.Array(Id, { maxItems: 8 })), mode: Type.Optional(Type.Union(["ask", "prepare", "rules"].map((m) => Type.Literal(m)))), skill: Type.Optional(Id), privacy: Type.Optional(Type.Union(["cloud", "local", "offline"].map((m) => Type.Literal(m)))) }) },
+	"mission.followUp": { route: "host", params: Obj({ missionId: Id, text: Text(), requestId: Id, attachments: Type.Optional(Type.Array(Id, { maxItems: 8 })) }) },
 	"mission.steer": { route: "host", params: Obj({ missionId: Id, text: Text() }) },
 	"mission.pause": { route: "host", params: Obj({ missionId: Id }) },
 	"mission.resume": { route: "host", params: Obj({ missionId: Id }) },
