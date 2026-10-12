@@ -25,6 +25,7 @@ import { createModelRuntime, createPiRuntime, RUNTIME_VERSION } from "./adapter.
 import { registerLocalEndpoint } from "./models.mjs";
 import { corePaths, dataPaths } from "./paths.mjs";
 import { EMBEDDING_DEFAULTS, embeddingSettings } from "../search/config.mjs";
+import { createSpeechRuntime } from "../voice/runtime.mjs";
 
 export const HOST_DEFAULTS = {
 	provider: "",
@@ -127,6 +128,8 @@ export async function createHost(o) {
 	});
 
 	const queue = createQueue({ start: (item) => coord.start(item) });
+	const speech = o.speechRuntime ?? createSpeechRuntime({ paths: { dataDir: o.dataDir } });
+	let speechSetup;
 	tools.resources = createResources({ queue, settings: () => settings });
 	coord = createCoordinator({
 		...services,
@@ -324,6 +327,14 @@ export async function createHost(o) {
 		"diagnostics.preview": () => tools.data.diagnostics(),
 		// The packaged app's native pieces load: sqlite-vec in the store and ONNX Runtime for local search.
 		"diagnostics.native": async () => ({ vector: !!store.vector, onnx: await import("@huggingface/transformers").then(() => true, (err) => err.message) }),
+		"voice.status": () => ({ ...speech.status(), progress: speechSetup?.progress }),
+		"voice.setup": () => {
+			if (speechSetup?.running) return { started: false, reason: "Voice input is already being installed." };
+			const job = (speechSetup = { running: true, progress: undefined });
+			speech.setup({ onProgress: (p) => (job.progress = { done: p.bytesDone, total: p.bytesTotal }) }).catch((err) => log("voice setup", err.message)).finally(() => (job.running = false));
+			return { started: true };
+		},
+		"voice.transcribe": (p) => speech.transcribe(p.samples, { language: p.language }), // only the shell calls this
 		"resources.status": () => ({ queue: queue.status(), profile: settings.profile, weather: tools.resources?.weather() }),
 	};
 
@@ -389,6 +400,7 @@ export async function createHost(o) {
 			tools.watches?.stop();
 			await coord.shutdown();
 			await tools.mcp?.closeAll();
+			speech.close();
 			tools.context.close();
 			await tools.fileSearch.close();
 			for (const id of runtime.running()) await runtime.abort(id).catch(() => {});

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, shell, Tray } from "electron";
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, session, shell, Tray } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -449,6 +449,17 @@ function startMissionShell() {
 			if (r.response !== 0) return { canceled: true };
 			return supervisor.request("mcp.add", draft);
 		},
+		// Dictation: the launcher records, the hidden decoder turns it into 16 kHz samples, local Whisper transcribes.
+		"voice.transcribe": async ({ audio, type }) => {
+			if (!settings.get().voice) throw new Error("Voice input is off. Turn it on in Settings → Voice input.");
+			const media = await mediaDecoder.fromBytes(audio, "audio", type);
+			try {
+				const { samples } = await media.audio({ start: 0, seconds: 300 });
+				return supervisor.request("voice.transcribe", { samples, language: language() }, 180000);
+			} finally {
+				await media.close();
+			}
+		},
 		"mcpapp.open": async ({ artifactId }) => {
 			const view = await supervisor.request("artifact.view", { artifactId });
 			return openMcpApp(view);
@@ -490,6 +501,10 @@ function startMissionShell() {
 	app.whenReady().then(async () => {
 		app.setAppUserModelId("midnight.app"); // lets notifications show while the capsule is tucked away
 		nativeTheme.themeSource = settings.get().theme; // every window's prefers-color-scheme follows this
+		// The microphone: only the launcher, only audio, and only while voice input is on. Everything else is refused.
+		const micAllowed = (wc, permission, mediaTypes = []) => permission === "media" && wc === capsule?.webContents && settings.get().voice && mediaTypes.length > 0 && mediaTypes.every((t) => t === "audio");
+		session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => cb(micAllowed(wc, permission, details?.mediaTypes)));
+		session.defaultSession.setPermissionCheckHandler((wc, permission, _origin, details) => permission === "media" && wc === capsule?.webContents && settings.get().voice && details?.mediaType === "audio");
 		if (process.platform === "darwin") app.dock?.hide();
 		web = createWeb(settings); // windows are created lazily on first use (plan ch. 09: no eager warmup)
 		browsers = createBrowsers();
@@ -712,6 +727,8 @@ function startMissionShell() {
 			fs.rmSync(pdfFile, { force: true });
 		}
 		if (process.platform === "win32") check("on-device OCR helper is present", createOcr().available());
+		const mic = await capsule.webContents.executeJavaScript("navigator.permissions.query({ name: 'microphone' }).then((p) => p.state)").catch((err) => String(err));
+		check(`the microphone is refused while voice input is off (${mic})`, settings.get().voice || mic === "denied");
 		console.log(`[smoke] engine ready in ${ms} ms · seq ${snap.seq} · missions ${Object.keys(snap.missions).length} · weather "${res.weather?.text}" · ui ${JSON.stringify(ui)} · renderer errors ${errors.length}`);
 		for (const c of checks) console.log(`[smoke] ${c.ok ? "PASS" : "FAIL"} ${c.name}`);
 		for (const e of errors) console.log(`[smoke] renderer error: ${e}`);

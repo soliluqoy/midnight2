@@ -25,7 +25,7 @@ export const MODEL_FILES = [
 export const MODEL_BYTES = MODEL_FILES.reduce((n, f) => n + f.size, 0);
 
 /** Where Transformers.js looks for MODEL_ID's files when loading offline from `cacheDir`. */
-export const modelDir = (cacheDir) => path.join(cacheDir, ...MODEL_ID.split("/"));
+export const modelDir = (cacheDir, id = MODEL_ID) => path.join(cacheDir, ...id.split("/"));
 
 function hasher(file) {
 	if (file.sha256) return { h: createHash("sha256"), want: file.sha256 };
@@ -50,11 +50,11 @@ async function verified(file, target) {
  * Download every pinned file that is missing or does not match. Files that already verify are kept (a retried
  * setup resumes). Progress reports bytes across all files.
  */
-export async function downloadModel({ cacheDir, signal, onProgress, fetchImpl = fetch, files = MODEL_FILES, baseUrl = "https://huggingface.co" }) {
-	const dir = modelDir(cacheDir);
+export async function downloadModel({ cacheDir, signal, onProgress, fetchImpl = fetch, files = MODEL_FILES, id = MODEL_ID, revision = MODEL_REVISION, label = "EmbeddingGemma 2", baseUrl = "https://huggingface.co" }) {
+	const dir = modelDir(cacheDir, id);
 	const total = files.reduce((n, f) => n + f.size, 0);
 	let done = 0;
-	const report = () => onProgress?.({ phase: "downloading", message: "Downloading EmbeddingGemma 2", bytesDone: done, bytesTotal: total });
+	const report = () => onProgress?.({ phase: "downloading", message: `Downloading ${label}`, bytesDone: done, bytesTotal: total });
 	for (const file of files) {
 		signal?.throwIfAborted();
 		const target = path.join(dir, ...file.path.split("/"));
@@ -65,7 +65,7 @@ export async function downloadModel({ cacheDir, signal, onProgress, fetchImpl = 
 		}
 		await fsp.mkdir(path.dirname(target), { recursive: true });
 		const part = `${target}.part`;
-		const res = await fetchImpl(`${baseUrl}/${MODEL_ID}/resolve/${MODEL_REVISION}/${file.path}`, { signal, redirect: "follow", headers: { "user-agent": "midnight-local-search" } });
+		const res = await fetchImpl(`${baseUrl}/${id}/resolve/${revision}/${file.path}`, { signal, redirect: "follow", headers: { "user-agent": "midnight-local-search" } });
 		if (!res.ok || !res.body) throw Object.assign(new Error(`Downloading ${file.path} failed (${res.status}).`), { code: "SEARCH_DOWNLOAD_FAILED" });
 		const { h, want } = hasher(file);
 		const out = fs.createWriteStream(part);

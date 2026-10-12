@@ -98,12 +98,17 @@ export function createMediaDecoder({ log = () => {} } = {}) {
 		if (!st.isFile()) throw new Error("The selected media file is missing.");
 		if (st.size > MAX_BYTES) throw new Error("This file is larger than the media size limit.");
 		const bytes = await fsp.readFile(filePath, { signal });
+		return fromBytes(bytes, kind, TYPES[filePath.slice(filePath.lastIndexOf(".")).toLowerCase()] ?? "");
+	}
+
+	/** A decoding session for bytes already in memory (for example audio recorded in the launcher). */
+	async function fromBytes(bytes, kind, type = "") {
+		if (bytes.byteLength > MAX_BYTES) throw new Error("This media is larger than the size limit.");
 		const id = `m${++seq}`;
-		const ext = filePath.slice(filePath.lastIndexOf(".")).toLowerCase();
 		open.add(id);
 		let info;
 		try {
-			info = await call("open", { id, kind, bytes, type: TYPES[ext] ?? "" });
+			info = await call("open", { id, kind, bytes, type });
 		} catch (err) {
 			open.delete(id);
 			call("close", { id }).catch(() => {});
@@ -126,6 +131,7 @@ export function createMediaDecoder({ log = () => {} } = {}) {
 
 	return {
 		session,
+		fromBytes,
 		dispose() {
 			ipcMain.off("media-decoder:reply", onReply);
 			clearTimeout(idle);

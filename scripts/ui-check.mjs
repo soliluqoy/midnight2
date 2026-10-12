@@ -520,6 +520,33 @@ app.whenReady().then(async () => {
 			assert.match(await js(`return document.getElementById('spend').textContent;`), /This month \$/);
 			await js(`await setState('stack'); const s=document.getElementById('historySearch'); s.value=''; s.dispatchEvent(new Event('input'));`);
 		}],
+		["dictation records, transcribes locally and inserts at the cursor; Esc cancels", async () => {
+			await js(`
+				window.__tracks = 0;
+				navigator.mediaDevices.getUserMedia = async () => ({ getTracks: () => [{ stop: () => window.__tracks++ }] });
+				window.MediaRecorder = class { static isTypeSupported(t) { return t === "audio/webm;codecs=opus"; } constructor(_s, o) { this.mimeType = o.mimeType; this.state = "inactive"; } start() { this.state = "recording"; setTimeout(() => this.ondataavailable?.({ data: new Blob([new Uint8Array([1, 2, 3, 4])]) }), 20); } stop() { this.state = "inactive"; setTimeout(() => this.onstop?.(), 30); } };
+				__fixture.configure({ "voice.status": { result: { available: true } }, "voice.transcribe": { result: { text: "summarize the budget meeting" } } });
+				applyPrefs({ voice: true }); await setState('chat'); document.getElementById('box').value = 'Please '; document.getElementById('box').setSelectionRange(7, 7);`);
+			await sleep(150);
+			assert.equal(await js(`return document.getElementById('micTask').hidden;`), false, "the microphone appears when Whisper is installed");
+			await js(`document.getElementById('micTask').click();`);
+			await sleep(120);
+			assert.equal(await js(`return document.getElementById('micTask').getAttribute('aria-pressed');`), "true");
+			await js(`document.getElementById('micTask').click();`);
+			await sleep(200);
+			const call = (await calls("voice.transcribe")).at(-1).args;
+			assert.equal(call[1], "audio/webm;codecs=opus");
+			assert.equal(await js(`return document.getElementById('box').value;`), "Please summarize the budget meeting");
+			assert.equal(await js(`return window.__tracks;`), 1, "the microphone is released when recording stops");
+			await js(`document.getElementById('micTask').click();`);
+			await sleep(80);
+			await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));`);
+			await sleep(150);
+			assert.equal((await calls("voice.transcribe")).length, 1, "a cancelled recording is not transcribed");
+			assert.equal(await js(`return document.getElementById('micTask').dataset.state;`), "idle");
+			await js(`applyPrefs({ voice: false }); renderHomeMode();`);
+			assert.equal(await js(`return document.getElementById('micTask').hidden;`), true);
+		}],
 		["small-screen plans scroll without hiding the header or footer", async () => {
 			await js(`document.documentElement.style.setProperty('--h-mission','390px'); __fixture.variant('approval'); await setState('mission');`);
 			await sleep(500);

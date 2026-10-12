@@ -89,6 +89,7 @@ export const METHODS = {
 	"connector.mcpAdd": { route: "shell", params: Obj({ name: Text(60), kind: Type.Union([Type.Literal("stdio"), Type.Literal("http")]), command: Type.Optional(Text(1000)), args: Type.Optional(Type.Array(Text(1000), { maxItems: 30 })), url: Type.Optional(Text(2000)), token: Type.Optional(Text(4000)) }) },
 	"mcpapp.open": { route: "shell", params: Obj({ artifactId: Id }) },
 	"mcpserver.register": { route: "shell", params: None },
+	"voice.transcribe": { route: "shell", maxBytes: 8 * 1024 * 1024, check: (p) => (p.audio instanceof Uint8Array && p.audio.byteLength > 0 && p.audio.byteLength <= 8 * 1024 * 1024 ? undefined : "audio must be 1 byte to 8 MB of recorded sound"), params: Obj({ audio: Type.Unknown(), type: Type.String({ maxLength: 60, pattern: "^audio/[a-z0-9.+-]+(;\\s*codecs=[a-z0-9.,]+)?$" }) }) },
 	"recipe.import": { route: "shell", params: None },
 	"engine.restart": { route: "shell", params: None },
 	"update.check": { route: "shell", params: None },
@@ -155,6 +156,8 @@ export const METHODS = {
 	"data.delete": { route: "host", params: Obj({ scope: Type.Union(["history", "memory", "all"].map((s) => Type.Literal(s))) }) },
 	"diagnostics.preview": { route: "host", params: None },
 	"resources.status": { route: "host", params: None },
+	"voice.status": { route: "host", params: None },
+	"voice.setup": { route: "host", params: None },
 };
 
 /**
@@ -166,11 +169,13 @@ export function validateRequest(envelope, { lastSeq = 0 } = {}) {
 	if (envelope.v !== IPC_VERSION) return { ok: false, error: `unsupported IPC version ${envelope.v}` };
 	let size = 0;
 	try {
-		size = JSON.stringify(envelope).length;
+		// Typed arrays (recorded audio) count as their byte length, not as their JSON spelling.
+		size = JSON.stringify(envelope, (_k, v) => (ArrayBuffer.isView(v) ? ((size += v.byteLength), `[${v.byteLength} bytes]`) : v)).length + size;
 	} catch {
 		return { ok: false, error: "request is not serializable" };
 	}
-	if (size > MAX_REQUEST_BYTES) return { ok: false, error: `request too large (${size} bytes)` };
+	const max = (Object.hasOwn(METHODS, envelope.method) && METHODS[envelope.method].maxBytes) || MAX_REQUEST_BYTES;
+	if (size > max) return { ok: false, error: `request too large (${size} bytes)` };
 	if (!Number.isInteger(envelope.seq) || envelope.seq <= lastSeq) return { ok: false, error: "out-of-order or replayed request" };
 	const spec = Object.hasOwn(METHODS, envelope.method) ? METHODS[envelope.method] : undefined;
 	if (!spec) return { ok: false, error: `unknown method ${String(envelope.method).slice(0, 40)}` };
@@ -179,5 +184,7 @@ export function validateRequest(envelope, { lastSeq = 0 } = {}) {
 		const first = [...Value.Errors(spec.params, params)][0];
 		return { ok: false, error: `invalid params for ${envelope.method}: ${first?.instancePath ?? ""} ${first?.message ?? ""}`.trim() };
 	}
+	const problem = spec.check?.(params);
+	if (problem) return { ok: false, error: `invalid params for ${envelope.method}: ${problem}` };
 	return { ok: true, method: envelope.method, params, route: spec.route };
 }

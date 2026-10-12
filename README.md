@@ -28,6 +28,7 @@ Open Midnight with **Ctrl+Win** on Windows (press both keys, then release), **Cm
 - **Files:** search selected folders by words or meaning, then open a result or attach it to a task. Ask drafts and file queries are saved separately.
 - **Apps:** pin websites with separate saved sign-ins. Ask Midnight beside a page to summarize or draft from text you choose to share.
 - **Context:** retrieve related confirmed memories, previous answers, and selected files for your model. Images, PDF pages, and video frames can be inspected with a vision-capable model.
+- **Voice:** turn on **Settings → Voice input** and install Whisper (about 80 MB, once) to dictate into Ask with the microphone button or Ctrl+Shift+Space. Speech is transcribed on this computer.
 - **Connectors:** add MCP servers (a program on this computer or a remote service) in **Settings → Connectors**; their tools ask before each use unless you review a read-only tool. Turn on **Let other apps use midnight** to let Windows agents, Claude Desktop and other MCP clients search your chosen folders and start tasks that still wait for your approval; **Register with Windows** adds midnight to the Windows on-device agent registry (preview, `odr.exe`).
 - **Tray:** drag the title bar to move Midnight; closing it hides it while work continues. The summon shortcut restores it. Use the tray menu to quit.
 

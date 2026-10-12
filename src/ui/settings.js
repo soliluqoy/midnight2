@@ -570,6 +570,30 @@
 		return b;
 	}
 
+	let voice = {};
+	function voiceSection() {
+		const st = S.settings;
+		const poll = async () => {
+			voice = await api.voice.status().catch(() => ({}));
+			render();
+			if (voice.setup || voice.progress?.total && !voice.available && !voice.error) setTimeout(poll, 1000);
+		};
+		if (st.voice && voice.model === undefined) poll();
+		const mb = (n) => Math.round((n ?? 0) / 1e6);
+		return sec(
+			"voice",
+			"VOICE INPUT",
+			field("Dictate into Ask", "Speak instead of typing: a microphone button and Ctrl+Shift+Space. Whisper runs on this computer; your voice is never uploaded.", toggle(!!st.voice, () => save({ voice: !st.voice }), "Dictate into Ask")),
+			st.voice
+				? voice.available
+					? h("p", { class: "hint" }, "Whisper is installed. Dictation follows midnight's language (English or Bahasa Indonesia).")
+					: h("div", { class: "row" },
+						h("button", { class: "sb", disabled: !!voice.setup, onclick: attempt(async () => { const r = await api.voice.setup(); setTimeout(poll, 500); return r; }) }, voice.setup ? i18n.t("Installing… {done} / {total} MB", { done: mb(voice.progress?.done), total: mb(voice.progress?.total ?? voice.bytes) }) : i18n.t("Install Whisper ({size} MB)", { size: mb(voice.bytes ?? 81e6) })),
+						voice.error ? h("small", { class: "hint warn" }, voice.error) : null)
+				: null,
+		);
+	}
+
 	function readingSection() {
 		const st = S.settings;
 		const sizes = [0.9, 1, 1.15, 1.3, 1.45, 1.6].map((value, i) => ({ value, label: ["S", "M", "L", "XL", "2X", "3X"][i] }));
@@ -703,7 +727,7 @@
 			),
 			page === "welcome"
 				? welcome()
-				: h("div", { class: "sbody" }, autonomySection(), modelSection(), accountsSection(), sourcesSection(), fileSearchSection(), rulesSection(), watchesSection(), memorySection(), routinesSection(), connectorsSection(), resourcesSection(), readingSection(), webSection(), behaviourSection(), dataSection()),
+				: h("div", { class: "sbody" }, autonomySection(), modelSection(), accountsSection(), sourcesSection(), fileSearchSection(), rulesSection(), watchesSection(), memorySection(), routinesSection(), connectorsSection(), voiceSection(), resourcesSection(), readingSection(), webSection(), behaviourSection(), dataSection()),
 		);
 		if (modal) root.append(modal);
 		const body = root.querySelector(".sbody");

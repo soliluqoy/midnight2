@@ -24,7 +24,8 @@
 		"test:apps": "electron scripts/apps-check.mjs",
 		"test:smoke": "node scripts/smoke.mjs",
 		"test:search-model": "electron scripts/search-model.mjs",
-		"build:native": "node scripts/build-native.mjs"
+		"build:native": "node scripts/build-native.mjs",
+		"test:voice-model": "electron scripts/voice-model.mjs"
 	},
 	"dependencies": {
 		"@earendil-works/chord": "file:vendor/earendil-works-chord-1.0.1.tgz",

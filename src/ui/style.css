@@ -431,3 +431,11 @@ body[data-motion=reduced] *{animation-duration:.001s!important;animation-iterati
 .mcp-server{margin:0 0 6px}
 .mcp-tools{margin:2px 0 8px 14px;padding-left:10px;border-left:2px solid var(--line)}
 .mcp-tools .acct{padding:4px 0}
+
+/* Dictation button in Ask. */
+.pb.mic{display:inline-flex;align-items:center;gap:4px;padding-inline:8px}
+.pb.mic[data-state=recording]{color:var(--danger);border-color:var(--danger-line);background:var(--danger-surface)}
+.pb.mic[data-state=recording] svg{animation:mic-pulse 1.2s ease-in-out infinite}
+@keyframes mic-pulse{50%{opacity:.45}}
+.pb.mic #micTime:empty{display:none}
+@media (forced-colors:active){.pb.mic[data-state=recording]{forced-color-adjust:none;background:Highlight;color:HighlightText}}

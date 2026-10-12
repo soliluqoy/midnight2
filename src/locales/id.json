@@ -645,5 +645,20 @@
 	"Register with Windows": "Daftarkan ke Windows",
 	"Copy client settings": "Salin pengaturan klien",
 	"Registered with Windows.": "Terdaftar di Windows.",
-	"Client settings copied.": "Pengaturan klien disalin."
+	"Client settings copied.": "Pengaturan klien disalin.",
+	"Dictate (Ctrl+Shift+Space)": "Dikte (Ctrl+Shift+Space)",
+	"Dictate": "Dikte",
+	"Stop and transcribe (Ctrl+Shift+Space) · Esc cancels": "Berhenti dan transkripsikan (Ctrl+Shift+Space) · Esc membatalkan",
+	"Transcribing…": "Mentranskripsikan…",
+	"midnight could not use the microphone. Check Windows Settings → Privacy → Microphone.": "midnight tidak dapat memakai mikrofon. Periksa Pengaturan Windows → Privasi → Mikrofon.",
+	"Recording. Press again to stop.": "Merekam. Tekan lagi untuk berhenti.",
+	"Transcribed.": "Selesai ditranskripsikan.",
+	"No speech was heard.": "Tidak ada suara yang terdengar.",
+	"Dictation cancelled.": "Dikte dibatalkan.",
+	"VOICE INPUT": "INPUT SUARA",
+	"Dictate into Ask": "Dikte ke Tanya",
+	"Speak instead of typing: a microphone button and Ctrl+Shift+Space. Whisper runs on this computer; your voice is never uploaded.": "Bicara alih-alih mengetik: tombol mikrofon dan Ctrl+Shift+Space. Whisper berjalan di komputer ini; suara Anda tidak pernah diunggah.",
+	"Whisper is installed. Dictation follows midnight's language (English or Bahasa Indonesia).": "Whisper sudah terpasang. Dikte mengikuti bahasa midnight (Inggris atau Bahasa Indonesia).",
+	"Installing… {done} / {total} MB": "Memasang… {done} / {total} MB",
+	"Install Whisper ({size} MB)": "Pasang Whisper ({size} MB)"
 }

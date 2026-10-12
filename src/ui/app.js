@@ -166,6 +166,7 @@ async function applyDims() {
 }
 function applyPrefs(s) {
 	prefs = { ...prefs, ...s };
+	if ("voice" in s) refreshVoice();
 	document.body.dataset.contrast = prefs.highContrast ? "high" : "";
 	document.body.dataset.motion = prefs.reducedMotion ? "reduced" : "";
 	const chip = $("chipCtx");
@@ -1113,6 +1114,8 @@ function renderHomeMode() {
 	$("chipClip").hidden = files || !clip;
 	$("taskFile").hidden = files || !taskFileContext;
 	renderAttachments();
+	if (prefs.voice) refreshVoice();
+	else $("micTask").hidden = true;
 	$("taskFileName").textContent = taskFileContext?.name ?? "";
 	$("taskFileName").title = taskFileContext?.text ?? "";
 	$("boxLabel").textContent = i18n.t(files ? "Search files on this computer" : "Ask or give a task");
@@ -1197,6 +1200,90 @@ for (const [type, fn] of Object.entries({
 	},
 })) window.addEventListener(type, fn);
 $("sendTask").onclick = submitTask;
+
+// ---------- dictation: record in the launcher, transcribe with local Whisper, insert at the cursor ----------
+let voiceReady = false;
+let recording; // { recorder, stream, chunks, started, timer, cancelled }
+const MAX_DICTATION_S = 120;
+async function refreshVoice() {
+	const s = prefs.voice ? await api.voice.status().catch(() => ({})) : {};
+	voiceReady = !!(prefs.voice && s.available);
+	$("micTask").hidden = !voiceReady || cur === "search";
+}
+function micState(state, label = "") {
+	const b = $("micTask");
+	b.dataset.state = state;
+	b.setAttribute("aria-pressed", String(state === "recording"));
+	b.title = i18n.t(state === "recording" ? "Stop and transcribe (Ctrl+Shift+Space) · Esc cancels" : state === "working" ? "Transcribing…" : "Dictate (Ctrl+Shift+Space)");
+	b.disabled = state === "working";
+	$("micTime").textContent = label;
+}
+async function startDictation() {
+	if (recording || !voiceReady) return;
+	let stream;
+	try {
+		stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+	} catch (err) {
+		return showErr(new Error(i18n.t("midnight could not use the microphone. Check Windows Settings → Privacy → Microphone.")));
+	}
+	const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm"].find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+	const recorder = new MediaRecorder(stream, { mimeType: type, audioBitsPerSecond: 32000 });
+	const r = (recording = { recorder, stream, chunks: [], started: Date.now(), type: recorder.mimeType || type || "audio/webm" });
+	recorder.ondataavailable = (e) => e.data.size && r.chunks.push(e.data);
+	recorder.onstop = () => finishDictation(r);
+	recorder.start(1000);
+	micState("recording", "0:00");
+	announce(i18n.t("Recording. Press again to stop."));
+	r.timer = setInterval(() => {
+		const s = Math.floor((Date.now() - r.started) / 1000);
+		micState("recording", `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`);
+		if (s >= MAX_DICTATION_S) stopDictation();
+	}, 500);
+}
+function stopDictation({ cancel = false } = {}) {
+	const r = recording;
+	if (!r) return;
+	r.cancelled = cancel;
+	clearInterval(r.timer);
+	if (r.recorder.state !== "inactive") r.recorder.stop();
+	for (const t of r.stream.getTracks()) t.stop();
+}
+async function finishDictation(r) {
+	recording = undefined;
+	if (r.cancelled || !r.chunks.length) return micState("idle");
+	micState("working", "…");
+	try {
+		const bytes = new Uint8Array(await new Blob(r.chunks, { type: r.type }).arrayBuffer());
+		const { text } = await api.voice.transcribe(bytes, r.type.replace(/\s+/g, ""));
+		const box = $("box");
+		if (text) {
+			const at = box.selectionStart ?? box.value.length;
+			const before = box.value.slice(0, at);
+			const glue = before && !/\s$/.test(before) ? " " : "";
+			box.value = `${before}${glue}${text}${box.value.slice(box.selectionEnd ?? at)}`;
+			box.selectionStart = box.selectionEnd = at + glue.length + text.length;
+			box.dispatchEvent(new Event("input", { bubbles: true }));
+			announce(i18n.t("Transcribed."));
+		} else announce(i18n.t("No speech was heard."));
+		box.focus({ preventScroll: true });
+	} catch (err) {
+		showErr(err);
+	} finally {
+		micState("idle");
+	}
+}
+$("micTask").onclick = () => (recording ? stopDictation() : startDictation());
+document.addEventListener("keydown", (e) => {
+	if (e.key === "Escape" && recording) {
+		e.preventDefault();
+		e.stopPropagation();
+		stopDictation({ cancel: true });
+		announce(i18n.t("Dictation cancelled."));
+	} else if (command(e) && e.shiftKey && e.code === "Space" && cur === "chat" && voiceReady) {
+		e.preventDefault();
+		recording ? stopDictation() : startDictation();
+	}
+}, true);
 $("box").onkeydown = (e) => {
 	const box = $("box");
 	if (e.isComposing) return;
