@@ -57,7 +57,7 @@
 		byId("fileClear").disabled = !!busy || !(metadata.counts?.segments || metadata.counts?.files);
 		byId("fileStop").hidden = !metadata.busy;
 		byId("fileSetup").textContent = installed ? "Repair local search" : "Install local search";
-		byId("fileSetupNote").textContent = installed ? "EmbeddingGemma 2 is installed on this computer. Choose folders, then index them to search their contents by meaning." : "First, install EmbeddingGemma 2 (requires Python 3.10–3.13). Then choose folders and index them. Downloads happen during setup; indexing and search run on this computer.";
+		byId("fileSetupNote").textContent = installed ? "EmbeddingGemma 2 is installed on this computer. Choose folders, then index them to search their contents by meaning." : "First, install EmbeddingGemma 2 (a one-time download of about 850 MB; nothing else to install). Then choose folders and index them. Indexing and search run on this computer.";
 		const progress = byId("fileProgress");
 		progress.hidden = !metadata.busy;
 		if (details.bytesTotal > 0 && metadata.operation === "setup") {
@@ -81,7 +81,7 @@
 		activity.hidden = !extra.length;
 		if (actionError || metadata.error) return statusMessage(actionError || metadata.error, true);
 		if (metadata.busy) {
-			const phases = { python: "Checking Python", installing: "Installing local search libraries", checking: "Checking local model libraries", downloading: "Downloading EmbeddingGemma 2", loading: "Loading EmbeddingGemma 2", verifying: "Checking the local model", discovering: "Finding files in your selected folders", embedding: "Reading files for meaning search", cancelled: "Stopping local search" };
+			const phases = { downloading: "Downloading EmbeddingGemma 2", loading: "Loading EmbeddingGemma 2", verifying: "Checking the local model", discovering: "Finding files in your selected folders", embedding: "Reading files for meaning search", cancelled: "Stopping local search" };
 			let part = details.total > 0 ? ` · ${details.done ?? 0} of ${details.total} files finished` : "";
 			if (details.bytesTotal > 0 && metadata.operation === "setup") {
 				const mb = value => (value / 1_000_000).toFixed(1);

@@ -2,10 +2,9 @@
 export const EMBEDDING_DEFAULTS = Object.freeze({
 	enabled: false,
 	assist: true,
-	model: "google/embeddinggemma-2",
+	model: "onnx-community/embeddinggemma-2-ONNX",
 	dimensions: 768,
-	pythonPath: "",
-	device: "cpu",
+	device: "cpu", // cpu | gpu (DirectML on Windows, Core ML on macOS, CUDA on Linux; falls back to the CPU)
 });
 
 export function embeddingSettings(value) {
@@ -15,7 +14,7 @@ export function embeddingSettings(value) {
 		assist: v.assist !== false,
 		model: EMBEDDING_DEFAULTS.model,
 		dimensions: [128, 256, 512, 768].includes(v.dimensions) ? v.dimensions : 768,
-		pythonPath: typeof v.pythonPath === "string" ? v.pythonPath.trim().slice(0, 2000) : "",
-		device: ["cpu", "cuda"].includes(v.device) ? v.device : "cpu",
+		// "cuda" and "mps" were the Python runtime's GPU choices; both mean the GPU now.
+		device: ["gpu", "cuda", "mps"].includes(v.device) ? "gpu" : "cpu",
 	};
 }

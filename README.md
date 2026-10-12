@@ -30,7 +30,7 @@ Open Midnight with **Ctrl+Win** on Windows (press both keys, then release), **Cm
 - **Context:** retrieve related confirmed memories, previous answers, and selected files for your model. Images, PDF pages, and video frames can be inspected with a vision-capable model.
 - **Tray:** drag the title bar to move Midnight; closing it hides it while work continues. The summon shortcut restores it. Use the tray menu to quit.
 
-For local meaning search, install Python 3.10–3.13, open **Files → Manage search**, install local search, and index your selected folders. EmbeddingGemma 2 and its index run locally; chat providers receive retrieved excerpts used in tasks. Turn automatic retrieval off in **Settings → Local file search → Relevant context for AI**. See the [local search setup and technical notes](docs/digup-integration.md).
+For local meaning search, open **Files → Manage search**, install local search (a one-time download of about 850 MB; nothing else to install), and index your selected folders. EmbeddingGemma 2 and its index run locally; chat providers receive retrieved excerpts used in tasks. Turn automatic retrieval off in **Settings → Local file search → Relevant context for AI**. See the [local search setup and technical notes](docs/digup-integration.md).
 
 ## Develop
 

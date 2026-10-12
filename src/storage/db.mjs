@@ -3,8 +3,27 @@
 // use synchronous=FULL so a committed intent survives power loss, not only a process kill (docs/storage.md).
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { LATEST_SCHEMA, MIGRATIONS } from "./migrations.mjs";
+
+/**
+ * Load sqlite-vec (vector KNN for local search), then turn extension loading off again so nothing else can load
+ * one. Returns false when the extension is unavailable; search then falls back to scanning stored vectors.
+ */
+export function loadVectorExtension(db) {
+	try {
+		const vecPath = createRequire(import.meta.url)("sqlite-vec").getLoadablePath().replace(/app\.asar([\\/])/, "app.asar.unpacked$1");
+		db.loadExtension(vecPath);
+		return true;
+	} catch {
+		return false;
+	} finally {
+		try {
+			db.enableLoadExtension(false);
+		} catch {}
+	}
+}
 
 export class StorageLockedError extends Error {}
 export class NewerSchemaError extends Error {}
@@ -56,7 +75,8 @@ export async function openStore(dir, { backupsDir, readOnlyIfNewer = true, lock 
 	const release = lock ? acquireLock(`${dbPath}.lock`) : () => {};
 	let db;
 	try {
-		db = new DatabaseSync(dbPath);
+		db = new DatabaseSync(dbPath, { allowExtension: true });
+		const vector = loadVectorExtension(db);
 		db.exec("PRAGMA busy_timeout = 5000");
 		const version = db.prepare("PRAGMA user_version").get().user_version;
 		let readOnly = false;
@@ -74,7 +94,7 @@ export async function openStore(dir, { backupsDir, readOnlyIfNewer = true, lock 
 				migrate(db, version);
 			}
 		}
-		return wrap(db, { dir, dbPath, readOnly, release, schema: readOnly ? version : LATEST_SCHEMA });
+		return wrap(db, { dir, dbPath, readOnly, release, vector: vector && !readOnly, schema: readOnly ? version : LATEST_SCHEMA });
 	} catch (err) {
 		try {
 			db?.close();

@@ -37,10 +37,10 @@ test("search IPC accepts result IDs and bounded queries, never renderer-supplied
 });
 
 test("embedding settings keep the local model fixed and normalize persisted values", () => {
-	assert.deepEqual(embeddingSettings({ enabled: "yes", model: "remote-cloud", dimensions: 3, pythonPath: null, device: "unknown" }), {
-		enabled: false, assist: true, model: "google/embeddinggemma-2", dimensions: 768, pythonPath: "", device: "cpu",
+	assert.deepEqual(embeddingSettings({ enabled: "yes", model: "remote-cloud", dimensions: 3, pythonPath: "C:/python.exe", device: "unknown" }), {
+		enabled: false, assist: true, model: "onnx-community/embeddinggemma-2-ONNX", dimensions: 768, device: "cpu",
 	});
-	assert.equal(embeddingSettings({ dimensions: 256, pythonPath: " C:\\Python312\\python.exe " }).pythonPath, "C:\\Python312\\python.exe");
+	assert.equal(embeddingSettings({ dimensions: 256, device: "gpu" }).device, "gpu");
 });
 
 test("host file search works without embeddings and rechecks a result before opening after revocation", async (t) => {

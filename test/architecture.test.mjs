@@ -42,6 +42,11 @@ test("the renderer has no module imports and no Node access", () => {
 		const s = fs.readFileSync(path.join(src, "ui", f), "utf8");
 		assert.doesNotMatch(s, /\brequire\(|^import /m, `ui/${f}`);
 	}
+	// The hidden media decoder is a separate sandboxed page; its only module is the pinned pdf.js build.
+	const decoder = fs.readFileSync(path.join(src, "decoder", "media-decoder.js"), "utf8");
+	assert.doesNotMatch(decoder, /require\(/);
+	assert.deepEqual([...decoder.matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1]), ["../../node_modules/pdfjs-dist/build/pdf.min.mjs"]);
+	assert.match(fs.readFileSync(path.join(src, "desktop", "media-decoder.mjs"), "utf8"), /sandbox: true, contextIsolation: true, nodeIntegration: false/);
 	const main = fs.readFileSync(path.join(src, "main.mjs"), "utf8");
 	assert.match(main, /contextIsolation: true, sandbox: true, nodeIntegration: false/);
 	assert.match(main, /will-navigate", \(e\) => e\.preventDefault\(\)/);

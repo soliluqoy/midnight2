@@ -57,7 +57,8 @@ test("semantic file search persists normalized vectors and ranks passages with e
 	assert.equal(out.results[0].match, "semantic");
 	assert.deepEqual(out.results[0].locator, { startChar: 0, endChar: 70, line: 1 });
 	assert.match(out.results[0].hash, /^sha256:/);
-	assert.deepEqual(JSON.parse(f.store.get("SELECT vector FROM search_segments WHERE id = ?", out.results[0].id).vector), [1, 0, 0]);
+	const stored = f.store.get("SELECT embedding FROM search_segments WHERE id = ?", out.results[0].id).embedding;
+	assert.deepEqual([...new Float32Array(stored.buffer, stored.byteOffset, stored.byteLength / 4)], [1, 0, 0]);
 	assert.equal((await f.search.resolve(out.results[0].id)).path, path.join(f.source, "railway-notes.txt"));
 	assert.equal(f.calls.filter((call) => call.options?.query).length, 1);
 });

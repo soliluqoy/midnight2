@@ -16,6 +16,7 @@ import { missionTools } from "./mission-tools.mjs";
 import { shellTools } from "./shell-tools.mjs";
 import { workTools } from "./work.mjs";
 import { createEmbeddingRuntime } from "../search/runtime.mjs";
+import { platformMedia } from "../search/media-preview.mjs";
 import { createContextService } from "../context/service.mjs";
 import { contextTools } from "./context.mjs";
 
@@ -39,11 +40,12 @@ export function buildTools(s) {
 		markStep: (...a) => s.coord().markStep(...a),
 		askUser: (...a) => s.coord().askUser(...a),
 	};
-	const embeddingRuntime = s.searchRuntime ?? createEmbeddingRuntime({ settings: s.settings, paths: s.paths });
+	const decodeMedia = s.decodeMedia ?? platformMedia(s.platform);
+	const embeddingRuntime = s.searchRuntime ?? createEmbeddingRuntime({ settings: s.settings, paths: s.paths, decodeMedia });
 	let context;
 	const shell = shellTools({ platform: s.platform, evidence: s.evidence, commit: s.commit, selectPassages: (...args) => context.focusPages(...args) });
 	const fileSearch = createFileSearch({ ...s, runtime: embeddingRuntime });
-	const groups = [missionTools(coordProxy), fileTools(s).all, fileSearchTools({ ...s, search: fileSearch, runtime: embeddingRuntime }).all, workTools(s).all, connectorTools({ connectors, evidence: s.evidence, commit: s.commit, platform: s.platform }).all, shell.all];
+	const groups = [missionTools(coordProxy), fileTools(s).all, fileSearchTools({ ...s, search: fileSearch, decodeMedia }).all, workTools(s).all, connectorTools({ connectors, evidence: s.evidence, commit: s.commit, platform: s.platform }).all, shell.all];
 	const all = groups.flat();
 	const names = new Set(all.map((t) => t.name));
 	names.add("recall_context");

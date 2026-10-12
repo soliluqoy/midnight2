@@ -7,6 +7,7 @@ import { createBrowsers } from "./desktop/browsers.mjs";
 import { createAppRegistry } from "./apps/registry.mjs";
 import { createAppWorkspace } from "./desktop/app-workspace.mjs";
 import { createIpcRouter } from "./desktop/ipc.mjs";
+import { createMediaDecoder } from "./desktop/media-decoder.mjs";
 import { createHotkey } from "./desktop/hotkey.mjs";
 import { MARGIN, windowBounds, windowDims } from "./desktop/window-layout.mjs";
 import { createPlatform } from "./desktop/platform.mjs";
@@ -41,6 +42,7 @@ function startMissionShell() {
 	let router;
 	let updater;
 	let hotkeys;
+	let mediaDecoder;
 	let lastSize = "idle";
 	let escHeld = false;
 	const active = new Set(); // missions that are running (Esc only belongs to midnight while something runs)
@@ -398,6 +400,7 @@ function startMissionShell() {
 		if (process.platform === "darwin") app.dock?.hide();
 		web = createWeb(settings); // windows are created lazily on first use (plan ch. 09: no eager warmup)
 		browsers = createBrowsers();
+		mediaDecoder = createMediaDecoder({ log });
 		lease = createScreenLease({
 			userIdleMs: () => powerMonitor.getSystemIdleTime() * 1000,
 			arm: (epoch) => (process.platform === "win32" ? armHelper(epoch) : Promise.resolve()),
@@ -427,7 +430,7 @@ function startMissionShell() {
 		supervisor = createSupervisor({
 			dataDir,
 			settings: () => hostSettings(settings.get()),
-			platform: createPlatform({ web, browsers, lease, onAct, allowedOpen, previewFile }),
+			platform: createPlatform({ web, browsers, lease, onAct, allowedOpen, previewFile, mediaDecoder }),
 			onMessage: onEngineMessage,
 			onState: (s) => {
 				log("engine", s.state, s.error ?? "");
@@ -624,6 +627,7 @@ function startMissionShell() {
 			stopComputer();
 			web?.dispose();
 			browsers?.dispose();
+			mediaDecoder?.dispose();
 			app.exit(0);
 		}
 	});

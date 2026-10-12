@@ -326,7 +326,6 @@
 
 	function fileSearchSection() {
 		const embedding = S.settings.embedding ?? {};
-		const python = h("input", { class: "sinp", value: embedding.pythonPath ?? "", placeholder: "python (or a Python executable path)", "aria-label": "File search Python executable", onchange: (e) => save({ embedding: { pythonPath: e.target.value.trim() } }) });
 		return sec(
 			"file-search",
 			"LOCAL FILE SEARCH",
@@ -334,7 +333,7 @@
 			field("Relevant context for AI", "Find related memories, previous tasks, selected files and workflows for your chosen model. A cloud provider receives the retrieved excerpts. Word matching works while the local model loads.", toggle(embedding.assist !== false, () => save({ embedding: { assist: embedding.assist === false } }), "Use relevant context for AI")),
 			h("p", { class: "hint" }, "Searches only the folders selected above. Indexes documents, images, audio and video; results can become the starting point for a task."),
 			h("div", { class: "row" }, h("button", { class: "sb", onclick: () => window.openFileSearch?.() }, "Open file search")),
-			h("details", {}, h("summary", { class: "hint" }, "Python runtime"), h("p", { class: "hint" }, "Install local search in the search view downloads packages and the model. Python must already be installed. Leave this blank to use Python on your PATH."), python),
+			field("Use the graphics card", "Faster indexing on supported GPUs (DirectML on Windows). Falls back to the processor when unavailable.", toggle(embedding.device === "gpu", () => save({ embedding: { device: embedding.device === "gpu" ? "cpu" : "gpu" } }), "Use the graphics card for local search")),
 		);
 	}
 
