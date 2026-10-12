@@ -412,3 +412,11 @@ body[data-motion=reduced] *{animation-duration:.001s!important;animation-iterati
 .attach-remove:hover{color:var(--ink);background:var(--surface-hover)}
 #cap[data-drop] .ask-bar{outline:2px dashed var(--highlight);outline-offset:-4px;border-radius:var(--radius-card)}
 @media (forced-colors:active){.attach-chip{border:1px solid CanvasText}#cap[data-drop] .ask-bar{outline-color:Highlight}}
+
+/* Approval previews: a file write's diff and the fields a submit would send. */
+#askPreview.diff .diff-add{display:block;background:var(--green-surface);color:var(--green)}
+#askPreview.diff .diff-del{display:block;background:var(--danger-surface);color:var(--danger)}
+.sends{margin:6px 0 2px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--surface-low)}
+.sends h6{margin:0 0 6px;font-size:11px;font-weight:600;color:var(--muted)}
+.sends .facts{margin:0}.sends .hint{margin:4px 0 0}
+@media (forced-colors:active){#askPreview.diff .diff-add,#askPreview.diff .diff-del{forced-color-adjust:none;background:Canvas;color:CanvasText;text-decoration:underline}#askPreview.diff .diff-del{text-decoration:line-through}.sends{border:1px solid CanvasText}}

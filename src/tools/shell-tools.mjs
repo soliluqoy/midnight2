@@ -12,6 +12,8 @@ const host = (u) => {
 };
 const clip = (s, n = 40) => (String(s).length > n ? `${String(s).slice(0, n - 1)}…` : String(s));
 const fixUrl = (u) => (/^[a-z]+:\/\//i.test(u) ? u : `https://${u}`);
+/** "What will be sent" for a click that may submit: the fields a probe found and where they go. */
+const sendsOf = (probe) => (probe.fields?.length || probe.hidden || probe.to ? { sends: (probe.fields ?? []).slice(0, 25), sendsHidden: probe.hidden || 0, sendsTo: probe.to || undefined } : {});
 
 /**
  * @param {{ platform: { call: (op: string, args: object, o?: object) => Promise<any> }, evidence: object, commit: Function }} deps
@@ -92,6 +94,7 @@ export function shellTools({ platform, evidence, commit, selectPassages }) {
 						verb: "Allow this click",
 						consequence: "This may submit a form, send a message or make a purchase on that website.",
 						preview: probe.form ? `Form: ${probe.form}` : undefined,
+						...sendsOf(probe),
 					},
 					feed: `browser › ${a.action}${label} (may submit)`,
 				};
@@ -153,7 +156,7 @@ export function shellTools({ platform, evidence, commit, selectPassages }) {
 				canonical: { ...a, label: probe.label, window: probe.window },
 				feed: commit ? `${feed} “${clip(probe.label ?? a.key, 30)}” (may submit)` : feed,
 				display: commit
-					? { title: `Press “${clip(probe.label ?? a.key, 40)}” in ${probe.window ?? "an app"}`, verb: "Allow this click", consequence: "This may send, submit, buy or delete something in that app." }
+					? { title: `Press “${clip(probe.label ?? a.key, 40)}” in ${probe.window ?? "an app"}`, verb: "Allow this click", consequence: "This may send, submit, buy or delete something in that app.", ...sendsOf(probe) }
 					: undefined,
 				lockTimeoutMs: 15000,
 			};

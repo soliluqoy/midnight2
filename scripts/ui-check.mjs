@@ -485,6 +485,19 @@ app.whenReady().then(async () => {
 			assert.deepEqual(create.attachments, ["att_2"], "only the remaining attachment is sent");
 			assert.ok(create.text.length > 0, "a task with only attachments still has a request");
 		}],
+		["approvals show a file write's diff and the fields a submit would send", async () => {
+			await js(`__fixture.variant('approval-diff'); await setState('mission');`);
+			await sleep(300);
+			const diff = await js(`const p=document.getElementById('askPreview'); return {open:document.getElementById('askPreviewBox').open, add:[...p.querySelectorAll('.diff-add')].map(s=>s.textContent.trim()), del:[...p.querySelectorAll('.diff-del')].map(s=>s.textContent.trim()), sends:document.getElementById('askSends').hidden};`);
+			assert.deepEqual(diff, { open: true, add: ["+Ship on Friday"], del: ["-Ship on Thursday"], sends: true });
+			await js(`__fixture.variant('approval-submit'); await setState('mission');`);
+			await sleep(300);
+			const sends = await js(`const s=document.getElementById('askSends'); return {hidden:s.hidden, title:s.querySelector('h6').textContent, rows:[...s.querySelectorAll('dt')].map((d)=>d.textContent+'='+d.nextElementSibling.textContent), extra:s.querySelector('.hint')?.textContent};`);
+			assert.equal(sends.hidden, false);
+			assert.match(sends.title, /shop\.example · POST/);
+			assert.deepEqual(sends.rows, ["Email=you@example.test", "Password=••••••••", "Quantity=2"]);
+			assert.match(sends.extra, /3 hidden fields/);
+		}],
 		["small-screen plans scroll without hiding the header or footer", async () => {
 			await js(`document.documentElement.style.setProperty('--h-mission','390px'); __fixture.variant('approval'); await setState('mission');`);
 			await sleep(500);

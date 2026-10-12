@@ -10,6 +10,37 @@ import { within } from "../policy/grants.mjs";
 import { realTarget } from "../policy/roots.mjs";
 import { readDocx } from "./documents/docx.mjs";
 import { readXlsx } from "./documents/xlsx.mjs";
+import { unifiedDiff } from "./diff.mjs";
+
+const TEXTUAL = /\.(md|markdown|txt|csv|tsv|json|jsonl|html?|xml|svg|ya?ml|ini|toml|log|css|js|mjs|ts|py|ps1|sh|sql)$/i;
+/** Readable text of a document for previews, or undefined when it has none (images, spreadsheets, binaries). */
+function previewText(file) {
+	try {
+		const st = fs.statSync(file);
+		if (!st.isFile() || st.size > 5 * 1024 * 1024) return undefined;
+		if (/\.docx$/i.test(file)) return readDocx(fs.readFileSync(file)).text;
+		if (!TEXTUAL.test(file)) return undefined;
+		const buf = fs.readFileSync(file);
+		return buf.includes(0) ? undefined : buf.toString("utf8");
+	} catch {
+		return undefined;
+	}
+}
+
+/** What an approval shows before a file is saved: a diff of the file it replaces, or the new file's opening. */
+const previewFields = (p) => (p ? { preview: p.text, previewKind: p.kind } : {});
+
+export function writePreview(source, dest, { overwrite }) {
+	const next = previewText(source);
+	if (next === undefined) return undefined;
+	const replacing = overwrite && fs.existsSync(dest);
+	if (replacing) {
+		const before = previewText(dest);
+		if (before !== undefined) return { kind: "diff", text: unifiedDiff(before, next, { labels: [`${path.basename(dest)} (now)`, `${path.basename(dest)} (after saving)`] }) ?? "No changes: the new version is identical." };
+	}
+	const lines = next.replace(/\r\n/g, "\n").split("\n");
+	return { kind: "text", text: `${lines.slice(0, 40).join("\n")}${lines.length > 40 ? `\n… ${lines.length - 40} more lines` : ""}`.slice(0, 4000) };
+}
 
 const SKIP_DIRS = /^(node_modules|\.git|\.svn|\$recycle\.bin|system volume information|appdata|\.cache|cache|temp|tmp|__pycache__|\.venv)$/i;
 const SECRET = /(^\.env(\..*)?$|\.pem$|\.key$|\.pfx$|\.p12$|^id_(rsa|ed25519|ecdsa)|\.kdbx$|credentials|secret|password|token)/i;
@@ -180,7 +211,7 @@ export function fileTools({ roots, evidence, commit, settings, paths }) {
 				target: dest,
 				canonical: { artifactHash: art.hash, dest: dest.toLowerCase(), overwrite: !!a.overwrite, expectHash: a.expectHash ?? null },
 				resources: [{ key: `file:${dest.toLowerCase()}`, mode: "write" }],
-				display: { title: `Save ${path.basename(dest)} to ${path.dirname(dest)}`, verb: "Save", attachments: [{ name: art.name, revision: art.revision, hash: art.hash }], consequence: a.overwrite ? "This replaces the existing file (a backup is kept)." : "This adds a new file; nothing is overwritten." },
+				display: { title: `Save ${path.basename(dest)} to ${path.dirname(dest)}`, verb: "Save", attachments: [{ name: art.name, revision: art.revision, hash: art.hash }], consequence: a.overwrite ? "This replaces the existing file (a backup is kept)." : "This adds a new file; nothing is overwritten.", ...previewFields(writePreview(art.path, dest, { overwrite: !!a.overwrite })) },
 				feed: `files › save ${path.basename(dest)}`,
 			};
 		},

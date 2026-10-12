@@ -594,5 +594,14 @@
 	"Look at the attached files.": "Lihat berkas yang dilampirkan.",
 	"{size} · first part": "{size} · bagian awal",
 	"Remove {name}": "Hapus {name}",
-	"{n} attached": "{n} terlampir"
+	"{n} attached": "{n} terlampir",
+	"added": "ditambahkan",
+	"removed": "dihapus",
+	"What will be sent to {to}": "Yang akan dikirim ke {to}",
+	"What will be sent": "Yang akan dikirim",
+	"Plus {n} hidden fields the page adds.": "Ditambah {n} kolom tersembunyi yang ditambahkan halaman.",
+	"No filled-in fields were found; the page or app decides what it sends.": "Tidak ditemukan kolom yang terisi; halaman atau aplikasi yang menentukan apa yang dikirim.",
+	"This replaces the existing file (a backup is kept).": "Ini menggantikan berkas yang ada (cadangan disimpan).",
+	"This adds a new file; nothing is overwritten.": "Ini menambahkan berkas baru; tidak ada yang ditimpa.",
+	"No changes: the new version is identical.": "Tidak ada perubahan: versi baru identik."
 }

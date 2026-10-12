@@ -79,12 +79,14 @@ export const disarmHelper = () => (proc ? call("disarm", {}, 3000).catch(() => p
 // What the latest element list said about each control, so the shell can describe a click before it happens.
 const lastElements = new Map();
 let lastElementsWindow;
+// Filled-in text fields of the window, as the latest element list reported them: what a send would carry.
+const filledFields = () => [...lastElements.values()].filter((e) => /edit|document|combo/i.test(e.t ?? "") && String(e.v ?? "").trim()).slice(0, 15).map((e) => ({ label: String(e.n || e.t).slice(0, 60), value: String(e.v).slice(0, 160) }));
 export function inspectComputer({ action, id, key }) {
 	if (action === "click_element" && id !== undefined) {
 		const e = lastElements.get(id);
-		return { label: e?.n ?? "", role: e?.t ?? "", window: lastElementsWindow?.title ?? "" };
+		return { label: e?.n ?? "", role: e?.t ?? "", window: lastElementsWindow?.title ?? "", fields: filledFields() };
 	}
-	if (action === "key") return { label: key ?? "", window: lastElementsWindow?.title ?? "", commitContext: /^(ctrl\+)?enter$/i.test(key ?? "") && [...lastElements.values()].some((e) => e.focus && /edit|document/i.test(e.t ?? "")) };
+	if (action === "key") return { label: key ?? "", window: lastElementsWindow?.title ?? "", fields: filledFields(), commitContext: /^(ctrl\+)?enter$/i.test(key ?? "") && [...lastElements.values()].some((e) => e.focus && /edit|document/i.test(e.t ?? "")) };
 	return { window: lastElementsWindow?.title ?? "" };
 }
 export const warmHelper = () => call("ping", {}, 15000).catch(() => {});

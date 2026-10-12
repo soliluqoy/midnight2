@@ -629,6 +629,18 @@ function renderFooter(m) {
 	foot("none");
 }
 
+/** A plain preview, or a diff with added and removed lines marked for the eye and for screen readers. */
+function renderPreview(node, d) {
+	node.classList.toggle("diff", d.previewKind === "diff");
+	if (d.previewKind !== "diff") return (node.textContent = d.preview ?? "");
+	node.replaceChildren(...String(d.preview ?? "").split("\n").map((line) => {
+		const kind = /^\+(?!\+\+ )/.test(line) ? "add" : /^-(?!-- )/.test(line) ? "del" : "";
+		const span = el("span", { class: kind ? `diff-${kind}` : "" }, document.createTextNode(`${line}\n`));
+		if (kind) span.setAttribute("aria-label", `${i18n.t(kind === "add" ? "added" : "removed")}: ${line.slice(1)}`);
+		return span;
+	}));
+}
+
 function renderApproval(m, a) {
 	visibleApproval = a;
 	const d = a.display ?? {};
@@ -642,8 +654,15 @@ function renderApproval(m, a) {
 	if (d.attachments?.length) row("FILES", d.attachments.map((x) => `${x.name} r${x.revision} · ${String(x.hash ?? "").slice(7, 15)}`).join("\n"));
 	if (!d.recipients?.length && d.target && !d.plan) row("TARGET", d.target);
 	$("askPreviewBox").hidden = !d.preview;
-	$("askPreview").textContent = d.preview ?? "";
-	$("askPreviewBox").open = !!d.plan;
+	renderPreview($("askPreview"), d);
+	$("askPreviewBox").open = !!d.plan || d.previewKind === "diff";
+	const sends = $("askSends");
+	sends.hidden = !(d.sends?.length || d.sendsHidden || d.sendsTo);
+	sends.replaceChildren(
+		el("h6", {}, d.sendsTo ? i18n.t("What will be sent to {to}", { to: d.sendsTo }) : "What will be sent"),
+		...(d.sends?.length ? [el("dl", { class: "facts" }, ...d.sends.flatMap((f) => [el("dt", {}, document.createTextNode(f.label)), el("dd", {}, document.createTextNode(f.value || "—"))]))] : [el("p", { class: "hint" }, "No filled-in fields were found; the page or app decides what it sends.")]),
+		d.sendsHidden ? el("p", { class: "hint" }, i18n.t("Plus {n} hidden fields the page adds.", { n: d.sendsHidden })) : null,
+	);
 	$("askConsequence").textContent = i18n.t(d.consequence ?? "");
 	$("askWhy").textContent = d.why && d.why !== "needs your OK" ? i18n.t(d.why) : "";
 	$("askYes").textContent = i18n.t(d.verb ?? "Approve");

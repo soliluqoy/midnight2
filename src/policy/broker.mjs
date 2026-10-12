@@ -92,7 +92,11 @@ export function createBroker(deps) {
 			recipients: d.recipients ?? cls.destinations ?? [],
 			attachments: d.attachments ?? [],
 			consequence: d.consequence ?? (isExternal(cls.effect) ? "This leaves your computer and cannot be undone by Midnight." : "This changes files on your computer."),
-			preview: typeof d.preview === "string" ? d.preview.slice(0, 4000) : undefined,
+			preview: typeof d.preview === "string" ? d.preview.slice(0, 4400) : undefined,
+			previewKind: d.previewKind === "diff" ? "diff" : undefined,
+			sends: Array.isArray(d.sends) ? d.sends.slice(0, 25).map((f) => ({ label: String(f.label ?? "").slice(0, 60), value: String(f.value ?? "").slice(0, 160) })) : undefined,
+			sendsHidden: Number.isInteger(d.sendsHidden) ? d.sendsHidden : undefined,
+			sendsTo: typeof d.sendsTo === "string" ? d.sendsTo.slice(0, 200) : undefined,
 			target: cls.target,
 			routine: isExternal(cls.effect) || cls.effect === "local.move" || cls.effect === "local.write",
 		};

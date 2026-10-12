@@ -69,6 +69,16 @@ const variants = {
 			},
 		],
 	},
+	"approval-diff": {
+		...base,
+		status: "waiting-approval",
+		approvals: [{ id: "apr2", nonce: "n2", intentHash: "sha256:y", display: { title: "Save plan.md to C:\\Users\\you\\Documents", verb: "Save", decline: "Decline", effect: "local.write", effectLabel: "save a file", previewKind: "diff", preview: "--- plan.md (now)\n+++ plan.md (after saving)\n # Plan\n-Ship on Thursday\n+Ship on Friday\n Owner: Sam\n(1 line added, 1 removed)", consequence: "This replaces the existing file (a backup is kept).", routine: true } }],
+	},
+	"approval-submit": {
+		...base,
+		status: "waiting-approval",
+		approvals: [{ id: "apr3", nonce: "n3", intentHash: "sha256:z", display: { title: "Press “Place order” on shop.example", verb: "Allow this click", decline: "Decline", effect: "browser.commit", effectLabel: "submit on a website", consequence: "This may submit a form, send a message or make a purchase on that website.", sends: [{ label: "Email", value: "you@example.test" }, { label: "Password", value: "••••••••" }, { label: "Quantity", value: "2" }], sendsHidden: 3, sendsTo: "shop.example · POST" } }],
+	},
 	question: { ...base, status: "waiting-input", waiting: { kind: "input", question: { id: "q1", prompt: "Two workbooks look like Q3 sales. Which one is final?", options: ["Q3 sales final.xlsx", "Q3 sales draft.xlsx"] } } },
 	reconcile: { ...base, status: "needs-reconciliation", recovery: { finished: ["revenue-by-region.svg r1 (validated)", "q3-sales-brief.docx r2 (validated)"], uncertain: [{ intentId: "act1", title: "Send “Q3 sales brief”", effect: "external.communication" }], next: "Check whether the uncertain action happened before anything is retried." } },
 	done: {
