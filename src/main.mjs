@@ -137,16 +137,15 @@ function startMissionShell() {
 		toCapsule({ kind: "shell", type: "open-settings" });
 	}
 
+	// The four-square mark, drawn for every display scale by scripts/build-icons.mjs; Electron picks tray@Nx.png for
+	// the monitor's scale. macOS uses a template image it recolors for light and dark menu bars.
 	function trayIcon() {
-		const n = 16;
-		const buf = Buffer.alloc(n * n * 4);
-		for (let y = 0; y < n; y++)
-			for (let x = 0; x < n; x++) {
-				const d = Math.hypot(x - 7.5, y - 7.5);
-				const i = (y * n + x) * 4;
-				if (d <= 6.5) [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]] = [0xd7, 0x78, 0x00, 255]; // BGRA · Windows blue
-			}
-		return nativeImage.createFromBuffer(buf, { width: n, height: n });
+		if (process.platform === "darwin") {
+			const img = nativeImage.createFromPath(dir("./assets/tray/trayTemplate.png"));
+			img.setTemplateImage(true);
+			return img;
+		}
+		return nativeImage.createFromPath(dir("./assets/tray/tray.png"));
 	}
 	let proactivePaused = false;
 	let trayStopped = false;

@@ -146,3 +146,15 @@ test("rapid shortcut changes serialize and shutdown removes all listeners", asyn
 	assert.equal(f.registered.size, 0);
 	assert.match(await f.controller.set(WINDOWS_HOTKEY), /stopped/);
 });
+
+test("the tray icon ships at every display scale and as a macOS template, drawn by the build script", async () => {
+	const fs = await import("node:fs");
+	const dir = new URL("../src/assets/tray/", import.meta.url);
+	const size = (name) => fs.readFileSync(new URL(name, dir)).readUInt32BE(16);
+	for (const [suffix, px] of [["", 16], ["@1.25x", 20], ["@1.5x", 24], ["@2x", 32], ["@2.5x", 40], ["@3x", 48]]) assert.equal(size(`tray${suffix}.png`), px, `tray${suffix}.png`);
+	assert.equal(size("trayTemplate.png"), 16);
+	assert.equal(size("trayTemplate@2x.png"), 32);
+	const main = fs.readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8");
+	assert.match(main, /setTemplateImage\(true\)/);
+	assert.doesNotMatch(main, /Buffer\.alloc\(n \* n \* 4\)/, "no runtime-drawn 16 px bitmap");
+});
