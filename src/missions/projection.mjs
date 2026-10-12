@@ -103,6 +103,13 @@ function applyInPlace(s, e) {
 		case "run.settled":
 			m.settledReason = p.reason;
 			break;
+		case "context.prepared":
+			m.context = p;
+			if (p.phase === "passages") feed(m, at, "↺", "look", "selected relevant source passages · " + p.mode);
+			else if ((p.memories?.length ?? 0) + (p.tasks?.length ?? 0) + (p.files?.length ?? 0) + (p.workflows?.length ?? 0)) {
+				feed(m, at, "↺", "look", "context · " + (p.memories?.length ?? 0) + " memories, " + (p.tasks?.length ?? 0) + " past tasks, " + (p.files?.length ?? 0) + " files · " + p.mode);
+			}
+			break;
 		case "plan.revised":
 			m.plan = { revision: p.revision, summary: p.summary ?? "", nodes: p.nodes ?? [], checks: p.checks ?? [], usesComputer: !!p.usesComputer, reason: p.reason };
 			m.steps = {};

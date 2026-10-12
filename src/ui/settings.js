@@ -331,6 +331,7 @@
 			"file-search",
 			"LOCAL FILE SEARCH",
 			field("Search by meaning", "EmbeddingGemma 2 runs on this computer; filename and word matches work without it", toggle(!!embedding.enabled, () => save({ embedding: { enabled: !embedding.enabled } }), "Enable local meaning search")),
+			field("Relevant context for AI", "Find related memories, previous tasks, selected files and workflows for your chosen model. A cloud provider receives the retrieved excerpts. Word matching works while the local model loads.", toggle(embedding.assist !== false, () => save({ embedding: { assist: embedding.assist === false } }), "Use relevant context for AI")),
 			h("p", { class: "hint" }, "Searches only the folders selected above. Indexes documents, images, audio and video; results can become the starting point for a task."),
 			h("div", { class: "row" }, h("button", { class: "sb", onclick: () => window.openFileSearch?.() }, "Open file search")),
 			h("details", {}, h("summary", { class: "hint" }, "Python runtime"), h("p", { class: "hint" }, "Install local search in the search view downloads packages and the model. Python must already be installed. Leave this blank to use Python on your PATH."), python),

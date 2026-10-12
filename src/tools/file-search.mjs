@@ -1,5 +1,6 @@
 // Model-facing access is cached retrieval only. Indexing, setup and opening files belong to trusted UI controls.
 import { Type } from "typebox";
+import { renderMedia } from "../search/media-preview.mjs";
 
 const locationLabel = (locator) => {
 	if (locator?.page !== undefined) return `page ${locator.page}`;
@@ -21,7 +22,7 @@ const passageSummary = (hit) => {
 	return "Embedding match at this source location.";
 };
 
-export function fileSearchTools({ search, evidence, commit, roots }) {
+export function fileSearchTools({ search, evidence, commit, roots, runtime, render = renderMedia }) {
 	const filesSearch = {
 		name: "files_search",
 		label: "Search selected files",
@@ -47,9 +48,30 @@ export function fileSearchTools({ search, evidence, commit, roots }) {
 			}
 			const header = `${out.mode === "hybrid" ? "Local meaning and word search" : "Word and filename search"}${out.warning ? `\n${out.warning}` : ""}`;
 			const lines = refs.map((hit, index) => `[${index + 1}] ${hit.path} · ${hit.kind} · ${locationLabel(hit.locator)} · ${hit.match} match\n${passageSummary(hit)}`);
+			lines.forEach((line, i) => { lines[i] = "Result ID: " + refs[i].id + "\n" + line; });
 			const limits = out.status?.warnings?.length ? `\n\nIndex notes: ${out.status.warnings.join(" ")}` : "";
 			return { content: [{ type: "text", text: `${header}\n\n${lines.length ? lines.join("\n\n") : "No matching indexed passages or filenames in the selected folders."}${limits}` }], details: { count: refs.length, mode: out.mode, warning: out.warning, results: refs.map(({ id, path, kind, locator, match, score, evidenceId }) => ({ id, path, kind, locator, match, score, evidenceId })) } };
 		},
 	};
-	return { all: [filesSearch] };
+	const filesView = {
+		name: "files_view",
+		label: "Inspect a media source",
+		description: "View the actual image, PDF page or video frame for a files_search result ID. Returns a bounded image for vision-capable models. Use this before interpreting a visual embedding match. Audio matches have no transcript and cannot be heard through this tool.",
+		parameters: Type.Object({ id: Type.String({ minLength: 1, maxLength: 120 }) }),
+		async classify(a) {
+			const hit = await search.resolve(a.id);
+			return { effect: "read.local", paths: [hit.path], target: hit.path, canonical: { id: a.id, path: hit.path, hash: hit.hash, locator: hit.locator }, feed: "inspect media source " + hit.name };
+		},
+		async execute(a, ctx) {
+			const hit = await search.resolve(a.id);
+			const image = await render(runtime, hit, { signal: ctx.signal });
+			if (ctx.signal?.aborted) throw Object.assign(new Error("Cancelled"), { name: "AbortError" });
+			const current = await search.resolve(a.id);
+			if (current.hash !== hit.hash || current.sourceVersion !== hit.sourceVersion) throw new Error("This source changed during preview. Search again.");
+			commit(() => evidence.record(ctx.missionId, { kind: "file", source: hit.path, sourceVersion: hit.sourceVersion, hash: hit.hash, locator: hit.locator }));
+			return { content: [{ type: "text", text: hit.path + " at " + JSON.stringify(hit.locator) + ". Actual visual source; audio has not been transcribed." }, { type: "image", data: image.data, mimeType: image.mimeType }],
+				details: { id: a.id, path: hit.path, locator: hit.locator } };
+		},
+	};
+	return { all: [filesSearch, filesView] };
 }

@@ -279,7 +279,7 @@ test("files_search exposes only retrieval and records PDF/timestamp evidence", a
 	f.search.index(); await finish(f.search);
 	const records = [];
 	const tools = fileSearchTools({ search: f.search, roots: f.roots, commit: (fn) => fn(), evidence: { record: (missionId, record) => { records.push({ missionId, ...record }); return `ev_${records.length}`; } } });
-	assert.deepEqual(tools.all.map((tool) => tool.name), ["files_search"]);
+	assert.deepEqual(tools.all.map((tool) => tool.name), ["files_search", "files_view"]);
 	const tool = tools.all[0];
 	const cls = tool.classify({ query: "commute" });
 	assert.equal(cls.effect, "read.local"); assert.ok(!cls.network); assert.deepEqual(cls.paths, [f.source]);

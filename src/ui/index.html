@@ -18,39 +18,39 @@
   <nav class="start-rail" aria-label="Main navigation">
     <button class="rail-button" id="navHome" title="Start / new task" aria-label="Start / new task" aria-current="page"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
     <button class="rail-button" id="navMissions" title="All missions" aria-label="All missions"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"/></svg></button>
-    <button class="rail-button" id="navSearch" title="Search your files (Ctrl+K)" aria-label="Search your files"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></button>
     <div class="rail-spacer"></div>
-    <button class="rail-button" id="navFolders" title="Folders midnight may use" aria-label="Folders midnight may use"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></button>
     <button class="rail-button" id="navSettings" title="Settings" aria-label="Settings"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 3h4l.6 2.5 1.4.7 2.4-.7 2.1 3.6-1.8 1.8v2.2l1.8 1.8-2.1 3.6-2.4-.7-1.4.7L14 21h-4l-.6-2.5-1.4-.7-2.4.7-2.1-3.6 1.8-1.8v-2.2L3.5 9.1l2.1-3.6 2.4.7 1.4-.7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
-    <button class="rail-button" id="navHide" title="Hide to tray (keeps working)" aria-label="Hide to tray"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v8M6.5 5.8a8.5 8.5 0 1 0 11 0"/></svg></button>
   </nav>
 
-  <!-- Windows 10 Start-inspired launcher: quick-access list, pinned tiles and a search/task bar. -->
+  <!-- One home view and input for tasks and local file search. -->
   <div class="lay l-chat" id="l-chat">
-    <div class="start-body">
-      <section class="start-list" aria-labelledby="quickHeading">
-        <h2 id="quickHeading">Quick access</h2>
-        <button class="start-item" id="startAsk"><span class="app-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></span><span>New task<small>Ask midnight anything</small></span></button>
-        <button class="start-item" id="bStackChat"><span class="app-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"/></svg></span><span>All missions<small id="startMissionCount">Your work, in one place</small></span></button>
-        <button class="start-item" id="startFolders"><span class="app-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></span><span>Your folders<small>Choose files to work with</small></span></button>
-        <button class="start-item" id="gearChat"><span class="app-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 3h4l.6 2.5 1.4.7 2.4-.7 2.1 3.6-1.8 1.8v2.2l1.8 1.8-2.1 3.6-2.4-.7-1.4.7L14 21h-4l-.6-2.5-1.4-.7-2.4.7-2.1-3.6 1.8-1.8v-2.2L3.5 9.1l2.1-3.6 2.4.7 1.4-.7Z"/><circle cx="12" cy="12" r="3"/></svg></span><span>Settings<small>Accounts and preferences</small></span></button>
-        <section class="launcher-apps" aria-labelledby="appsHeading"><div><h2 id="appsHeading">Your apps</h2><button id="openApps" class="launcher-apps-manage" title="Open saved websites">View all ↗</button></div><div id="pinnedApps" class="launcher-app-pins"></div><button id="addWebsite" class="launcher-add-app">+ Add website</button></section>
+    <div class="ask-bar">
+      <label class="sr" id="boxLabel" for="box">Ask or give a task</label>
+      <textarea id="box" class="inp" rows="2" aria-labelledby="boxLabel" placeholder="Ask a question or give midnight a task…"></textarea>
+      <div id="taskFile" class="task-file" hidden><span id="taskFileName"></span><small>Shared with your model on Send</small><button id="removeTaskFile" aria-label="Remove file from task" title="Remove file from task">×</button></div>
+      <div class="ask-meta">
+        <div class="seg home-mode" role="group" aria-label="Input mode"><button id="homeAsk" class="on" aria-pressed="true" title="Ask or give a task">Ask</button><button id="homeFiles" aria-pressed="false" title="Search files on this computer (Ctrl+K)">Files</button></div>
+        <button class="chip" id="chipModel" title="Change model">model</button><span class="chip ctx" id="chipCtx" title="Where this mission's data goes">cloud</span><button class="chip clip" id="chipClip" title="Prepare a summary of copied content" hidden>Summarize</button><span class="sr" id="hint">Ctrl+Win · Esc hides</span><button class="pb pri" id="sendTask" title="Start task (Enter)">Send ↵</button>
+      </div>
+    </div>
+    <div class="start-body" id="homeBrowse">
+      <section class="launcher-apps" aria-labelledby="appsHeading">
+        <div class="home-section-head"><h2 id="appsHeading">Your apps</h2><button id="openApps" class="home-link" title="Open saved websites">View all ↗</button></div>
+        <div class="launcher-app-row"><div id="pinnedApps" class="launcher-app-pins"></div><button id="addWebsite" class="launcher-add-app"><span class="app-icon" aria-hidden="true">+</span><span>Add website</span></button></div>
       </section>
-      <section class="start-pinned" aria-labelledby="pinnedHeading">
-        <h2 id="pinnedHeading">Productivity at a glance</h2>
-        <div class="tile-grid">
-          <button class="start-tile tile-wide" data-prompt="" data-placeholder="Ask a question or give midnight a task…"><span class="tile-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3c1.2 5.5 3.5 7.8 9 9-5.5 1.2-7.8 3.5-9 9-1.2-5.5-3.5-7.8-9-9 5.5-1.2 7.8-3.5 9-9Z"/></svg></span><strong>Ask midnight</strong><small>A question, a draft, a little help.</small></button>
-          <button class="start-tile" data-prompt="?? " data-placeholder="What would you like to research?"><span class="tile-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></span><strong>Research</strong><small>Find and compare</small></button>
-          <button class="start-tile" data-prompt="Create a draft of " data-placeholder="What would you like to draft?"><span class="tile-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5M7 8h6M7 12h3m3 4 1-4 6-6a1.4 1.4 0 0 1 2 2l-6 6Z"/></svg></span><strong>Write a draft</strong><small>Turn ideas into words</small></button>
-          <button class="start-tile tile-secondary" id="tileClipboard"><span class="tile-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 4V3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1h-1"/><rect x="3" y="6" width="14" height="16" rx="1.5"/><path d="M7 11h6M7 15h6M7 19h4"/></svg></span><strong>Summarize</strong><small>Use copied text or a link</small></button>
-          <button class="start-tile tile-secondary" data-prompt="Help me organize " data-placeholder="Which files would you like to organize?"><span class="tile-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></span><strong>Organize files</strong><small>You choose the folders</small></button>
-        </div>
+      <section id="homeContinue" class="home-continue" aria-labelledby="continueHeading" hidden>
+        <div class="home-section-head"><h2 id="continueHeading">Continue</h2><button id="bStackChat" class="home-link">All missions</button></div>
+        <div id="continueMissions" class="continue-missions"></div>
       </section>
     </div>
-    <div class="ask-bar">
-      <label class="ask-label" for="box"><span aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></span> Type here to ask midnight</label>
-      <textarea id="box" class="inp" rows="2" aria-label="Ask or give a task" placeholder="Ask a question or give midnight a task…"></textarea>
-      <div class="ask-meta"><button class="chip" id="chipModel" title="Change model">model</button><span class="chip ctx" id="chipCtx" title="Where this mission's data goes">cloud</span><button class="chip clip" id="chipClip" hidden></button><span class="mono" id="hint">Ctrl+Win · Esc hides</span><button class="pb pri" id="sendTask" title="Start task (Enter)">Send ↵</button></div>
+    <div class="home-search" id="homeSearch" hidden>
+      <div class="file-search-head"><select id="fileKind" aria-label="File type"><option value="">All files</option><option value="document">Documents</option><option value="image">Images</option><option value="audio">Audio</option><option value="video">Video</option></select><span id="fileSummary" role="status">Describe what you remember.</span><button id="manageSearch" class="home-link" aria-expanded="false" aria-controls="fileManagement">Manage search</button></div>
+      <div id="fileManagement" class="file-management" hidden>
+        <div class="file-tools"><button class="sb" id="fileFolders">Choose folders</button><button class="sb" id="fileSetup">Install local search</button><button class="sb" id="fileIndex">Index selected folders</button><button class="sb" id="fileStop" hidden>Stop</button><button class="sb" id="fileClear">Clear index</button></div>
+        <p class="file-note" id="fileSetupNote"></p>
+        <div class="file-progress" role="status" aria-live="polite"><span id="fileStatus">Checking local search…</span><span id="fileActivity" hidden></span><progress id="fileProgress" aria-label="Local search progress" hidden></progress></div>
+      </div>
+      <div class="file-content"><div class="file-list" id="fileResults" role="listbox" aria-label="Matching files" aria-busy="false"></div><section class="file-preview" id="filePreview" aria-label="Selected file preview"></section></div>
     </div>
   </div>
 
@@ -131,22 +131,6 @@
     </div>
   </div>
   <!-- settings and first-run -->
-  <div class="lay l-search" id="l-search">
-    <div class="mh"><div class="t"><small>ON THIS COMPUTER</small><b>Search your files</b></div><button class="sb" id="fileFolders">Choose folders</button></div>
-    <label class="sr" for="fileQuery">Describe a file or type words you remember</label>
-    <input class="inp" id="fileQuery" type="search" autocomplete="off" spellcheck="false" placeholder="Describe it: a receipt, an error screenshot, someone laughing…" aria-controls="fileResults" />
-    <div class="file-filters" role="group" aria-label="File type">
-      <button class="chip" data-file-kind="" aria-pressed="true">All</button><button class="chip" data-file-kind="document" aria-pressed="false">Documents</button><button class="chip" data-file-kind="image" aria-pressed="false">Images</button><button class="chip" data-file-kind="audio" aria-pressed="false">Audio</button><button class="chip" data-file-kind="video" aria-pressed="false">Video</button>
-    </div>
-    <div class="file-tools"><button class="sb" id="fileSetup">Install local search</button><button class="sb" id="fileIndex">Index selected folders</button><button class="sb" id="fileStop" hidden>Stop</button><button class="sb" id="fileClear">Clear index</button></div>
-    <p class="file-note" id="fileSetupNote">Local meaning search uses EmbeddingGemma 2. Requires Python 3.10–3.13; Install downloads Python packages and the model. Indexing and search run on this computer.</p>
-    <div class="file-progress" role="status" aria-live="polite"><span id="fileStatus">Checking local search…</span><span id="fileActivity" hidden></span><progress id="fileProgress" aria-label="Local search progress" hidden></progress></div>
-    <div class="file-content">
-      <div class="file-list" id="fileResults" role="listbox" aria-label="Matching files" aria-busy="false"></div>
-      <section class="file-preview" id="filePreview" aria-label="Selected file preview"></section>
-    </div>
-    <div class="file-footer"><span id="fileSummary" role="status">Describe what you remember.</span><span class="mono">↑ ↓ Select · Enter Open · Ctrl+Enter Reveal</span></div>
-  </div>
   <div class="lay l-settings" id="l-settings"></div>
   <div class="ui-error" id="uiError" role="alert" hidden><span id="errorText"></span><button class="ib" id="errorDismiss" aria-label="Dismiss error"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
 </div>

@@ -137,6 +137,7 @@ export async function createHost(o) {
 		toPiTool,
 		toolset: (mission) => tools.forMission(mission, settings).map((n) => toolMap.get(n)).filter(Boolean),
 		memory: tools.memory,
+		context: tools.context,
 		skills: tools.skills,
 		attention: tools.attention,
 		log,
@@ -268,7 +269,11 @@ export async function createHost(o) {
 			return { ok };
 		},
 		"files.status": () => tools.fileSearch.status(),
-		"files.setup": () => tools.fileSearch.setup(),
+		"files.setup": async () => {
+			const result = await tools.fileSearch.setup();
+			tools.context.schedule();
+			return result;
+		},
 		"files.index": () => tools.fileSearch.index(),
 		"files.search": (p) => tools.fileSearch.search(p),
 		"files.cancel": () => tools.fileSearch.cancel(),
@@ -332,7 +337,10 @@ export async function createHost(o) {
 			settings = { ...settings, ...next };
 			settings.embedding = embeddingSettings(settings.embedding);
 			if (JSON.stringify(before.embedding) !== JSON.stringify(settings.embedding)) {
-				tools.fileSearch.cancel();
+				const { assist: priorAssist, ...priorSearch } = before.embedding;
+				const { assist: nextAssist, ...nextSearch } = settings.embedding;
+				if (JSON.stringify(priorSearch) !== JSON.stringify(nextSearch)) tools.fileSearch.cancel();
+				tools.context.reset();
 			}
 			if (JSON.stringify(before.local) !== JSON.stringify(settings.local)) {
 				try {
@@ -352,10 +360,13 @@ export async function createHost(o) {
 			const r = await coord.recover();
 			tools.watches?.start();
 			tools.resources?.apply(settings);
+			tools.context.schedule();
 			return r;
 		},
 		async close() {
 			tools.watches?.stop();
+			await coord.shutdown();
+			tools.context.close();
 			await tools.fileSearch.close();
 			for (const id of runtime.running()) await runtime.abort(id).catch(() => {});
 			store.close();
@@ -363,6 +374,7 @@ export async function createHost(o) {
 		/** Test hook: drop everything without cleanup, as a crash would. */
 		crash() {
 			tools.watches?.stop();
+			tools.context.close();
 			tools.fileSearch.close();
 			try {
 				store.raw.close();

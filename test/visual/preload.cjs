@@ -116,7 +116,7 @@ const settings = {
 };
 const ok = (v) => () => Promise.resolve(v);
 const noop = () => Promise.resolve(null);
-const dims = { idle: [760, 580], chat: [760, 580], mission: [760, 640], settings: [760, 640], stack: [760, 640], search: [860, 680], read: [940, 900] };
+const dims = { idle: [760, 460], chat: [760, 460], mission: [760, 640], settings: [760, 640], stack: [760, 640], search: [760, 460], read: [940, 900] };
 const fileStatus = { state: "ready", busy: false, operation: null, phase: "Ready", error: null, progress: { done: 8, total: 8, file: null, segments: 24 }, counts: { files: 8, segments: 24, kinds: { document: 5, image: 1, audio: 1, video: 1 } }, runtime: { model: "google/embeddinggemma-2", dimensions: 768, device: "cpu", available: true, ready: true }, skipped: 0, truncated: 0, warnings: [], lastIndexedAt: t(0) };
 const fileResults = [
 	{ id: "fs1", path: "C:\\Users\\you\\Documents\\Sales\\Q3 budget.pdf", name: "Q3 budget.pdf", kind: "document", text: "The Q3 budget allocates additional funding to the East region after revenue grew 10.4%. The updated forecast includes hiring and infrastructure costs.", locator: { page: 3 }, score: .89, match: "both" },

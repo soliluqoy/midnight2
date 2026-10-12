@@ -108,6 +108,26 @@ test("dimensions change invalidates fingerprint and restarts the old worker", as
 	assert.equal(children[0].killed, true); assert.equal(calls.length, 2);
 });
 
+test("a foreground deadline returns promptly while preserving the loaded worker and finishing its active batch", async t => {
+	let answer, began;
+	const ready = new Promise(resolve => { began = resolve; });
+	const { runtime, children } = fixture(t, { reply: (request, child) => {
+		answer = () => child.stdout.write(JSON.stringify({ id: request.id, ok: true, result: request.texts.map(() => [1, ...Array(127).fill(0)]) }) + "\n");
+		began();
+	} });
+	const ac = new AbortController();
+	const work = runtime.embedText(["foreground"], { signal: ac.signal, keepWorkerOnAbort: true });
+	await ready;
+	ac.abort();
+	await assert.rejects(work, { name: "AbortError" });
+	assert.equal(children[0].killed, false);
+	assert.equal(runtime.status().busy, true);
+	answer();
+	await new Promise(resolve => setTimeout(resolve, 10));
+	assert.equal(runtime.status().ready, true);
+	assert.equal(runtime.status().busy, false);
+});
+
 test("abort kills active inference and promptly rejects queued inference", async t => {
 	let started;
 	const waiting = new Promise(resolve => { started = resolve; });

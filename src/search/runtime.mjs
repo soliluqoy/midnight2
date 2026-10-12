@@ -19,7 +19,7 @@ export function createEmbeddingRuntime({ settings, paths, spawnImpl = spawn, wor
 	const manifestPath = path.join(runtimeDir, "prepared.json");
 	let child, pending, startup, sequence = 0, chain = Promise.resolve(), phase = "missing", lastError, workerInfo, workerFingerprint;
 	let setupPromise, setupController;
-	let idleTimer, closed = false;
+	let idleTimer, closed = false, queued = 0;
 	function configuration() {
 		const embedding = getSettings().embedding ?? {};
 		const dimensions = embedding.dimensions ?? 768;
@@ -38,7 +38,7 @@ export function createEmbeddingRuntime({ settings, paths, spawnImpl = spawn, wor
 	function status() {
 		const info = manifest(), config = configuration();
 		const available = existsSync(python) && !!info;
-		return { ...(workerInfo ?? {}), model: EMBEDDING_MODEL, ...config, runtimeDir, available, ready: !!child && phase === "ready" && workerFingerprint === fingerprint(), phase: phase === "missing" && available ? "available" : phase, fingerprint: fingerprint(), revision: info?.revision, modalities: ["text", "image", "pdf", "audio", "video"], ...(lastError ? { error: lastError } : {}) };
+		return { ...(workerInfo ?? {}), model: EMBEDDING_MODEL, ...config, runtimeDir, available, busy: queued > 0 || !!setupPromise, ready: !!child && phase === "ready" && workerFingerprint === fingerprint(), phase: phase === "missing" && available ? "available" : phase, fingerprint: fingerprint(), revision: info?.revision, modalities: ["text", "image", "pdf", "audio", "video"], ...(lastError ? { error: lastError } : {}) };
 	}
 	function environment(online = false) {
 		return { ...process.env, HF_HOME: path.join(runtimeDir, "cache"), HF_HUB_CACHE: path.join(runtimeDir, "cache", "hub"), HF_HUB_OFFLINE: online ? "0" : "1", TRANSFORMERS_OFFLINE: online ? "0" : "1", HF_HUB_DISABLE_TELEMETRY: "1", DO_NOT_TRACK: "1", TOKENIZERS_PARALLELISM: "false", PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" };
@@ -174,7 +174,7 @@ export function createEmbeddingRuntime({ settings, paths, spawnImpl = spawn, wor
 		});
 		return startup;
 	}
-	function request(op, input, { signal, onProgress } = {}) {
+	function request(op, input, { signal, onProgress, keepWorkerOnAbort = false } = {}) {
 		const task = async () => {
 			if (closed) throw failure("Local search runtime is closed.", "SEARCH_RUNTIME_CLOSED");
 			if (signal?.aborted) throw abortError();
@@ -184,14 +184,15 @@ export function createEmbeddingRuntime({ settings, paths, spawnImpl = spawn, wor
 			return new Promise((resolve, reject) => {
 				const id = ++sequence;
 				const finish = (error, result) => { clearTimeout(timer); signal?.removeEventListener("abort", cancel); releaseWhenIdle(); error ? reject(error) : resolve(result); };
-				const cancel = () => stop(abortError());
+				const cancel = () => { if (!keepWorkerOnAbort) stop(abortError()); };
 				const timer = setTimeout(() => stop(failure("Local embedding timed out.", "SEARCH_TIMEOUT")), timeoutMs);
 				pending = { id, resolve: result => finish(undefined, result), reject: error => finish(error), onProgress };
 				signal?.addEventListener("abort", cancel, { once: true });
 				child.stdin.write(JSON.stringify({ id, op, ...input }) + "\n", error => { if (error) stop(failure(`Could not contact the local model: ${error.message}`)); });
 			});
 		};
-		const result = chain.then(task, task); chain = result.catch(() => {});
+		queued++;
+		const result = chain.then(task, task).finally(() => queued--); chain = result.catch(() => {});
 		if (!signal) return result;
 		// A cancelled queued request returns immediately without interrupting another caller's work.
 		return new Promise((resolve, reject) => {
@@ -201,11 +202,11 @@ export function createEmbeddingRuntime({ settings, paths, spawnImpl = spawn, wor
 			result.then(resolve, reject).finally(() => signal.removeEventListener("abort", cancel));
 		});
 	}
-	async function embedText(texts, { query = false, signal, onProgress } = {}) {
+	async function embedText(texts, { query = false, signal, onProgress, keepWorkerOnAbort = false } = {}) {
 		if (!Array.isArray(texts) || texts.some(text => typeof text !== "string")) throw failure("Embedding text must be an array of strings.");
 		if (!texts.length) return [];
 		const prompted = texts.map(text => query ? `task: search result | query: ${text}` : `title: none | text: ${text}`);
-		return request("text", { texts: prompted }, { signal, onProgress });
+		return request("text", { texts: prompted }, { signal, onProgress, keepWorkerOnAbort });
 	}
 	function embedMedia(filePath, kind, { signal, maxSegments = 120, onProgress } = {}) {
 		if (!["image", "pdf", "audio", "video"].includes(kind)) return Promise.reject(failure(`Visual rendering for ${kind} is unavailable. Export slides to PDF to search their visual content.`, "SEARCH_MEDIA_UNSUPPORTED"));

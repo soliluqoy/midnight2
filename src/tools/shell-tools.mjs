@@ -16,7 +16,7 @@ const fixUrl = (u) => (/^[a-z]+:\/\//i.test(u) ? u : `https://${u}`);
 /**
  * @param {{ platform: { call: (op: string, args: object, o?: object) => Promise<any> }, evidence: object, commit: Function }} deps
  */
-export function shellTools({ platform, evidence, commit }) {
+export function shellTools({ platform, evidence, commit, selectPassages }) {
 	const recordPages = (missionId, pages) => {
 		if (!pages?.length) return;
 		commit(() => {
@@ -52,9 +52,19 @@ export function shellTools({ platform, evidence, commit }) {
 			return { effect: "read.web", network: true, target: urls.join(" "), canonical: { urls, query: a.query ?? "" }, feed: `read ${urls.length} page${urls.length === 1 ? "" : "s"} › ${urls.map(host).join(", ")}` };
 		},
 		async execute(a, ctx) {
-			const out = await platform.call("tool.read_pages", a, { signal: ctx.signal });
-			recordPages(ctx.missionId, out.details?.pages);
-			return { content: out.content, details: { urls: out.details?.urls } };
+			const out = await platform.call("tool.read_pages", { ...a, includeFullText: !!selectPassages }, { signal: ctx.signal });
+			let pages = out.details?.pages;
+			let content = out.content, metrics;
+			if (selectPassages && pages?.some(p => typeof p.text === "string")) {
+				const budget = Math.max(3000, Math.floor(35000 / Math.max(5, a.urls.length)) + (a.urls.length <= 2 ? 6000 : 0));
+				const selected = await selectPassages(pages, a.query ?? "", budget, { signal: ctx.signal, missionId: ctx.missionId, runId: ctx.runId });
+				pages = selected.pages;
+				metrics = selected.metrics;
+				content = [{ type: "text", text: pages.map((p, i) => "[" + (i + 1) + "] " + p.title + "\n" + p.url + "\n\n" + p.excerpt).join("\n\n---\n\n") +
+					(out.details?.failures?.length ? "\n\nFailed pages:\n" + out.details.failures.map(p => p.url + ": " + p.error).join("\n") : "") }];
+			}
+			recordPages(ctx.missionId, pages);
+			return { content, details: { urls: out.details?.urls, context: metrics } };
 		},
 	};
 

@@ -18,6 +18,7 @@ export function createCoordinator(d) {
 	const runs = new Map(); // missionId -> { runId, ac }
 	const questionWaiters = new Map(); // questionId -> resolve(answer)
 	const planWaiters = new Map(); // approvalId -> resolve
+	let closing = false;
 
 	// ---------- helpers ----------
 	function setStatus(missionId, to, reason) {
@@ -85,7 +86,7 @@ export function createCoordinator(d) {
 	async function runMission(missionId) {
 		const m = repo.get(missionId);
 		const pend = m?.scope?.pending;
-		if (!m || !pend || ["paused", "cancelled"].includes(m.status)) return;
+		if (closing || !m || !pend || ["paused", "cancelled"].includes(m.status)) return;
 		const st = settings();
 		let route;
 		try {
@@ -99,6 +100,7 @@ export function createCoordinator(d) {
 			});
 			return;
 		}
+		if (closing || repo.get(missionId)?.status !== "queued" || stop.blocked(missionId)) return;
 		const run = commit(() => {
 			const r = repo.startRun({ missionId, requestId: pend.requestId, input: pend.input, runtimeVersion: runtime.version, modelRoute: route.route, followUp: !!pend.followUp });
 			clearPending(missionId);
@@ -107,13 +109,27 @@ export function createCoordinator(d) {
 		});
 		if (run.duplicate) return;
 		const ac = new AbortController();
-		runs.set(missionId, { runId: run.id, ac });
+		runs.set(missionId, { runId: run.id, ac, pending: pend, phase: "preflight" });
 		stop.clearMission(missionId);
 		const fresh = repo.get(missionId);
 		const skill = fresh.skill ? skills?.get(fresh.skill) : undefined;
-		const memories = memory ? memory.relevant(pend.input, { limit: 6 }).map((x) => x.text) : [];
+		let recalled;
+		if (d.context && !fresh.scope.pageAssistant && settings().embedding?.assist !== false) {
+			try { recalled = await d.context.prepare(pend.input, fresh, { signal: ac.signal, runId: run.id }); }
+			catch (err) { if (!ac.signal.aborted) log("context retrieval", err.message); }
+		}
+		// A stop during preflight must never start a cloud request afterwards.
+		if (ac.signal.aborted || stop.blocked(missionId) || repo.get(missionId)?.status !== "running") {
+			commit(() => {
+				repo.endRun(run.id, { outcome: "aborted" });
+				emit("run.settled", { missionId, runId: run.id, payload: { reason: "aborted" } });
+			});
+			return;
+		}
+		const memories = fresh.scope.pageAssistant ? [] : recalled?.memories ?? (memory ? memory.relevant(pend.input, { limit: 6 }).map((x) => x.text) : []);
 		const tools = toolset(fresh).map((spec) => toPiTool(spec, missionId, run.id));
-		const input = buildInput(pend);
+		const input = buildInput({ ...pend, context: [pend.context, recalled?.context].filter(Boolean).join("\n\n") });
+		runs.get(missionId).phase = "model";
 		const res = await runtime.run(missionId, {
 			runId: run.id,
 			input,
@@ -292,15 +308,21 @@ export function createCoordinator(d) {
 	function followUp(missionId, input, requestId, context) {
 		const m = repo.get(missionId);
 		if (!m) throw new Error("no such mission");
-		if (runtime.isRunning(missionId)) return steer(missionId, input);
+		if (runtime.isRunning(missionId) || runs.has(missionId)) return steer(missionId, input);
 		if (m.status === "waiting-input" && m.waiting?.question) return answer(missionId, m.waiting.question.id, input);
 		// The model does not see Midnight's checks; tell it what is still missing so a nudge leads to work, not an apology.
 		const unfinished = ["partially-succeeded", "failed"].includes(m.status) && m.outcome?.summary ? m.outcome.summary : undefined;
+		stop.clearMission(missionId);
 		enqueue(missionId, { input, requestId, context, followUp: true, unfinished });
 		return { queued: true };
 	}
 	async function steer(missionId, input) {
-		const ok = await runtime.steer(missionId, input);
+		const pending = runs.get(missionId);
+		let ok;
+		if (pending?.phase === "preflight" && !pending.ac.signal.aborted) {
+			pending.pending.input += "\n\n[User follow-up]\n" + input;
+			ok = true;
+		} else ok = await runtime.steer(missionId, input);
 		if (ok) commit(() => emit("run.started", { missionId, runId: runs.get(missionId)?.runId, payload: { input: input.slice(0, 300), followUp: true, steer: true } }));
 		return { steered: ok };
 	}
@@ -317,6 +339,7 @@ export function createCoordinator(d) {
 		return { ok: true };
 	}
 	async function pause(missionId) {
+		runs.get(missionId)?.ac.abort();
 		stop.stopMission(missionId, "paused");
 		queue.remove(missionId);
 		await runtime.abort(missionId);
@@ -337,6 +360,7 @@ export function createCoordinator(d) {
 	}
 	async function cancel(missionId) {
 		stop.stopMission(missionId, "cancelled");
+		runs.get(missionId)?.ac.abort();
 		queue.remove(missionId);
 		for (const a of approvals.pending(missionId)) approvals.close(a.id, "cancelled");
 		await runtime.abort(missionId);
@@ -354,9 +378,10 @@ export function createCoordinator(d) {
 	async function emergencyStop() {
 		const t0 = Date.now();
 		stop.emergencyStop();
+		for (const r of runs.values()) r.ac.abort();
 		await platform?.lease?.revokeAll?.();
 		const ackMs = Date.now() - t0;
-		const active = runtime.running();
+		const active = [...new Set([...runtime.running(), ...runs.keys()])];
 		await Promise.all(active.map((id) => runtime.abort(id).catch(() => {})));
 		commit(() => {
 			for (const id of active) {
@@ -546,6 +571,12 @@ export function createCoordinator(d) {
 		recover,
 		missionView: (id) => repo.get(id),
 		running: () => [...runs.keys()],
+		async shutdown() {
+			closing = true;
+			queue.setGate(() => "Host is closing");
+			for (const r of runs.values()) r.ac.abort();
+			await Promise.all(runtime.running().map(id => runtime.abort(id).catch(() => {})));
+		},
 		/** Called by the broker when an approval is requested or decided. */
 		onWaiting(missionId, kind, info) {
 			commit(() => {

@@ -447,7 +447,7 @@ export function createFileSearch({ store, roots, settings, paths, runtime = crea
 		const filenamePhrase = nameNorm.includes(query);
 		return { score: textFraction * 0.45 + nameFraction * 0.25 + (phrase ? 0.45 : 0) + (filenamePhrase ? 0.3 : 0), matched: phrase || filenamePhrase || textFraction > 0 || nameFraction > 0 };
 	}
-	async function queryCached({ query, kind, limit = 12, signal } = {}) {
+	async function queryCached({ query, kind, limit = 12, signal, queryVector: suppliedVector, vectorFingerprint, wordsOnly = false } = {}) {
 		assertLive();
 		checkSignal(signal);
 		if (typeof query !== "string" || !query.trim() || query.length > 1000) throw new Error("Enter a search query of 1 to 1000 characters.");
@@ -462,7 +462,10 @@ export function createFileSearch({ store, roots, settings, paths, runtime = crea
 		let searchWarning;
 		let queryVector;
 		const matchingVectors = Number(store.get("SELECT COUNT(*) AS n FROM search_segments WHERE fingerprint = ? AND vector IS NOT NULL", fp).n);
-		if (available && matchingVectors) {
+		if (available && matchingVectors && suppliedVector && vectorFingerprint === fp) {
+			queryVector = normalizeVector(suppliedVector, Number(settingsNow().embedding?.dimensions ?? runtime.status().dimensions));
+			mode = "hybrid";
+		} else if (available && matchingVectors && !wordsOnly) {
 			try {
 				const vectors = await runtime.embedText([query], { query: true, signal });
 				checkSignal(signal); assertLive();

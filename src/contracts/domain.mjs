@@ -136,6 +136,7 @@ export const EVENT_TYPES = [
 	"mission.archived",
 	"run.started",
 	"run.settled",
+	"context.prepared",
 	"plan.revised",
 	"step.started",
 	"step.state",

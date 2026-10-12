@@ -49,11 +49,14 @@ app.whenReady().then(async () => {
 			await js(`await setState('chat');`);
 			assert.deepEqual(await js(`return {title:getComputedStyle(document.querySelector('.window-bar')).webkitAppRegion,controls:[...document.querySelectorAll('.window-control')].map(el=>getComputedStyle(el).webkitAppRegion),pill:!!document.getElementById('l-idle')};`), { title: "drag", controls: ["no-drag", "no-drag"], pill: false });
 			assert.ok(await js(`return parseFloat(getComputedStyle(cap).borderTopLeftRadius)>0 && getComputedStyle(cap).overflow==='hidden';`));
-			assert.equal(await js(`return document.querySelectorAll('.start-tile').length;`), 5);
+			assert.equal(await js(`return document.querySelectorAll('.continue-mission').length;`), 3);
+			assert.equal(await js(`return cap.clientHeight;`), 458);
 			const body = await js(`const el=document.querySelector('.start-body'); return {height:el.clientHeight,content:el.scrollHeight};`);
 			assert.ok(body.content <= body.height + 1, `default launcher content fits without scrolling: ${JSON.stringify(body)}`);
+			await js(`__fixture.emit({kind:'shell',type:'apps',apps:Array.from({length:6},(_,i)=>({id:'app'+i,name:'Website '+i,pinned:true}))});`);
+			assert.ok(await js(`const el=document.querySelector('.start-body'); return el.scrollHeight<=el.clientHeight+1;`), 'saved apps and three recent missions fit without vertical scrolling');
 		}],
-		["keyboard focus remains visible on navigation, tiles and task controls", async () => {
+		["keyboard focus remains visible on navigation, recent missions and task controls", async () => {
 			await js(`await setState('chat');`);
 			await sleep(400);
 			// Hidden offscreen windows need Chromium focus emulation for real keyboard modality.
@@ -62,7 +65,7 @@ app.whenReady().then(async () => {
 				await win.webContents.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
 				await win.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
 				await win.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
-				for (const selector of ["#windowMin", "#navHome", ".start-tile", "#box", "#sendTask"]) {
+				for (const selector of ["#windowMin", "#navHome", ".continue-mission", "#homeFiles", "#addWebsite", "#box", "#sendTask"]) {
 					const marker = await js(`const el=document.querySelector(${JSON.stringify(selector)}); document.activeElement.blur(); const before=getComputedStyle(el); const baseline={border:before.borderColor,shadow:before.boxShadow}; el.focus(); const s=getComputedStyle(el); return {focused:document.activeElement===el,visible:el.matches(':focus-visible'),outline:s.outlineStyle!=='none' && parseFloat(s.outlineWidth)>=2,offset:parseFloat(s.outlineOffset),outlineColor:s.outlineColor,border:s.borderColor,changed:s.borderColor!==baseline.border || s.boxShadow!==baseline.shadow,background:s.backgroundColor,shell:getComputedStyle(cap).backgroundColor};`);
 					assert.ok(marker.focused && marker.visible, `${selector} receives keyboard focus: ${JSON.stringify(marker)}`);
 					const background = over(marker.background, color(marker.shell));
@@ -71,10 +74,10 @@ app.whenReady().then(async () => {
 				}
 			} finally { win.webContents.debugger.detach(); }
 		}],
-		["high contrast makes muted tile and control boundaries distinguishable", async () => {
+		["high contrast makes mission and action boundaries distinguishable", async () => {
 			await js(`await setState('chat'); applyPrefs({highContrast:true}); document.activeElement.blur();`);
 			await sleep(200); // inspect the settled colors after the 160 ms control transition
-			const edges = await js(`return [...document.querySelectorAll('.start-tile,#box,#chipModel,#sendTask')].map(el=>{const s=getComputedStyle(el);return {name:el.id || el.textContent.trim(),width:parseFloat(s.borderTopWidth),style:s.borderTopStyle,border:s.borderTopColor,background:s.backgroundColor,shell:getComputedStyle(cap).backgroundColor};});`);
+			const edges = await js(`return [...document.querySelectorAll('.continue-mission,.home-mode,#box,#chipModel,#sendTask')].map(el=>{const s=getComputedStyle(el);return {name:el.id || el.textContent.trim(),width:parseFloat(s.borderTopWidth),style:s.borderTopStyle,border:s.borderTopColor,background:s.backgroundColor,shell:getComputedStyle(cap).backgroundColor};});`);
 			for (const edge of edges) {
 				const shell = color(edge.shell), background = over(edge.background, shell), border = over(edge.border, background);
 				assert.ok(edge.width > 0 && edge.style !== "none" && contrast(border, background) >= 3 && contrast(border, shell) >= 3, `${edge.name} has visible edges in high contrast`);
@@ -104,13 +107,98 @@ app.whenReady().then(async () => {
 			assert.equal(await js(`return document.getElementById('box').value;`), "Still writing this");
 			assert.equal(await js(`return document.activeElement.id;`), "box");
 		}],
-		["productivity tiles prepare prompts without starting work", async () => {
-			await js(`await setState('chat'); document.querySelector('[data-prompt="?? "]').click();`);
-			assert.equal(await js(`return document.getElementById('box').value;`), "?? ");
-			assert.equal((await calls("missions.create")).length, 0);
-			await js(`document.getElementById('navMissions').click();`);
+		["one input at the top switches between local search and tasks while retaining both drafts", async () => {
+			await js(`await setState('chat'); document.getElementById('box').value='Write a budget proposal'; document.getElementById('homeFiles').click();`);
 			await sleep(60);
-			assert.equal(await js(`return document.getElementById('navMissions').getAttribute('aria-current');`), "page");
+			assert.equal(await js(`return document.getElementById('box').value;`), 'Write a budget proposal');
+			assert.equal(await js(`return document.querySelectorAll('#fileQuery,#l-search,#navSearch,[data-task-action]').length;`), 0);
+			assert.equal(await js(`return document.querySelectorAll('#l-chat textarea').length;`), 1);
+			assert.equal(await js(`return document.getElementById('sendTask').hidden;`), true);
+			await js(`document.getElementById('box').value='budget meeting'; document.getElementById('box').dispatchEvent(new Event('input',{bubbles:true}));`);
+			await sleep(250);
+			assert.equal((await calls('files.search')).at(-1).args[0].query, 'budget meeting');
+			assert.equal((await calls('missions.create')).length, 0);
+			await js(`document.getElementById('homeAsk').click();`);
+			await sleep(40);
+			assert.equal(await js(`return document.getElementById('box').value;`), 'Write a budget proposal');
+			assert.ok(await js(`return document.getElementById('box').getBoundingClientRect().bottom <= document.getElementById('homeBrowse').getBoundingClientRect().top;`));
+			await js(`document.getElementById('homeFiles').click();`);
+			await sleep(40);
+			assert.equal(await js(`return document.getElementById('box').value;`), 'budget meeting');
+			await js(`document.getElementById('box').value=''; await setState('chat'); await setState('search');`);
+			assert.equal(await js(`return document.getElementById('box').value;`), '');
+			await js(`await setState('chat'); __fixture.configure({'missions.create':{result:{missionId:'m1'}}}); document.getElementById('sendTask').click();`);
+			await sleep(60);
+			assert.equal((await calls('missions.create'))[0].args[0].text, 'Write a budget proposal');
+		}],
+		["Continue prioritizes input requests, limits recent work and opens existing missions", async () => {
+			await js(`__fixture.variant('approval'); await setState('chat'); const template=snap.missions.m2; acceptSnapshot({...snap,seq:snap.seq+1,missions:{...snap.missions,old:{...template,id:'old',title:'Older question',status:'waiting-input',updatedAt:'2025-01-01'},recent:{...template,id:'recent',title:'Newest work',updatedAt:'2026-10-12'},archived:{...template,id:'archived',archived:true,status:'waiting-approval',updatedAt:'2026-10-13'}}});`);
+			assert.deepEqual(await js(`return [...document.querySelectorAll('.continue-mission')].map(b=>b.dataset.mission);`), ['m1', 'old', 'recent']);
+			await sleep(400); // focus the visible launcher after its initial reveal
+			await js(`document.querySelector('.continue-mission').focus(); acceptSnapshot({...snap,seq:snap.seq+1,missions:{...snap.missions,m1:{...snap.missions.m1,title:'Updated title'}}});`);
+			assert.equal(await js(`return document.activeElement.dataset.mission;`), 'm1');
+			assert.equal(await js(`return document.querySelector('.continue-title').textContent;`), 'Updated title');
+			await js(`document.querySelector('.continue-mission').click();`);
+			await sleep(60);
+			assert.deepEqual(await js(`return {view:cur,mission:current,footer:cap.dataset.f};`), {view:'mission',mission:'m1',footer:'ask'});
+			assert.equal((await calls("missions.create")).length, 0);
+			assert.equal((await calls("approvals.decide")).length, 0);
+			await js(`await setState('chat'); document.getElementById('bStackChat').click();`);
+			await sleep(60);
+			assert.equal(await js(`return cur;`), 'stack');
+		}],
+		["late task failures restore the task draft without changing a file query", async () => {
+			await js(`await setState('chat'); document.getElementById('box').value='Write the budget proposal'; __fixture.configure({'missions.create':{delay:150,error:'Request could not start'}}); document.getElementById('sendTask').click(); await setState('search'); document.getElementById('box').value='budget meeting'; document.getElementById('box').dispatchEvent(new Event('input',{bubbles:true}));`);
+			await sleep(250);
+			assert.equal(await js(`return document.getElementById('box').value;`), 'budget meeting');
+			assert.equal(await js(`return cur;`), 'search');
+			await js(`await setState('chat');`);
+			assert.equal(await js(`return document.getElementById('box').value;`), 'Write the budget proposal');
+		}],
+		["selected files attach to an existing task, survive failure and can be removed", async () => {
+			await js(`await setState('chat'); document.getElementById('box').value='Explain the budget changes'; await setState('search'); document.getElementById('box').value='budget'; document.getElementById('box').dispatchEvent(new Event('input',{bubbles:true}));`);
+			await sleep(250);
+			await js(`[...document.querySelectorAll('#filePreview button')].find(b=>b.textContent==='Use in task').click();`);
+			await sleep(40);
+			assert.equal(await js(`return document.getElementById('box').value;`), 'Explain the budget changes');
+			assert.equal(await js(`return document.getElementById('taskFileName').textContent;`), 'Q3 budget.pdf');
+			assert.equal((await calls('missions.create')).length, 0);
+			await js(`document.getElementById('removeTaskFile').click();`);
+			assert.equal(await js(`return document.getElementById('taskFile').hidden;`), true);
+			assert.equal(await js(`return document.getElementById('box').value;`), 'Explain the budget changes');
+			await js(`await setState('search');`);
+			await sleep(60);
+			await js(`[...document.querySelectorAll('#filePreview button')].find(b=>b.textContent==='Use in task').click();`);
+			await sleep(40);
+			await js(`__fixture.configure({'missions.create':{error:'Temporarily unavailable'}}); document.getElementById('sendTask').click();`);
+			await sleep(60);
+			assert.equal(await js(`return document.getElementById('taskFile').hidden;`), false);
+			assert.match(await js(`return document.getElementById('box').value;`), /^Explain the budget changes\n\nFile context:/);
+			await js(`__fixture.configure({'missions.create':{result:{missionId:'m1'}}}); document.getElementById('sendTask').click();`);
+			await sleep(60);
+			const sent = (await calls('missions.create')).at(-1).args[0].text;
+			assert.equal(sent.split('File context:').length, 2);
+			assert.match(sent, /Q3 budget\.pdf.*\nMatching location: Page 3\nI found it by searching: budget/);
+			await js(`newTask();`);
+			await sleep(40);
+			assert.equal(await js(`return document.getElementById('taskFile').hidden;`), true);
+		}],
+		["Continue hides when all missions are archived or history is empty", async () => {
+			await js(`await setState('chat'); acceptSnapshot({...snap,seq:snap.seq+1,missions:Object.fromEntries(Object.entries(snap.missions).map(([id,m])=>[id,{...m,archived:true}]))});`);
+			assert.equal(await js(`return document.getElementById('homeContinue').hidden;`), true);
+			await js(`acceptSnapshot({...snap,seq:snap.seq+1,missions:{}});`);
+			assert.equal(await js(`return document.querySelectorAll('.continue-mission').length;`), 0);
+		}],
+		["Summarize appears for usable clipboard content and prepares it without discarding a draft", async () => {
+			await js(`await setState('chat'); __fixture.configure({'clipboard.read':{result:'https://example.com/report'}}); await checkClipboard(); document.getElementById('box').value='Focus on the budget'; document.getElementById('chipClip').click(); document.getElementById('chipClip').click();`);
+			assert.equal(await js(`return document.getElementById('box').value;`), 'Focus on the budget\n\nSummarize this page: https://example.com/report');
+			assert.equal((await calls("missions.create")).length, 0);
+			await js(`__fixture.configure({'clipboard.read':{result:'A longer copied passage. '.repeat(20)}}); await checkClipboard(); document.getElementById('box').value=''; document.getElementById('chipClip').click();`);
+			assert.match(await js(`return document.getElementById('box').value;`), /^Summarize this text I copied/);
+			await js(`__fixture.configure({'clipboard.read':{result:'short'}}); await checkClipboard();`);
+			assert.equal(await js(`return document.getElementById('chipClip').hidden;`), true);
+			await js(`__fixture.configure({'clipboard.read':{queue:[{delay:100,result:'https://example.com/old'},{delay:10,result:''}]}}); await Promise.all([checkClipboard(),checkClipboard()]);`);
+			assert.equal(await js(`return document.getElementById('chipClip').hidden;`), true);
 		}],
 		["settings can record the modifier-only Ctrl+Win shortcut", async () => {
 			await js(`Object.defineProperty(navigator,'platform',{value:'Win32',configurable:true}); openSettings('behaviour');`);
@@ -124,19 +212,20 @@ app.whenReady().then(async () => {
 			await js(`signedIn=false; openSettings('accounts'); document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true}));`);
 			await sleep(100);
 			assert.equal(await js(`return cur;`), "search");
-			assert.equal(await js(`return document.getElementById('navSearch').getAttribute('aria-current');`), "page");
-			assert.ok(await js(`return [...document.querySelectorAll('.lay')].filter(l=>l.id!=='l-search').every(l=>l.inert);`));
-			await js(`const input=document.getElementById('fileQuery'); input.value='budget meeting'; input.dispatchEvent(new Event('input',{bubbles:true})); input.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); __fixture.emit({kind:'shell',type:'summon',restore:true});`);
+			assert.equal(await js(`return document.getElementById('navHome').getAttribute('aria-current');`), "page");
+			assert.equal(await js(`return document.getElementById('homeFiles').getAttribute('aria-pressed');`), "true");
+			assert.ok(await js(`return [...document.querySelectorAll('.lay')].filter(l=>l.id!=='l-chat').every(l=>l.inert);`));
+			await js(`const input=document.getElementById('box'); input.value='budget meeting'; input.dispatchEvent(new Event('input',{bubbles:true})); input.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); __fixture.emit({kind:'shell',type:'summon',restore:true});`);
 			await sleep(300);
-			assert.equal(await js(`return document.getElementById('fileQuery').value;`), "budget meeting");
-			assert.equal(await js(`return document.activeElement.id;`), "fileQuery");
+			assert.equal(await js(`return document.getElementById('box').value;`), "budget meeting");
+			assert.equal(await js(`return document.activeElement.id;`), "box");
 			assert.equal((await calls("missions.create")).length, 0);
 			assert.equal((await calls("ui.hide")).length, 1);
 		}],
 		["file search ignores old replies and presents indexed text safely", async () => {
-			await js(`await setState('search'); __fixture.configure({'files.search':{queue:[{delay:400,result:{results:[{id:'old',path:'C:\\\\Approved\\\\old.txt',name:'Old result',kind:'document',text:'OLD',locator:{},match:'words'}],mode:'words'}},{delay:10,result:{results:[{id:'new',path:'C:\\\\Approved\\\\new.txt',name:'New result',kind:'document',text:'<img src=x onerror=alert(1)> remembered words',locator:{line:4},match:'words'}],mode:'words',warning:'Meaning search is disabled'}}]}}); const input=document.getElementById('fileQuery'); input.value='old'; input.dispatchEvent(new Event('input',{bubbles:true}));`);
+			await js(`await setState('search'); __fixture.configure({'files.search':{queue:[{delay:400,result:{results:[{id:'old',path:'C:\\\\Approved\\\\old.txt',name:'Old result',kind:'document',text:'OLD',locator:{},match:'words'}],mode:'words'}},{delay:10,result:{results:[{id:'new',path:'C:\\\\Approved\\\\new.txt',name:'New result',kind:'document',text:'<img src=x onerror=alert(1)> remembered words',locator:{line:4},match:'words'}],mode:'words',warning:'Meaning search is disabled'}}]}}); const input=document.getElementById('box'); input.value='old'; input.dispatchEvent(new Event('input',{bubbles:true}));`);
 			await sleep(210);
-			await js(`const input=document.getElementById('fileQuery'); input.value='new'; input.dispatchEvent(new Event('input',{bubbles:true}));`);
+			await js(`const input=document.getElementById('box'); input.value='new'; input.dispatchEvent(new Event('input',{bubbles:true}));`);
 			await sleep(600);
 			assert.equal(await js(`return document.querySelector('.file-result').dataset.id;`), "new");
 			assert.equal(await js(`return document.querySelectorAll('#filePreview img').length;`), 0);
@@ -144,31 +233,41 @@ app.whenReady().then(async () => {
 			assert.match(await js(`return document.getElementById('fileSummary').textContent;`), /Word matches.*disabled/);
 		}],
 		["file search keyboard reveals the selected moment and prepares a task", async () => {
-			await js(`await setState('search'); const input=document.getElementById('fileQuery'); input.value='budget'; input.dispatchEvent(new Event('input',{bubbles:true}));`);
+			await js(`await setState('search'); const input=document.getElementById('box'); input.value='budget'; input.dispatchEvent(new Event('input',{bubbles:true}));`);
 			await sleep(300);
-			await js(`const input=document.getElementById('fileQuery'); input.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true})); input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,bubbles:true}));`);
+			await js(`const input=document.getElementById('box'); input.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true})); input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,bubbles:true}));`);
 			await sleep(60);
 			assert.deepEqual((await calls("files.open")).at(-1).args[0], { id: "fs2", reveal: true });
 			assert.match(await js(`return document.getElementById('filePreview').textContent;`), /Audio at 1:06–1:32/);
-			assert.match(await js(`return document.getElementById('filePreview').textContent;`), /cloud.*provider/);
 			await js(`[...document.querySelectorAll('#filePreview button')].find(b=>b.textContent==='Use in task').click();`);
 			await sleep(80);
 			assert.equal(await js(`return cur;`), "chat");
-			assert.match(await js(`return document.getElementById('box').value;`), /budget meeting\.mp4.*\nMatching location: Audio at 1:06–1:32\nI found it by searching: budget/);
+			assert.match(await js(`return document.getElementById('taskFileName').title;`), /budget meeting\.mp4.*\nMatching location: Audio at 1:06–1:32\nI found it by searching: budget/);
+			assert.match(await js(`return document.getElementById('taskFile').textContent;`), /Shared with your model on Send/);
 			assert.equal((await calls("missions.create")).length, 0);
 		}],
 		["file search filters and retries errors without losing the query", async () => {
-			await js(`await setState('search'); const input=document.getElementById('fileQuery'); input.value='remember this'; input.dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('[data-file-kind=image]').click();`);
+			await js(`await setState('search'); const input=document.getElementById('box'); input.value='remember this'; input.dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('fileKind').value='image'; document.getElementById('fileKind').dispatchEvent(new Event('change'));`);
 			await sleep(250);
 			assert.equal((await calls("files.search")).at(-1).args[0].kind, "image");
 			assert.equal(await js(`return document.querySelectorAll('.file-result').length;`), 1);
-			await js(`__fixture.configure({'files.search':{error:'Local encoder stopped'}}); document.querySelector('[data-file-kind=video]').click();`);
+			await js(`__fixture.configure({'files.search':{error:'Local encoder stopped'}}); document.getElementById('fileKind').value='video'; document.getElementById('fileKind').dispatchEvent(new Event('change'));`);
 			await sleep(80);
 			assert.match(await js(`return document.getElementById('fileStatus').textContent;`), /Local encoder stopped/);
-			assert.equal(await js(`return document.getElementById('fileQuery').value;`), "remember this");
-			await js(`__fixture.configure({'files.search':{result:{results:[],mode:'words'}}}); document.getElementById('fileQuery').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));`);
+			assert.equal(await js(`return document.getElementById('box').value;`), "remember this");
+			await js(`__fixture.configure({'files.search':{result:{results:[],mode:'words'}}}); document.getElementById('box').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));`);
 			await sleep(80);
 			assert.match(await js(`return document.getElementById('fileSummary').textContent;`), /0 results.*Word matches/);
+		}],
+		["ready search hides maintenance until requested; empty results use the full pane", async () => {
+			await js(`await setState('search');`);
+			await sleep(60);
+			assert.equal(await js(`return document.getElementById('fileManagement').hidden;`), true);
+			assert.equal(await js(`return document.getElementById('filePreview').hidden;`), true);
+			await js(`document.getElementById('manageSearch').click();`);
+			assert.equal(await js(`return document.getElementById('fileManagement').hidden;`), false);
+			await js(`document.getElementById('manageSearch').click();`);
+			assert.equal(await js(`return document.getElementById('fileManagement').hidden;`), true);
 		}],
 		["file search starts background indexing and surfaces setup failure", async () => {
 			await js(`await setState('search');`);
@@ -311,9 +410,10 @@ app.whenReady().then(async () => {
 			await sleep(500);
 			assert.equal(await js(`const c=cap.getBoundingClientRect(), h=document.querySelector('#l-mission>.mh').getBoundingClientRect(); return h.top>=c.top && h.bottom<c.bottom && cap.scrollTop===0 && document.getElementById('missionBody').scrollHeight>document.getElementById('missionBody').clientHeight;`), true);
 		}],
-		["small-screen and large-text launchers keep task controls and tile labels reachable", async () => {
+		["small-screen and large-text launchers keep apps, recent work and modes reachable", async () => {
 			const area = { x: 0, y: 0, width: 800, height: 600 };
-			for (const zoom of [1, 1.6]) {
+			await js(`__fixture.emit({kind:'shell',type:'apps',apps:Array.from({length:12},(_,i)=>({id:'app'+i,name:'Saved website '+i,pinned:true}))}); __fixture.configure({'clipboard.read':{result:'https://example.com'}}); await checkClipboard();`);
+			for (const zoom of [.9, 1, 1.15, 1.3, 1.45, 1.6]) {
 				const bounds = windowBounds("chat", area, zoom), dims = windowDims(area, zoom);
 				win.webContents.setZoomFactor(zoom);
 				win.setContentSize(bounds.width, bounds.height);
@@ -321,9 +421,25 @@ app.whenReady().then(async () => {
 				await sleep(400);
 				const layout = await js(`const c=cap.getBoundingClientRect(), inside=(r,b)=>r.left>=b.left-1 && r.top>=b.top-1 && r.right<=b.right+1 && r.bottom<=b.bottom+1; const viewport={left:0,top:0,right:innerWidth,bottom:innerHeight}; return {shell:inside(c,viewport),controls:['box','sendTask','windowMin','windowClose'].every(id=>inside(document.getElementById(id).getBoundingClientRect(),c)),overflow:document.querySelector('.start-body').scrollWidth<=document.querySelector('.start-body').clientWidth+1};`);
 				assert.deepEqual(layout, { shell: true, controls: true, overflow: true }, `${zoom}× text size fits the small work area`);
-				for (let i = 0; i < 5; i++) {
-					assert.ok(await js(`const tile=document.querySelectorAll('.start-tile')[${i}]; tile.scrollIntoView({block:'end'}); const r=tile.querySelector('strong').getBoundingClientRect(),b=document.querySelector('.start-body').getBoundingClientRect(); return r.top>=b.top-1 && r.bottom<=b.bottom+1 && r.left>=b.left && r.right<=b.right && tile.scrollWidth<=tile.clientWidth+1;`), `tile ${i + 1} can be read at ${zoom}×`);
+				for (const selector of ['#addWebsite','#openApps','.continue-mission:last-child','.launcher-app-pin:last-child']) {
+					assert.ok(await js(`const el=document.querySelector(${JSON.stringify(selector)}); el.scrollIntoView({block:'nearest',inline:'nearest'}); const r=el.getBoundingClientRect(),b=document.querySelector('.start-body').getBoundingClientRect(); return r.top>=b.top-1 && r.bottom<=b.bottom+1 && r.left>=b.left && r.right<=b.right;`), `${selector} is reachable at ${zoom}×`);
 				}
+				assert.ok(await js(`const b=document.querySelector('.ask-bar').getBoundingClientRect(); return [...document.querySelectorAll('.ask-meta button')].filter(el=>el.offsetParent).every(el=>{const r=el.getBoundingClientRect();return r.top>=b.top && r.bottom<=b.bottom && r.left>=b.left && r.right<=b.right;});`), `mode and task controls fit at ${zoom}×`);
+			}
+		}],
+		["small-screen file search keeps the shared input, filters and file actions reachable", async () => {
+			const area = { x: 0, y: 0, width: 800, height: 600 };
+			for (const zoom of [.9, 1, 1.15, 1.3, 1.45, 1.6]) {
+				const bounds = windowBounds('search', area, zoom), dims = windowDims(area, zoom);
+				win.webContents.setZoomFactor(zoom);
+				win.setContentSize(bounds.width, bounds.height);
+				await js(`__fixture.configure({'ui.dims':{result:${JSON.stringify(dims)}}}); await applyDims(); await setState('search'); document.getElementById('box').value='budget'; document.getElementById('box').dispatchEvent(new Event('input',{bubbles:true}));`);
+				await sleep(400);
+				assert.ok(await js(`const c=cap.getBoundingClientRect(); return ['box','homeAsk','homeFiles'].every(id=>{const r=document.getElementById(id).getBoundingClientRect();return r.top>=c.top && r.bottom<=c.bottom && r.left>=c.left && r.right<=c.right;});`), `shared input fits at ${zoom}×`);
+				for (const selector of ['#fileKind','#manageSearch','.file-result:last-child','#filePreview .file-actions']) {
+					assert.ok(await js(`const el=document.querySelector(${JSON.stringify(selector)}); el.scrollIntoView({block:'nearest',inline:'nearest'}); const r=el.getBoundingClientRect(),c=cap.getBoundingClientRect(),h=document.querySelector('.ask-bar').getBoundingClientRect();return r.top>=h.bottom-1 && r.bottom<=c.bottom-1 && r.left>=c.left && r.right<=c.right;`), `${selector} is reachable at ${zoom}×`);
+				}
+				assert.ok(await js(`const el=document.getElementById('homeSearch'); return el.scrollWidth<=el.clientWidth+1;`), `search has no horizontal overflow at ${zoom}×`);
 			}
 		}],
 		["Command shortcuts open reading view", async () => {

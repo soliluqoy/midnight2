@@ -20,6 +20,11 @@ const runStart = {}; // missionId -> ms (local clock, for the timer)
 let engine = "starting";
 let timer;
 let clip = null;
+let clipboardRevision = 0;
+const homeDrafts = { chat: "", search: "" };
+let hasSearchDraft = false;
+let taskFileContext;
+let continueKey = "";
 let readEvidence = false;
 let viewRevision = 0;
 let settingsRevision = 0;
@@ -39,11 +44,11 @@ window.checkedResult = checked;
 
 function syncLayers() {
 	for (const layer of document.querySelectorAll(".lay")) {
-		const active = layer.classList.contains(`l-${cur === "read" ? "mission" : cur}`);
+		const active = layer.classList.contains(`l-${cur === "read" ? "mission" : cur === "search" ? "chat" : cur}`);
 		layer.inert = !active;
 		layer.setAttribute("aria-hidden", String(!active));
 	}
-	for (const [id, active] of [["navHome", cur === "chat"], ["navMissions", cur === "stack" || cur === "mission" || cur === "read"], ["navSearch", cur === "search"], ["navSettings", cur === "settings"]]) {
+	for (const [id, active] of [["navHome", cur === "chat" || cur === "search"], ["navMissions", cur === "stack" || cur === "mission" || cur === "read"], ["navSettings", cur === "settings"]]) {
 		if (active) $(id).setAttribute("aria-current", "page");
 		else $(id).removeAttribute("aria-current");
 	}
@@ -71,24 +76,35 @@ async function setState(s) {
 	if (s === "settings" && cur !== "settings") prev = cur;
 	const from = cur;
 	const revision = ++viewRevision;
+	if (from === "chat" || from === "search") homeDrafts[from] = $("box").value;
+	if (s === "search" && !hasSearchDraft) {
+		homeDrafts.search = (from === "chat" ? homeDrafts.chat : "").slice(0, 1000);
+		hasSearchDraft = true;
+	}
 	cur = s;
 	cap.dataset.s = s;
+	if (s === "chat" || s === "search") {
+		$("box").value = homeDrafts[s];
+		renderHomeMode();
+	}
 	syncLayers();
 	if (from === "search") window.fileSearch?.leave();
 	if (s === "idle") hideLauncher();
 	try { await api.ui.size(s); } catch (err) { showErr(err); }
 	if (revision !== viewRevision) return;
 	cap.scrollTop = 0;
-	if (s === "chat") {
-		checkClipboard();
+	if (s === "chat" || s === "search") {
+		if (s === "chat") checkClipboard();
+		else window.fileSearch?.enter();
 		setTimeout(async () => {
 			if (revision !== viewRevision) return;
+			const movedFocus = () => document.activeElement !== $("box") && document.activeElement.closest?.(".l-chat");
+			if (movedFocus()) return;
 			try { await api.ui.focus(); } catch (err) { showErr(err); return; }
-			if (revision === viewRevision) $("box").focus({ preventScroll: true });
+			if (revision === viewRevision && !movedFocus()) $("box").focus({ preventScroll: true });
 		}, 350);
 	}
 	if (s === "stack") renderStack();
-	if (s === "search") window.fileSearch?.enter();
 	if ((s === "mission" || s === "read") && from !== "mission" && from !== "read") setTimeout(() => {
 		if (revision !== viewRevision) return;
 		focusFooter();
@@ -123,8 +139,7 @@ function mood() {
 	else if (running) st = "working";
 	else if (snap.watching?.count) st = snap.watching.next ? `watching · ${new Date(snap.watching.next).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "watching";
 	$("idleSt").textContent = st;
-	const openCount = Object.values(snap.missions).filter((m) => !m.archived && !TERMINAL.has(m.status)).length;
-	$("startMissionCount").textContent = openCount ? `${openCount} active or waiting` : "Your work, in one place";
+	renderContinue();
 }
 
 // Quiet idle: the breathing dot rests after a minute without change (it cost ~3% of a core; docs/performance.md).
@@ -779,9 +794,13 @@ async function startMission(text) {
 		runStart[current] = Date.now();
 		setState("mission");
 		renderMission();
+		return true;
 	} catch (err) {
 		showErr(err);
-		$("box").value = text;
+		const draft = cur === "chat" ? $("box").value : homeDrafts.chat;
+		homeDrafts.chat = draft.trim() && !draft.includes(text) ? `${draft}\n\n${text}` : draft || text;
+		if (cur === "chat") $("box").value = homeDrafts.chat;
+		return false;
 	}
 }
 async function followUp(text) {
@@ -815,6 +834,33 @@ function notify(title, body) {
 		const n = new Notification(`midnight · ${title}`, { body: String(body).replace(/[#*_`>[\]]/g, "").slice(0, 180), silent: true });
 		n.onclick = () => api.ui.show().then(() => setState("mission")).catch(showErr);
 	} catch {}
+}
+
+// ---------- recent work on the home screen ----------
+const HOME_STATUS = {
+	queued: "Queued", planning: "Planning", ready: "Ready", running: "Working", verifying: "Checking", recovering: "Recovering",
+	"waiting-input": "Needs an answer", "waiting-approval": "Needs approval", "needs-reconciliation": "Needs review",
+	"waiting-resource": "Waiting", "waiting-time": "Scheduled", paused: "Paused",
+	succeeded: "Completed", "partially-succeeded": "Partly done", failed: "Didn't finish", cancelled: "Cancelled",
+};
+function renderContinue() {
+	const recent = Object.values(snap.missions).filter((m) => !m.archived).sort((a, b) =>
+		Number(NEEDS.has(b.status)) - Number(NEEDS.has(a.status)) || String(b.updatedAt ?? b.createdAt ?? "").localeCompare(String(a.updatedAt ?? a.createdAt ?? "")) || a.id.localeCompare(b.id),
+	).slice(0, 3);
+	const key = JSON.stringify(recent.map(({ id, title, status }) => ({ id, title, status })));
+	if (key === continueKey) return;
+	continueKey = key;
+	const target = $("continueMissions");
+	const focused = target.contains(document.activeElement) ? document.activeElement.dataset.mission : undefined;
+	$("homeContinue").hidden = !recent.length;
+	target.replaceChildren(...recent.map((m) => {
+		const status = HOME_STATUS[m.status] ?? m.status;
+		const kind = NEEDS.has(m.status) ? "needs" : RUNNING.has(m.status) ? "active" : m.status === "succeeded" ? "ok" : TERMINAL.has(m.status) ? "warn" : "idle";
+		return el("button", { class: "continue-mission", "data-mission": m.id, "data-k": kind, title: `${m.title} · ${status}`, "aria-label": `Open ${m.title}, ${status}`, onclick: () => openMission(m.id) },
+			el("span", { class: "mission-dot", "aria-hidden": "true" }), el("span", { class: "continue-title" }, m.title),
+			el("span", { class: "continue-status" }, status), el("span", { class: "continue-arrow", "aria-hidden": "true" }, "→"));
+	}));
+	if (focused) (Array.from(target.children).find((button) => button.dataset.mission === focused) ?? $("navMissions")).focus({ preventScroll: true });
 }
 
 // ---------- the mission stack ----------
@@ -921,43 +967,76 @@ function remember(t) {
 
 // ---------- clipboard: offer to summarize a copied link or text ----------
 async function checkClipboard() {
-	clip = null;
+	const revision = ++clipboardRevision;
 	const c = $("chipClip");
-	c.hidden = true;
 	let t = "";
 	try {
 		t = (await api.clipboard.read()).trim();
 	} catch {}
+	if (revision !== clipboardRevision) return;
+	clip = null;
 	if (/^https?:\/\/\S+$/i.test(t)) {
 		clip = { kind: "url", value: t };
-		c.textContent = `⤓ summarize ${clip40(host(t), 22)}`;
 	} else if (t.length > 280) {
 		clip = { kind: "text", value: t };
-		c.textContent = "⤓ summarize copied text";
 	}
+	c.hidden = !clip || cur === "search";
 	if (clip) {
-		c.hidden = false;
-		c.title = clip.kind === "url" ? clip.value : `${t.slice(0, 200)}…`;
+		c.title = clip.kind === "url" ? `Prepare a summary of ${clip.value}` : `Prepare a summary of copied text: ${t.slice(0, 200)}…`;
 	}
 }
 $("chipClip").onclick = () => {
-	if (!clip) return;
+	if (cur !== "chat" || !clip) return;
 	const t = clip.kind === "url" ? `Summarize this page: ${clip.value}` : `Summarize this text I copied (key points, then anything I should act on):\n\n${clip.value}`;
-	$("chipClip").hidden = true;
-	startMission(t);
+	const box = $("box");
+	if (!box.value.includes(t)) box.value = box.value.trim() ? `${box.value}\n\n${t}` : t;
+	box.focus();
 };
 
 // ---------- input ----------
-function submitTask() {
+function renderHomeMode() {
+	const files = cur === "search";
+	$("homeBrowse").hidden = files;
+	$("homeSearch").hidden = !files;
+	for (const [id, on] of [["homeAsk", !files], ["homeFiles", files]]) {
+		$(id).classList.toggle("on", on);
+		$(id).setAttribute("aria-pressed", String(on));
+	}
+	for (const id of ["chipModel", "chipCtx", "sendTask"]) $(id).hidden = files;
+	$("chipClip").hidden = files || !clip;
+	$("taskFile").hidden = files || !taskFileContext;
+	$("taskFileName").textContent = taskFileContext?.name ?? "";
+	$("taskFileName").title = taskFileContext?.text ?? "";
+	$("boxLabel").textContent = files ? "Search files on this computer" : "Ask or give a task";
+	$("homeFiles").title = `Search files on this computer (${commandName}+K)`;
+	$("box").placeholder = files ? "Find a file by name, words or a description…" : taskFileContext ? `What would you like to do with ${taskFileContext.name}?` : "Ask a question or give midnight a task…";
+	if (files) {
+		$("box").maxLength = 1000;
+		$("box").setAttribute("aria-controls", "fileResults");
+	} else {
+		$("box").removeAttribute("maxlength");
+		$("box").removeAttribute("aria-controls");
+		$("box").removeAttribute("aria-activedescendant");
+	}
+}
+async function submitTask() {
+	if (cur !== "chat") return;
 	const box = $("box");
-	const text = box.value.trim();
+	let text = box.value.trim();
 	if (!text) return;
+	const context = taskFileContext;
+	if (context && !text.includes(context.text)) text += `\n\nFile context:\n${context.text}`;
 	box.value = "";
-	startMission(text);
+	if (await startMission(text)) {
+		if (taskFileContext === context) taskFileContext = undefined;
+	}
+	renderHomeMode();
 }
 $("sendTask").onclick = submitTask;
 $("box").onkeydown = (e) => {
 	const box = $("box");
+	if (e.isComposing) return;
+	if (cur === "search" && e.key !== "Escape") return;
 	if (e.key === "Enter" && !e.shiftKey) {
 		e.preventDefault();
 		submitTask();
@@ -1040,23 +1119,18 @@ function hideLauncher() {
 	parked = true;
 	api.ui.hide().catch(showErr);
 }
-for (const id of ["windowMin", "windowClose", "navHide", "bMin", "bMinStack"]) $(id).onclick = hideLauncher;
+for (const id of ["windowMin", "windowClose", "bMin", "bMinStack"]) $(id).onclick = hideLauncher;
 $("navHome").onclick = newTask;
 $("navMissions").onclick = () => setState("stack");
-$("navSearch").onclick = () => setState("search");
 $("navSettings").onclick = () => openSettings();
-$("navFolders").onclick = $("startFolders").onclick = () => openSettings("sources");
-$("startAsk").onclick = () => $("box").focus();
-for (const tile of document.querySelectorAll("[data-prompt]")) tile.onclick = () => {
-	$("box").value = tile.dataset.prompt;
-	$("box").placeholder = tile.dataset.placeholder;
-	$("box").focus();
+for (const [id, state] of [["homeAsk", "chat"], ["homeFiles", "search"]]) $(id).onclick = async () => {
+	await setState(state);
+	if (cur === state) $("box").focus({ preventScroll: true });
 };
-$("tileClipboard").onclick = async () => {
-	await checkClipboard();
-	if (!clip) return announce("Copy a link or a longer passage of text first.");
-	$("box").value = clip.kind === "url" ? `Summarize this page: ${clip.value}` : `Summarize this text:\n\n${clip.value}`;
-	$("box").focus();
+$("removeTaskFile").onclick = () => {
+	taskFileContext = undefined;
+	renderHomeMode();
+	$("box").focus({ preventScroll: true });
 };
 $("bPeek").onclick = () => api.peekBrowser();
 $("bRead").onclick = () => (cur === "read" ? toggleEvidence() : toggleRead());
@@ -1086,7 +1160,6 @@ $("saveRecipe").onclick = async () => {
 	$("saveRecipe").textContent = r.ok ? "Saved ✓" : "Save routine";
 };
 $("login").onclick = () => openSettings("accounts");
-$("gearChat").onclick = () => openSettings();
 $("gearStack").onclick = () => openSettings();
 $("chipModel").onclick = () => openSettings("model");
 
@@ -1129,9 +1202,10 @@ window.setAccel = (a) => {
 window.applyPrefs = applyPrefs;
 window.missionApi = { openMission, current: () => current };
 window.openFileSearch = () => setState("search");
-window.fileSearchTask = async (text) => {
+window.fileSearchTask = async (context) => {
+	taskFileContext = context;
 	await setState("chat");
-	$("box").value = text;
+	renderHomeMode();
 	$("box").focus({ preventScroll: true });
 };
 
@@ -1144,7 +1218,7 @@ function renderPinnedApps(apps = []) {
 	$("pinnedApps").replaceChildren(...pinned.map((app) => {
 		const button = document.createElement("button");
 		button.className = "launcher-app-pin";
-		button.textContent = app.name[0]?.toUpperCase() || "W";
+		button.append(el("span", { class: "app-icon", "aria-hidden": "true" }, app.name[0]?.toUpperCase() || "W"), el("span", {}, app.name));
 		button.title = `${app.name}${app.profile ? ` · ${app.profile}` : ""}`;
 		button.setAttribute("aria-label", `Open ${button.title}`);
 		button.onclick = () => api.apps.open({ id: app.id }).catch(showErr);

@@ -18,6 +18,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const STATES = [
 	["tray-hidden", "1+1"],
 	["chat", `__fixture.variant("done"); summon()`],
+	["chat-apps", `__fixture.emit({kind:"shell",type:"apps",apps:[{id:"a1",name:"Gmail",profile:"Work",pinned:true},{id:"a2",name:"Calendar",pinned:true},{id:"a3",name:"Notion",pinned:true},{id:"a4",name:"GitHub",pinned:true},{id:"a5",name:"Drive",pinned:true}]}); __fixture.variant("approval"); newTask()`],
+	["chat-empty", `__fixture.emit({kind:"shell",type:"apps",apps:[]}); __fixture.emit({kind:"ready",snapshot:{seq:1,missions:{},notifications:[],screen:null,watching:{count:0}}}); newTask()`],
+	["chat-clipboard", `__fixture.variant("done"); __fixture.configure({"clipboard.read":{result:"https://example.com/report"}}); document.getElementById("box").value="Focus on the budget"; checkClipboard()`],
+	["chat-file-context", `fileSearchTask(${JSON.stringify({ name: "Q3 budget.pdf", text: "File: C:/Documents/Q3 budget.pdf\nMatching location: Page 3" })})`],
 	["mission-running", `__fixture.variant("running"); missionApi.openMission("m1")`],
 	["mission-approval", `__fixture.variant("approval")`],
 	["mission-question", `__fixture.variant("question")`],
@@ -27,7 +31,8 @@ const STATES = [
 	["read", `__fixture.variant("done"); document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", ctrlKey: true, bubbles: true }))`],
 	["stack", `document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", ctrlKey: true, bubbles: true })); setTimeout(() => document.getElementById("bStack").click(), 300)`],
 	["settings", `document.getElementById("gearStack").click()`],
-	["file-search", `openFileSearch(); document.getElementById("fileQuery").value="the budget meeting"; document.getElementById("fileQuery").dispatchEvent(new Event("input",{bubbles:true}))`],
+	["file-search", `openFileSearch().then(()=>{document.getElementById("box").value="the budget meeting"; document.getElementById("box").dispatchEvent(new Event("input",{bubbles:true}));})`],
+	["file-search-manage", `document.getElementById("manageSearch").click()`],
 ];
 
 app.whenReady().then(async () => {

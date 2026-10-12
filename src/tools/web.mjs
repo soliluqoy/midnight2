@@ -382,7 +382,8 @@ export function createWeb(settings) {
 			return text(out.join("\n\n---\n\n"), {
 				urls: pages.map((pg) => pg.url),
 				// what was actually read, for evidence: failed loads are not evidence
-				pages: pages.filter((pg) => pg.ok).map((pg) => ({ url: pg.url, title: pg.title, excerpt: focus(pg.text || pg.desc || "", p.query, 600) })),
+				pages: pages.filter((pg) => pg.ok).map((pg) => ({ url: pg.url, title: pg.title, excerpt: focus(pg.text || pg.desc || "", p.query, 600), ...(p.includeFullText ? { text: (pg.text || pg.desc || "").slice(0, 100000) } : {}) })),
+				failures: pages.filter(pg => !pg.ok).map(pg => ({ url: pg.url, error: pg.error })),
 			});
 		},
 	};

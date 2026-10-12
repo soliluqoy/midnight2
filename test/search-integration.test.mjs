@@ -38,7 +38,7 @@ test("search IPC accepts result IDs and bounded queries, never renderer-supplied
 
 test("embedding settings keep the local model fixed and normalize persisted values", () => {
 	assert.deepEqual(embeddingSettings({ enabled: "yes", model: "remote-cloud", dimensions: 3, pythonPath: null, device: "unknown" }), {
-		enabled: false, model: "google/embeddinggemma-2", dimensions: 768, pythonPath: "", device: "cpu",
+		enabled: false, assist: true, model: "google/embeddinggemma-2", dimensions: 768, pythonPath: "", device: "cpu",
 	});
 	assert.equal(embeddingSettings({ dimensions: 256, pythonPath: " C:\\Python312\\python.exe " }).pythonPath, "C:\\Python312\\python.exe");
 });

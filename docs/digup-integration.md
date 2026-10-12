@@ -42,6 +42,27 @@ The index and embeddings stay on the computer. Using a result in a task, or invo
 
 ## Validation
 
+### Context for the cloud agent
+
+The same local runtime also complements the selected chat model. Confirmed memories, historical task answers, registered skills and reviewed recipes receive cached vectors in SQLite. The cache contains source IDs, content hashes and vectors; source text is read from its owner when retrieved. Background preparation loads the installed model without downloading anything. Chat preflight waits up to 800 ms for a query vector and up to 800 ms for selected-file retrieval; cold or busy workers use word matching. Context is limited to four memories, two past tasks, two workflow suggestions, four files and 10,000 characters of excerpts. These bounds limit added context, rather than establish a total chat token limit.
+
+The recall_context tool lets the agent retrieve further memories and task history. Historical answers are labeled with task IDs, state and date and remain evidence, not confirmed facts. Local/offline history is excluded from cloud missions; page-assistant conversations retain their shared-page boundary. Expired, superseded and unconfirmed memories are excluded. File permissions and historical source lineage are rechecked; removing a source or deleting history prevents it from returning through cached answers. Correction and deletion invalidate owned vectors immediately.
+
+The host selects passages from web pages before returning them to the cloud model. Selection keeps source URLs and nearby paragraphs, has a shared 1.5-second budget per read call, and retains completed semantic matches if later batches time out. Query and passage vectors are bounded in-memory caches. Cancellation discards late responses; foreground deadlines preserve the already-loaded worker while an active batch finishes. The context.prepared events record matching mode, elapsed time, source IDs and character counts without duplicating source text.
+
+The files_view tool renders an image, a PDF page or a video frame from a validated search-result ID in a separate local reader process and returns that actual image to a vision-capable chat model. It rechecks the source after rendering. Audio retrieval still identifies moments without producing transcripts.
+
+The settings toggle **Relevant context for AI** disables task-context retrieval and semantic web passage selection. File-search installation and its existing selected-folder index remain managed through the search panel. Excerpts sent to a cloud chat model follow that provider's privacy policy.
+
+For an offline check against the installed model using synthetic sources only:
+
+    $env:MIDNIGHT_TEST_SEARCH_DATA = Join-Path $env:APPDATA 'midnight\missions'
+    node --test --test-timeout=180000 test/context-model.test.mjs
+
+This check measures local retrieval and passage selection; it does not measure answer quality or monetary savings from a real cloud provider.
+
+The synthetic benchmark in scripts/context-benchmark.mjs compares giving the cloud model the full fixture corpus against giving it locally retrieved excerpts. Run it with --cloud to use the app's configured cloud account; it reports input/output tokens, response time and three factual answer checks. It reads account/model settings and the installed model cache, and creates its own task and memory database. It never sends the user's stored work. This small comparison establishes behavior on the fixture, not general quality or latency guarantees.
+
 Automated checks cover retrieval ordering, source mutation and revocation, invalid vectors, cancellation, media locations, trusted IPC, and renderer races/keyboard interactions. Fixtures exercise the whole UI without installing a model. Actual retrieval quality and codec coverage require a configured model runtime and representative local files; fixture success does not establish those measurements.
 
 After setup, run the real model smoke test against the installed cache. It creates isolated sample documents, an image and audio, indexes them offline, and checks semantic retrieval without shared query words. It uses a temporary database and does not index personal folders:

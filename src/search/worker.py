@@ -152,8 +152,8 @@ class Worker:
             with pdfium.PdfDocument(str(file_path)) as document:
                 truncated = len(document) > maximum
                 for index in range(min(len(document), maximum)):
-                    with document[index] as page:
-                        with page.get_textpage() as textpage:
+                    with contextlib.closing(document[index]) as page:
+                        with contextlib.closing(page.get_textpage()) as textpage:
                             text = textpage.get_text_range()
                         width, height = page.get_size()
                         scale = min(2.0, 1600.0 / max(width, height, 1.0))

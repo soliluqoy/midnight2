@@ -368,4 +368,43 @@ CREATE INDEX search_segments_file ON search_segments(file_id, ordinal);
 	},
 ];
 
+MIGRATIONS.push({
+	version: 3,
+	name: "local agent context vectors",
+	sql: `
+CREATE TABLE context_vectors (
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  vector TEXT NOT NULL,
+  PRIMARY KEY (source_type, source_id)
+);
+CREATE TRIGGER context_memory_update AFTER UPDATE OF text,scope,confirmed,valid_until,superseded_by ON memory BEGIN
+  DELETE FROM context_vectors WHERE source_type = 'memory' AND source_id = old.id;
+END;
+CREATE TRIGGER context_memory_delete AFTER DELETE ON memory BEGIN
+  DELETE FROM context_vectors WHERE source_type = 'memory' AND source_id = old.id;
+END;
+CREATE TRIGGER context_mission_update AFTER UPDATE OF goal,title,archived,model_policy,outcome,scope ON missions BEGIN
+  DELETE FROM context_vectors WHERE source_type = 'task' AND source_id = old.id;
+END;
+CREATE TRIGGER context_mission_delete AFTER DELETE ON missions BEGIN
+  DELETE FROM context_vectors WHERE source_type = 'task' AND source_id = old.id;
+END;
+CREATE TRIGGER context_answer_insert AFTER INSERT ON payloads WHEN new.kind = 'answer' BEGIN
+  DELETE FROM context_vectors WHERE source_type = 'task' AND source_id = new.mission_id;
+END;
+CREATE TRIGGER context_answer_delete AFTER DELETE ON payloads WHEN old.kind = 'answer' BEGIN
+  DELETE FROM context_vectors WHERE source_type = 'task' AND source_id = old.mission_id;
+END;
+CREATE TRIGGER context_recipe_update AFTER UPDATE ON recipes BEGIN
+  DELETE FROM context_vectors WHERE source_type = 'recipe' AND source_id = old.id;
+END;
+CREATE TRIGGER context_recipe_delete AFTER DELETE ON recipes BEGIN
+  DELETE FROM context_vectors WHERE source_type = 'recipe' AND source_id = old.id;
+END;
+`,
+});
+
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;

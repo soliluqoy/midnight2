@@ -7,7 +7,7 @@ import path from "node:path";
 import { redact } from "../policy/redaction.mjs";
 import { json } from "./db.mjs";
 
-export function createData({ store, journal, commit, paths, memory, version }) {
+export function createData({ store, journal, commit, paths, memory, version, context }) {
 	const tables = ["missions", "runs", "plan_revisions", "step_states", "action_intents", "action_receipts", "grants", "watches", "artifacts", "evidence", "notifications", "recipes", "roots"];
 	return {
 		exportAll() {
@@ -23,6 +23,7 @@ export function createData({ store, journal, commit, paths, memory, version }) {
 		},
 		/** scope: "history" (finished missions' content), "memory", or "all". */
 		remove(scope) {
+			context?.reset();
 			const removed = {};
 			if (scope === "memory" || scope === "all") {
 				memory.clear();
@@ -55,6 +56,7 @@ export function createData({ store, journal, commit, paths, memory, version }) {
 			}
 			if (scope === "all") {
 				commit(() => {
+					store.run("DELETE FROM context_vectors");
 					for (const t of ["watches", "occurrences", "notifications", "recipes", "grants", "approvals", "questions", "secrets"]) store.run(`DELETE FROM ${t}`);
 				});
 				removed.everything = true;

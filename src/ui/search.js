@@ -1,9 +1,9 @@
 // Local file search stays in the host; this surface only presents indexed, approved results.
 (() => {
 	const api = window.midnight;
-	const root = document.getElementById("l-search");
+	const root = document.getElementById("homeSearch");
 	const byId = (id) => document.getElementById(id);
-	const query = byId("fileQuery"), list = byId("fileResults"), preview = byId("filePreview");
+	const query = byId("box"), list = byId("fileResults"), preview = byId("filePreview");
 	const labels = { document: "Documents", image: "Images", audio: "Audio", video: "Video", other: "Files" };
 	let active = false, revision = 0, generation = 0, statusRequest = 0;
 	let timer, polling, metadata = {}, sources = [], rows = [], selected, kind = "", mode = "words", warning = "";
@@ -36,13 +36,20 @@
 		return row.match === "both" ? `${meaning} and your words` : meaning;
 	}
 	const isVisible = () => active && byId("cap").dataset.s === "search";
+	function manage(open) {
+		byId("fileManagement").hidden = !open;
+		byId("manageSearch").setAttribute("aria-expanded", String(open));
+	}
+	byId("manageSearch").onclick = () => manage(byId("fileManagement").hidden);
 	function statusMessage(text, error = false) {
 		byId("fileStatus").textContent = text;
 		root.querySelector(".file-progress").dataset.error = String(error);
+		if (error) manage(true);
 	}
 	function renderStatus() {
 		const busy = operation || metadata.busy;
 		const installed = metadata.runtime?.available || metadata.runtime?.ready;
+		if (busy || !installed || !sources.length || (!metadata.counts?.segments && metadata.enabled !== false)) manage(true);
 		const details = metadata.progress ?? {};
 		byId("fileSetup").disabled = !!busy;
 		byId("fileIndex").disabled = !!busy || !sources.length || !installed || metadata.enabled === false;
@@ -121,7 +128,8 @@
 	function renderPreview() {
 		preview.replaceChildren();
 		const row = rows.find((r) => r.id === selected);
-		if (!row) return empty(preview, "A closer look", "Select a result to see the matching passage, page or moment.");
+		preview.hidden = !row;
+		if (!row) return;
 		preview.append(node("h3", "", row.name), node("p", "file-path", row.path));
 		const place = location(row);
 		if (place) preview.append(node("span", "file-location", place));
@@ -138,7 +146,6 @@
 			actions.append(button);
 		}
 		preview.append(actions);
-		preview.append(node("p", "file-note", "A task uses your chosen AI model. If it is in the cloud, your prompt and any file content it reads go to that provider."));
 	}
 	function select(id, scroll = false) {
 		selected = id;
@@ -179,6 +186,7 @@
 		}
 		select(selected);
 		byId("fileSummary").textContent = searching ? "Searching…" : !query.value.trim() ? "Describe what you remember." : `${rows.length} ${rows.length === 1 ? "result" : "results"} · ${mode === "hybrid" ? "Words + local meaning" : "Word matches"}${warning ? ` · ${warning}` : ""}`;
+		byId("fileSummary").title = byId("fileSummary").textContent;
 	}
 	function schedule(immediate = false) {
 		clearTimeout(timer);
@@ -187,7 +195,7 @@
 		rows = [];
 		selected = undefined;
 		warning = "";
-		const text = query.value.trim();
+		const text = query.value.trim().slice(0, 1000);
 		if (!text) return renderResults();
 		renderResults(true);
 		timer = setTimeout(() => search(next, text), immediate ? 0 : 180);
@@ -223,7 +231,7 @@
 		const row = rows.find((r) => r.id === selected);
 		if (!row) return;
 		const place = location(row);
-		window.fileSearchTask(`Help me with this file: ${row.path}${place ? `\nMatching location: ${place}` : ""}\nI found it by searching: ${query.value.trim()}\n\n`);
+		window.fileSearchTask({ name: row.name, text: `File: ${row.path}${place ? `\nMatching location: ${place}` : ""}\nI found it by searching: ${query.value.trim()}` });
 	}
 	async function action(type) {
 		if (operation) return;
@@ -238,13 +246,12 @@
 		} catch (err) { actionError = errorText(err); }
 		finally { operation = false; renderStatus(); }
 	}
-	query.addEventListener("input", () => schedule());
-	for (const filter of root.querySelectorAll("[data-file-kind]")) filter.onclick = () => {
-		kind = filter.dataset.fileKind;
-		for (const button of root.querySelectorAll("[data-file-kind]")) button.setAttribute("aria-pressed", String(button === filter));
+	query.addEventListener("input", () => { if (isVisible()) schedule(); });
+	byId("fileKind").onchange = () => {
+		kind = byId("fileKind").value;
 		schedule(true);
 	};
-	root.addEventListener("keydown", (e) => {
+	byId("l-chat").addEventListener("keydown", (e) => {
 		if (e.isComposing || !isVisible() || e.altKey || e.shiftKey || e.key === "Escape") return;
 		if (e.key === "ArrowDown" || e.key === "ArrowUp") {
 			if (e.ctrlKey || e.metaKey || !rows.length || (e.target !== query && !e.target.closest(".file-result"))) return;
