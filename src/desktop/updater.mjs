@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const REPO = "soliluqoy/midnight.app";
+const REPO = "soliluqoy/midnight2";
 const newer = (a, b) => {
 	const pa = a.replace(/^v/, "").split(".").map(Number);
 	const pb = b.replace(/^v/, "").split(".").map(Number);

@@ -22,9 +22,11 @@ jobs:
         run: npm test
       - name: Dashboard interactions, async races and keyboard navigation
         run: npm run test:ui
-      - name: App starts, engine comes up, capsule renders without errors
+      - name: Pinned apps, browser profiles, page sharing and IPC isolation
+        run: npm run test:apps
+      - name: App starts, engine comes up, launcher and Apps preserve window focus
         run: npm run test:smoke
-      - name: Every capsule state renders without errors (pixel baselines are machine-specific)
+      - name: Every launcher state renders without errors (pixel baselines are machine-specific)
         run: npm run test:visual
         env:
           VISUAL_ERRORS_ONLY: "1"
@@ -101,13 +103,13 @@ jobs:
 
             **Windows (x64)**: run `midnight-setup-x64.exe` (per-user, no admin), or in PowerShell:
             ```powershell
-            irm https://raw.githubusercontent.com/soliluqoy/midnight.app/main/install.ps1 | iex
+            irm https://raw.githubusercontent.com/soliluqoy/midnight2/main/install.ps1 | iex
             ```
 
             **macOS (Apple silicon) / Linux (x86_64)**, in a terminal:
             ```sh
-            curl -fsSL https://raw.githubusercontent.com/soliluqoy/midnight.app/main/install.sh | sh
+            curl -fsSL https://raw.githubusercontent.com/soliluqoy/midnight2/main/install.sh | sh
             ```
 
-            Summon with Ctrl+Alt+M (Cmd+Alt+M on macOS), then sign in from the gear icon.
+            Summon with Ctrl+Win on Windows, Ctrl+Alt+M on Linux, or Cmd+Alt+M on macOS, then sign in from the gear icon.
             Desktop control is Windows-only. See docs/capability-matrix.md for what is supported.

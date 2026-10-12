@@ -44,12 +44,13 @@ export function createCoordinator(d) {
 	}
 
 	// ---------- creating and running ----------
-	function createMission({ text: input, requestId, mode, skill, privacy, trigger = { kind: "user" }, watchId, priority = PRIORITY.user, context, dryRun = false, title }) {
+	function createMission({ text: input, requestId, mode, skill, privacy, trigger = { kind: "user" }, watchId, priority = PRIORITY.user, context, dryRun = false, title, scope = {}, contextEvidence }) {
 		const dup = repo.runByRequest(requestId) ?? d.store.get("SELECT id FROM missions WHERE json_extract(scope, '$.pending.requestId') = ?", requestId);
 		if (dup) return { missionId: dup.mission_id ?? dup.id, duplicate: true };
 		const st = settings();
 		const m = commit(() => {
-			const created = repo.create({ title: title ?? titleFor(input), goal: input, mode: mode ?? st.mode ?? "ask", privacy: privacy ?? st.privacy ?? "cloud", trigger, skill, watchId, priority, label: labelFor(input), dryRun });
+			const created = repo.create({ title: title ?? titleFor(input), goal: input, mode: mode ?? st.mode ?? "ask", privacy: privacy ?? st.privacy ?? "cloud", trigger, skill, watchId, priority, label: labelFor(input), dryRun, scope });
+			if (contextEvidence) evidence.record(created.id, contextEvidence);
 			const b = budgets.create(created.id, st.budget ?? {});
 			repo.setBudget(created.id, b.id);
 			return created;
@@ -118,7 +119,7 @@ export function createCoordinator(d) {
 			input,
 			model: route.model,
 			thinking: st.thinking ?? "low",
-			systemPrompt: systemPrompt({ answerLength: st.answerLength, instructions: st.instructions, memories, skill, roots: roots.list(), mode: fresh.mode, privacy: fresh.privacy }),
+			systemPrompt: systemPrompt({ answerLength: st.answerLength, instructions: st.instructions, memories, skill, roots: roots.list(), mode: fresh.mode, privacy: fresh.privacy, pageAssistant: !!fresh.scope.pageAssistant }),
 			tools,
 			sessionFile: fresh.conversation,
 			onSession: (file) => file && file !== fresh.conversation && commit(() => repo.setConversation(missionId, file)),

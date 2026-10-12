@@ -1,11 +1,11 @@
 #!/bin/sh
 # midnight installer for macOS (Apple silicon) and Linux (x86_64). Per-user, no sudo:
-#   curl -fsSL https://raw.githubusercontent.com/soliluqoy/midnight.app/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/soliluqoy/midnight2/main/install.sh | sh
 # Uninstall:
-#   curl -fsSL https://raw.githubusercontent.com/soliluqoy/midnight.app/main/install.sh | sh -s -- --uninstall
+#   curl -fsSL https://raw.githubusercontent.com/soliluqoy/midnight2/main/install.sh | sh -s -- --uninstall
 set -eu
 
-REPO="soliluqoy/midnight.app"
+REPO="soliluqoy/midnight2"
 BASE="https://github.com/$REPO/releases/latest/download"
 OS=$(uname -s)
 ARCH=$(uname -m)
@@ -40,7 +40,7 @@ Darwin)
 	codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 	open "$APP"
 	say ""
-	say "midnight is installed and running (menu bar icon, pill at the bottom of the screen)."
+	say "midnight is installed and running in the menu bar."
 	say "Summon it with Cmd+Alt+M. Desktop control (computer use) is Windows-only for now; search, reading and the browser work."
 	;;
 Linux)

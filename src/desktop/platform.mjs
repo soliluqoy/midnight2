@@ -60,6 +60,18 @@ export function createPlatform(d) {
 			}
 			return { ok: true };
 		},
+		"open.searchResult": async (a) => {
+			const p = path.resolve(String(a.path ?? ""));
+			if (!d.allowedOpen(p) || !fs.existsSync(p)) throw new Error("This search result is no longer available");
+			if (a.reveal) shell.showItemInFolder(p);
+			else if (d.previewFile && ["image", "audio", "video", "pdf"].includes(a.kind)) {
+				await d.previewFile({ path: p, kind: a.kind, locator: a.locator });
+			} else {
+				const err = await shell.openPath(p);
+				if (err) throw new Error(err);
+			}
+			return { ok: true };
+		},
 		"vault.encrypt": (a) => (safeStorage.isEncryptionAvailable() ? { available: true, ciphertext: safeStorage.encryptString(String(a.text)).toString("base64") } : { available: false }),
 		"vault.decrypt": (a) => (safeStorage.isEncryptionAvailable() ? { available: true, text: safeStorage.decryptString(Buffer.from(String(a.ciphertext), "base64")) } : { available: false }),
 	};

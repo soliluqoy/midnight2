@@ -1,11 +1,26 @@
 // Interaction regressions against the actual renderer, with delayed/rejected bridge responses.
 import assert from "node:assert/strict";
 import { app, BrowserWindow, ipcMain } from "electron";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { windowBounds, windowDims } from "../src/desktop/window-layout.mjs";
+import { previewFile } from "../src/desktop/file-preview.mjs";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+app.setPath("userData", fs.mkdtempSync(path.join(os.tmpdir(), "midnight-ui-check-")));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const color = (css) => css.match(/[\d.]+/g).map(Number);
+const over = (foreground, background) => {
+	const [r, g, b, a = 1] = color(foreground);
+	return [r, g, b].map((v, i) => v * a + background[i] * (1 - a));
+};
+const luminance = (rgb) => rgb.slice(0, 3).map((v) => v / 255).map((v) => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+const contrast = (a, b) => {
+	const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+	return (light + 0.05) / (dark + 0.05);
+};
 ipcMain.handle("fixture:size", () => null);
 
 app.whenReady().then(async () => {
@@ -13,9 +28,189 @@ app.whenReady().then(async () => {
 	const js = (code) => win.webContents.executeJavaScript(`(async () => { ${code} })()`);
 	const errors = [];
 	win.webContents.on("console-message", (e) => { if (e.level === "error" || e.level === 3) errors.push(e.message); });
-	const reset = async () => { errors.length = 0; await win.loadFile(path.join(root, "src/ui/index.html")); await sleep(250); };
+	const reset = async () => { errors.length = 0; win.webContents.setZoomFactor(1); win.setContentSize(1300, 1400); await win.loadFile(path.join(root, "src/ui/index.html")); await sleep(250); };
 	const calls = (method) => js(`return __fixture.calls().filter(c => c.method === ${JSON.stringify(method)});`);
 	const tests = [
+		["app launch targets preserve Midnight and its draft without starting an AI task", async () => {
+			await js(`await setState('chat'); __fixture.emit({kind:'shell',type:'summon',restore:true}); document.getElementById('box').value='Still writing this'; __fixture.emit({kind:'shell',type:'apps',apps:[{id:'app1',name:'<img onerror=alert(1)>',profile:'Work',pinned:true},{id:'app2',name:'Personal',pinned:false}]});`);
+			assert.equal(await js(`return document.querySelectorAll('.launcher-app-pin').length;`), 1);
+			assert.equal(await js(`return document.querySelectorAll('#pinnedApps img').length;`), 0);
+			await js(`document.querySelector('.launcher-app-pin').click();`); await sleep(40);
+			assert.deepEqual((await calls("apps.open"))[0].args[0], { id: "app1" });
+			assert.equal((await calls("missions.create")).length, 0);
+			await js(`document.getElementById('addWebsite').click();`); await sleep(40);
+			assert.deepEqual((await calls("apps.open"))[1].args[0], { add: true });
+			await js(`document.getElementById('openApps').click();`); await sleep(40);
+			assert.deepEqual((await calls("apps.open"))[2].args[0], {});
+			assert.equal((await calls("ui.hide")).length, 0);
+			assert.deepEqual(await js(`return {view:cur,parked,draft:document.getElementById('box').value};`), { view: "chat", parked: false, draft: "Still writing this" });
+		}],
+		["rounded Start launcher preserves dedicated native drag regions", async () => {
+			await js(`await setState('chat');`);
+			assert.deepEqual(await js(`return {title:getComputedStyle(document.querySelector('.window-bar')).webkitAppRegion,controls:[...document.querySelectorAll('.window-control')].map(el=>getComputedStyle(el).webkitAppRegion),pill:!!document.getElementById('l-idle')};`), { title: "drag", controls: ["no-drag", "no-drag"], pill: false });
+			assert.ok(await js(`return parseFloat(getComputedStyle(cap).borderTopLeftRadius)>0 && getComputedStyle(cap).overflow==='hidden';`));
+			assert.equal(await js(`return document.querySelectorAll('.start-tile').length;`), 5);
+			const body = await js(`const el=document.querySelector('.start-body'); return {height:el.clientHeight,content:el.scrollHeight};`);
+			assert.ok(body.content <= body.height + 1, `default launcher content fits without scrolling: ${JSON.stringify(body)}`);
+		}],
+		["keyboard focus remains visible on navigation, tiles and task controls", async () => {
+			await js(`await setState('chat');`);
+			await sleep(400);
+			// Hidden offscreen windows need Chromium focus emulation for real keyboard modality.
+			win.webContents.debugger.attach("1.3");
+			try {
+				await win.webContents.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
+				await win.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+				await win.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+				for (const selector of ["#windowMin", "#navHome", ".start-tile", "#box", "#sendTask"]) {
+					const marker = await js(`const el=document.querySelector(${JSON.stringify(selector)}); document.activeElement.blur(); const before=getComputedStyle(el); const baseline={border:before.borderColor,shadow:before.boxShadow}; el.focus(); const s=getComputedStyle(el); return {focused:document.activeElement===el,visible:el.matches(':focus-visible'),outline:s.outlineStyle!=='none' && parseFloat(s.outlineWidth)>=2,offset:parseFloat(s.outlineOffset),outlineColor:s.outlineColor,border:s.borderColor,changed:s.borderColor!==baseline.border || s.boxShadow!==baseline.shadow,background:s.backgroundColor,shell:getComputedStyle(cap).backgroundColor};`);
+					assert.ok(marker.focused && marker.visible, `${selector} receives keyboard focus: ${JSON.stringify(marker)}`);
+					const background = over(marker.background, color(marker.shell));
+					const adjacent = marker.offset >= 0 ? color(marker.shell) : background;
+					assert.ok(marker.outline ? contrast(over(marker.outlineColor, adjacent), adjacent) >= 3 : marker.changed && contrast(over(marker.border, background), background) >= 3, `${selector} has a distinguishable focus marker`);
+				}
+			} finally { win.webContents.debugger.detach(); }
+		}],
+		["high contrast makes muted tile and control boundaries distinguishable", async () => {
+			await js(`await setState('chat'); applyPrefs({highContrast:true}); document.activeElement.blur();`);
+			await sleep(200); // inspect the settled colors after the 160 ms control transition
+			const edges = await js(`return [...document.querySelectorAll('.start-tile,#box,#chipModel,#sendTask')].map(el=>{const s=getComputedStyle(el);return {name:el.id || el.textContent.trim(),width:parseFloat(s.borderTopWidth),style:s.borderTopStyle,border:s.borderTopColor,background:s.backgroundColor,shell:getComputedStyle(cap).backgroundColor};});`);
+			for (const edge of edges) {
+				const shell = color(edge.shell), background = over(edge.background, shell), border = over(edge.border, background);
+				assert.ok(edge.width > 0 && edge.style !== "none" && contrast(border, background) >= 3 && contrast(border, shell) >= 3, `${edge.name} has visible edges in high contrast`);
+			}
+		}],
+		["reduce motion stops prolonged surface and status animations", async () => {
+			await js(`__fixture.variant('running'); await setState('mission'); applyPrefs({reducedMotion:true});`);
+			assert.ok(await js(`return [...document.querySelectorAll('#cap,#cap *')].every(el=>{const s=getComputedStyle(el),short=list=>list.split(',').every(t=>parseFloat(t)<=.001);return short(s.transitionDuration) && short(s.animationDuration) && (s.animationName==='none' || s.animationIterationCount.split(',').every(n=>Number(n)<=1));});`));
+		}],
+		["minimize and close hide to tray without losing or cancelling the current mission", async () => {
+			await js(`__fixture.variant('running'); await setState('mission'); document.getElementById('bMin').click(); document.getElementById('windowClose').click();`);
+			await sleep(60);
+			assert.equal((await calls("ui.hide")).length, 2);
+			assert.equal((await calls("missions.cancel")).length, 0);
+			assert.equal((await calls("missions.pause")).length, 0);
+			assert.deepEqual(await js(`return {view:cur,mission:current,parked};`), { view: "mission", mission: "m1", parked: true });
+			await js(`__fixture.emit({kind:'shell',type:'summon',restore:true});`);
+			await sleep(60);
+			assert.deepEqual(await js(`return {view:cur,mission:current,parked};`), { view: "mission", mission: "m1", parked: false });
+		}],
+		["Esc hides the launcher and summon restores an unsent prompt", async () => {
+			await js(`await setState('chat'); const box=document.getElementById('box'); box.value='Still writing this'; box.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));`);
+			await sleep(60);
+			assert.equal((await calls("ui.hide")).length, 1);
+			await js(`__fixture.emit({kind:'shell',type:'summon',restore:true});`);
+			await sleep(60);
+			assert.equal(await js(`return document.getElementById('box').value;`), "Still writing this");
+			assert.equal(await js(`return document.activeElement.id;`), "box");
+		}],
+		["productivity tiles prepare prompts without starting work", async () => {
+			await js(`await setState('chat'); document.querySelector('[data-prompt="?? "]').click();`);
+			assert.equal(await js(`return document.getElementById('box').value;`), "?? ");
+			assert.equal((await calls("missions.create")).length, 0);
+			await js(`document.getElementById('navMissions').click();`);
+			await sleep(60);
+			assert.equal(await js(`return document.getElementById('navMissions').getAttribute('aria-current');`), "page");
+		}],
+		["settings can record the modifier-only Ctrl+Win shortcut", async () => {
+			await js(`Object.defineProperty(navigator,'platform',{value:'Win32',configurable:true}); openSettings('behaviour');`);
+			await sleep(200);
+			await js(`document.querySelector('[aria-label="Change summon shortcut"]').click(); document.dispatchEvent(new KeyboardEvent('keydown',{key:'Control',ctrlKey:true,bubbles:true})); document.dispatchEvent(new KeyboardEvent('keydown',{key:'Meta',ctrlKey:true,metaKey:true,bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup',{key:'Meta',ctrlKey:true,bubbles:true}));`);
+			await sleep(80);
+			assert.equal((await calls("settings.set")).at(-1).args[0].hotkey, "Control+Super");
+			assert.match(await js(`return document.getElementById('hint').textContent;`), /Ctrl\+Win/);
+		}],
+		["file search works without a chat sign-in and restores its query", async () => {
+			await js(`signedIn=false; openSettings('accounts'); document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true}));`);
+			await sleep(100);
+			assert.equal(await js(`return cur;`), "search");
+			assert.equal(await js(`return document.getElementById('navSearch').getAttribute('aria-current');`), "page");
+			assert.ok(await js(`return [...document.querySelectorAll('.lay')].filter(l=>l.id!=='l-search').every(l=>l.inert);`));
+			await js(`const input=document.getElementById('fileQuery'); input.value='budget meeting'; input.dispatchEvent(new Event('input',{bubbles:true})); input.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); __fixture.emit({kind:'shell',type:'summon',restore:true});`);
+			await sleep(300);
+			assert.equal(await js(`return document.getElementById('fileQuery').value;`), "budget meeting");
+			assert.equal(await js(`return document.activeElement.id;`), "fileQuery");
+			assert.equal((await calls("missions.create")).length, 0);
+			assert.equal((await calls("ui.hide")).length, 1);
+		}],
+		["file search ignores old replies and presents indexed text safely", async () => {
+			await js(`await setState('search'); __fixture.configure({'files.search':{queue:[{delay:400,result:{results:[{id:'old',path:'C:\\\\Approved\\\\old.txt',name:'Old result',kind:'document',text:'OLD',locator:{},match:'words'}],mode:'words'}},{delay:10,result:{results:[{id:'new',path:'C:\\\\Approved\\\\new.txt',name:'New result',kind:'document',text:'<img src=x onerror=alert(1)> remembered words',locator:{line:4},match:'words'}],mode:'words',warning:'Meaning search is disabled'}}]}}); const input=document.getElementById('fileQuery'); input.value='old'; input.dispatchEvent(new Event('input',{bubbles:true}));`);
+			await sleep(210);
+			await js(`const input=document.getElementById('fileQuery'); input.value='new'; input.dispatchEvent(new Event('input',{bubbles:true}));`);
+			await sleep(600);
+			assert.equal(await js(`return document.querySelector('.file-result').dataset.id;`), "new");
+			assert.equal(await js(`return document.querySelectorAll('#filePreview img').length;`), 0);
+			assert.match(await js(`return document.getElementById('filePreview').textContent;`), /<img src=x/);
+			assert.match(await js(`return document.getElementById('fileSummary').textContent;`), /Word matches.*disabled/);
+		}],
+		["file search keyboard reveals the selected moment and prepares a task", async () => {
+			await js(`await setState('search'); const input=document.getElementById('fileQuery'); input.value='budget'; input.dispatchEvent(new Event('input',{bubbles:true}));`);
+			await sleep(300);
+			await js(`const input=document.getElementById('fileQuery'); input.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true})); input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,bubbles:true}));`);
+			await sleep(60);
+			assert.deepEqual((await calls("files.open")).at(-1).args[0], { id: "fs2", reveal: true });
+			assert.match(await js(`return document.getElementById('filePreview').textContent;`), /Audio at 1:06–1:32/);
+			assert.match(await js(`return document.getElementById('filePreview').textContent;`), /cloud.*provider/);
+			await js(`[...document.querySelectorAll('#filePreview button')].find(b=>b.textContent==='Use in task').click();`);
+			await sleep(80);
+			assert.equal(await js(`return cur;`), "chat");
+			assert.match(await js(`return document.getElementById('box').value;`), /budget meeting\.mp4.*\nMatching location: Audio at 1:06–1:32\nI found it by searching: budget/);
+			assert.equal((await calls("missions.create")).length, 0);
+		}],
+		["file search filters and retries errors without losing the query", async () => {
+			await js(`await setState('search'); const input=document.getElementById('fileQuery'); input.value='remember this'; input.dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('[data-file-kind=image]').click();`);
+			await sleep(250);
+			assert.equal((await calls("files.search")).at(-1).args[0].kind, "image");
+			assert.equal(await js(`return document.querySelectorAll('.file-result').length;`), 1);
+			await js(`__fixture.configure({'files.search':{error:'Local encoder stopped'}}); document.querySelector('[data-file-kind=video]').click();`);
+			await sleep(80);
+			assert.match(await js(`return document.getElementById('fileStatus').textContent;`), /Local encoder stopped/);
+			assert.equal(await js(`return document.getElementById('fileQuery').value;`), "remember this");
+			await js(`__fixture.configure({'files.search':{result:{results:[],mode:'words'}}}); document.getElementById('fileQuery').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));`);
+			await sleep(80);
+			assert.match(await js(`return document.getElementById('fileSummary').textContent;`), /0 results.*Word matches/);
+		}],
+		["file search starts background indexing and surfaces setup failure", async () => {
+			await js(`await setState('search');`);
+			await sleep(60);
+			await js(`__fixture.configure({'files.status':{result:{state:'indexing',busy:true,operation:'index',phase:'embedding',progress:{done:3,total:8,file:'budget.pdf',fileSegments:2,locator:{page:2},message:'Reading PDF pages',startedAt:Date.now()-62000},counts:{files:3,segments:7},runtime:{ready:true}}}}); document.getElementById('fileIndex').click();`);
+			await sleep(80);
+			assert.equal((await calls("files.index")).length, 1);
+			assert.equal(await js(`return document.getElementById('fileStop').hidden;`), false);
+			assert.equal(await js(`return document.getElementById('fileProgress').value;`), 3);
+			assert.match(await js(`return document.getElementById('fileStatus').textContent;`), /Reading PDF pages.*3 of 8 files/);
+			assert.match(await js(`return document.getElementById('fileActivity').textContent;`), /budget\.pdf.*Page 2.*2 passages.*1:02 elapsed/);
+			await js(`__fixture.configure({'files.status':{result:{state:'idle',busy:false,counts:{files:0,segments:0},runtime:{ready:false}}}}); document.getElementById('fileStop').click();`);
+			await sleep(80);
+			assert.equal((await calls("files.cancel")).length, 1);
+			await js(`__fixture.configure({'files.setup':{result:{started:false,reason:'Python was not found'}}}); document.getElementById('fileSetup').click();`);
+			await sleep(80);
+			assert.equal((await calls("settings.set")).at(-1).args[0].embedding.enabled, true);
+			assert.match(await js(`return document.getElementById('fileStatus').textContent;`), /Python was not found/);
+			await sleep(1600);
+			assert.match(await js(`return document.getElementById('fileStatus').textContent;`), /Python was not found/, "polling must not erase an action failure");
+		}],
+		["file search explains setup and folder requirements and displays download progress", async () => {
+			await js(`__fixture.configure({'sources.list':{result:[]},'files.status':{result:{state:'idle',busy:false,enabled:true,counts:{files:0,segments:0},runtime:{available:false}}}}); await setState('search');`);
+			await sleep(80);
+			assert.match(await js(`return document.getElementById('fileStatus').textContent;`), /Install local search/);
+			assert.equal(await js(`return document.getElementById('fileIndex').disabled;`), true);
+			assert.match(await js(`return document.getElementById('fileResults').textContent;`), /Choose folders to search/);
+			await js(`__fixture.configure({'files.status':{result:{state:'setting-up',busy:true,operation:'setup',phase:'downloading',progress:{message:'Downloading EmbeddingGemma 2',bytesDone:250000000,bytesTotal:1500000000,startedAt:Date.now()-30000},counts:{files:0,segments:0},runtime:{available:false}}}}); fileSearch.focus();`);
+			await sleep(80);
+			assert.match(await js(`return document.getElementById('fileStatus').textContent;`), /Downloading EmbeddingGemma 2.*250\.0 \/ 1500\.0 MB/);
+			assert.equal(await js(`return document.getElementById('fileProgress').value;`), 250000000);
+			await js(`__fixture.configure({'files.status':{result:{state:'ready',busy:false,enabled:true,counts:{files:0,segments:0},runtime:{available:true}}}}); fileSearch.focus();`);
+			await sleep(80);
+			assert.match(await js(`return document.getElementById('fileStatus').textContent;`), /Local model installed.*Choose folders/);
+			await js(`__fixture.configure({'sources.list':{result:[{id:'root',path:'C:\\\\Selected'}]}}); fileSearch.focus();`);
+			await sleep(80);
+			assert.match(await js(`return document.getElementById('fileStatus').textContent;`), /Click Index selected folders/);
+			assert.equal(await js(`return document.getElementById('fileIndex').disabled;`), false);
+			await js(`__fixture.configure({'files.status':{result:{state:'error',busy:false,error:'One file could not be indexed',warnings:['budget.pdf: Could not read the PDF'],counts:{files:0,segments:0},runtime:{available:true}}}}); fileSearch.focus();`);
+			await sleep(80);
+			assert.match(await js(`return document.getElementById('fileActivity').textContent;`), /budget\.pdf: Could not read the PDF/);
+		}],
 		["ready refreshes model availability", async () => {
 			await js(`signedIn = false; engine = 'starting'; __fixture.variant('done');`);
 			await sleep(100);
@@ -116,10 +311,75 @@ app.whenReady().then(async () => {
 			await sleep(500);
 			assert.equal(await js(`const c=cap.getBoundingClientRect(), h=document.querySelector('#l-mission>.mh').getBoundingClientRect(); return h.top>=c.top && h.bottom<c.bottom && cap.scrollTop===0 && document.getElementById('missionBody').scrollHeight>document.getElementById('missionBody').clientHeight;`), true);
 		}],
+		["small-screen and large-text launchers keep task controls and tile labels reachable", async () => {
+			const area = { x: 0, y: 0, width: 800, height: 600 };
+			for (const zoom of [1, 1.6]) {
+				const bounds = windowBounds("chat", area, zoom), dims = windowDims(area, zoom);
+				win.webContents.setZoomFactor(zoom);
+				win.setContentSize(bounds.width, bounds.height);
+				await js(`__fixture.configure({'ui.dims':{result:${JSON.stringify(dims)}}}); await applyDims(); await setState('chat');`);
+				await sleep(400);
+				const layout = await js(`const c=cap.getBoundingClientRect(), inside=(r,b)=>r.left>=b.left-1 && r.top>=b.top-1 && r.right<=b.right+1 && r.bottom<=b.bottom+1; const viewport={left:0,top:0,right:innerWidth,bottom:innerHeight}; return {shell:inside(c,viewport),controls:['box','sendTask','windowMin','windowClose'].every(id=>inside(document.getElementById(id).getBoundingClientRect(),c)),overflow:document.querySelector('.start-body').scrollWidth<=document.querySelector('.start-body').clientWidth+1};`);
+				assert.deepEqual(layout, { shell: true, controls: true, overflow: true }, `${zoom}× text size fits the small work area`);
+				for (let i = 0; i < 5; i++) {
+					assert.ok(await js(`const tile=document.querySelectorAll('.start-tile')[${i}]; tile.scrollIntoView({block:'end'}); const r=tile.querySelector('strong').getBoundingClientRect(),b=document.querySelector('.start-body').getBoundingClientRect(); return r.top>=b.top-1 && r.bottom<=b.bottom+1 && r.left>=b.left && r.right<=b.right && tile.scrollWidth<=tile.clientWidth+1;`), `tile ${i + 1} can be read at ${zoom}×`);
+				}
+			}
+		}],
 		["Command shortcuts open reading view", async () => {
 			await js(`await setState('mission'); document.dispatchEvent(new KeyboardEvent('keydown',{key:'e',metaKey:true,bubbles:true}));`);
 			await sleep(50);
 			assert.equal(await js("return cur;"), "read");
+		}],
+		["local audio preview seeks to the matching moment inside its sandbox", async () => {
+			const directory = fs.mkdtempSync(path.join(os.tmpdir(), "midnight-preview-test-"));
+			const before = new Set(BrowserWindow.getAllWindows().map((window) => window.id));
+			let preview;
+			try {
+				// One second of silent 16-bit mono PCM exercises Chromium's actual media decoder.
+				const rate = 8000, samples = rate * 2;
+				const wav = Buffer.alloc(44 + samples);
+				wav.write("RIFF", 0); wav.writeUInt32LE(36 + samples, 4); wav.write("WAVE", 8);
+				wav.write("fmt ", 12); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20);
+				wav.writeUInt16LE(1, 22); wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28);
+				wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+				wav.write("data", 36); wav.writeUInt32LE(samples, 40);
+				const file = path.join(directory, "matching moment.wav");
+				fs.writeFileSync(file, wav);
+				assert.deepEqual(await previewFile({ path: file, kind: "audio", locator: { seconds: .25 }, show: false }), { ok: true });
+				preview = BrowserWindow.getAllWindows().find((window) => !before.has(window.id));
+				assert.ok(preview, "preview created its own window");
+				assert.equal(preview.isVisible(), false);
+				const preferences = preview.webContents.getLastWebPreferences();
+				assert.equal(preferences.sandbox, true);
+				assert.equal(preferences.nodeIntegration, false);
+				assert.equal(preferences.contextIsolation, true);
+				assert.ok(!preferences.preload, "preview has no bridge to host capabilities");
+				let media;
+				const deadline = Date.now() + 4000;
+				do {
+					media = await preview.webContents.executeJavaScript(`(() => { const audio=document.querySelector('audio'); return {ready:audio?.readyState ?? 0,time:audio?.currentTime ?? 0,duration:audio?.duration ?? 0,error:document.getElementById('error').textContent,require:typeof window.require,process:typeof window.process}; })()`);
+					if (media.ready >= 1 && Math.abs(media.time - .25) < .01) break;
+					await sleep(50);
+				} while (Date.now() < deadline);
+				assert.equal(media.error, "");
+				assert.ok(media.ready >= 1 && Math.abs(media.duration - 1) < .01 && Math.abs(media.time - .25) < .01, `matching time loads and seeks: ${JSON.stringify(media)}`);
+				assert.equal(media.require, "undefined");
+				assert.equal(media.process, "undefined");
+				const address = preview.webContents.getURL();
+				let attempted = false;
+				preview.webContents.once("will-navigate", () => { attempted = true; });
+				await preview.webContents.executeJavaScript("location.href='https://example.invalid/preview-navigation';");
+				for (let index = 0; index < 10 && !attempted; index++) await sleep(20);
+				assert.ok(attempted, "navigation guard received the attempted navigation");
+				assert.equal(preview.webContents.getURL(), address);
+				assert.ok(!win.isDestroyed(), "launcher fixture stays open");
+			} finally {
+				if (preview && !preview.isDestroyed()) preview.destroy();
+				const file = path.join(directory, "matching moment.wav");
+				if (fs.existsSync(file)) fs.unlinkSync(file);
+				fs.rmdirSync(directory);
+			}
 		}],
 	];
 	let failures = 0;

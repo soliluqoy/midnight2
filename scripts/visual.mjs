@@ -1,21 +1,23 @@
-// Visual and interaction contract for the capsule (plan ch. 02, F02/U05). Renders every surface from fixture data,
+// Visual and interaction contract for the launcher. Renders every surface from fixture data,
 // captures it, and compares against stored baselines so the look people like does not drift unnoticed.
 //   npx electron scripts/visual.mjs            compare with test/visual/baseline
 //   UPDATE=1 npx electron scripts/visual.mjs   (re)write baselines after an intended design change
 //   VISUAL_ERRORS_ONLY=1 ...                   render every state and fail only on renderer errors (other machines' fonts)
 import { app, BrowserWindow, ipcMain, nativeImage } from "electron";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+app.setPath("userData", fs.mkdtempSync(path.join(os.tmpdir(), "midnight-visual-")));
 const baseDir = path.join(root, "test", "visual", "baseline");
 const outDir = path.join(root, "test", "visual", "out");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const STATES = [
-	["idle", "1+1"],
-	["chat", `__fixture.variant("done"); document.getElementById("l-idle").click()`],
+	["tray-hidden", "1+1"],
+	["chat", `__fixture.variant("done"); summon()`],
 	["mission-running", `__fixture.variant("running"); missionApi.openMission("m1")`],
 	["mission-approval", `__fixture.variant("approval")`],
 	["mission-question", `__fixture.variant("question")`],
@@ -25,6 +27,7 @@ const STATES = [
 	["read", `__fixture.variant("done"); document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", ctrlKey: true, bubbles: true }))`],
 	["stack", `document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", ctrlKey: true, bubbles: true })); setTimeout(() => document.getElementById("bStack").click(), 300)`],
 	["settings", `document.getElementById("gearStack").click()`],
+	["file-search", `openFileSearch(); document.getElementById("fileQuery").value="the budget meeting"; document.getElementById("fileQuery").dispatchEvent(new Event("input",{bubbles:true}))`],
 ];
 
 app.whenReady().then(async () => {
@@ -34,7 +37,7 @@ app.whenReady().then(async () => {
 		width: 1300,
 		height: 1400,
 		show: false,
-		backgroundColor: "#0b0e1c",
+		backgroundColor: "#1f1f1f",
 		webPreferences: { preload: path.join(root, "test", "visual", "preload.cjs"), contextIsolation: true, sandbox: true, offscreen: true },
 	});
 	win.webContents.setFrameRate(30);

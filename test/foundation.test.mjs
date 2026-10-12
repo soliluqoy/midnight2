@@ -8,6 +8,7 @@ import { makeEvent } from "../src/contracts/events.mjs";
 import { evaluateChecks, normalizePlan, outcomeOf } from "../src/missions/plan.mjs";
 import { emptyProjection, reduceAll } from "../src/missions/projection.mjs";
 import { openStore, restoreBackup, StorageLockedError } from "../src/storage/db.mjs";
+import { LATEST_SCHEMA } from "../src/storage/migrations.mjs";
 import { readDocx, validateDocx, writeDocx } from "../src/tools/documents/docx.mjs";
 import { readXlsx, sheetRange, updateCells, writeXlsx } from "../src/tools/documents/xlsx.mjs";
 import { ArchiveError, readZip, writeZip } from "../src/tools/documents/zip.mjs";
@@ -16,7 +17,7 @@ import { tempDir } from "./helpers.mjs";
 test("storage: single owner, migrations, consistent backup and restore", async () => {
 	const dir = tempDir();
 	const s = await openStore(dir);
-	assert.equal(s.schema, 1);
+	assert.equal(s.schema, LATEST_SCHEMA);
 	await assert.rejects(openStore(dir), StorageLockedError);
 	s.meta("probe", "before");
 	const file = await s.backup();

@@ -1,0 +1,9 @@
+:root { color-scheme: dark; font: 15px "Segoe UI", system-ui, sans-serif; background: #202126; color: #e7e5ed; }
+body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
+header { padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+h1 { font-size: 16px; font-weight: 500; margin: 0; overflow-wrap: anywhere; }
+#position { color: #c0aedb; white-space: nowrap; }
+main { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: center; padding: 0 24px 24px; }
+img, video { max-width: 100%; max-height: 100%; object-fit: contain; }
+audio { width: min(100%, 640px); }
+#error { color: #f0b6aa; margin: 0 24px 18px; }

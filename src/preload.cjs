@@ -16,10 +16,11 @@ async function call(method, params = {}) {
 const m = (method) => (params) => call(method, params);
 
 contextBridge.exposeInMainWorld("midnight", {
-	ui: { size: (state) => call("ui.size", { state }), dims: m("ui.dims"), focus: m("ui.focus"), textSize: (z) => call("ui.textSize", { z }) },
+	ui: { size: (state) => call("ui.size", { state }), dims: m("ui.dims"), focus: m("ui.focus"), hide: m("ui.hide"), show: m("ui.show"), textSize: (z) => call("ui.textSize", { z }) },
 	clipboard: { read: m("clipboard.read"), write: (text) => call("clipboard.write", { text }) },
 	openExternal: (url) => call("open.external", { url }),
 	peekBrowser: m("browser.peek"),
+	apps: { state: m("apps.state"), open: m("apps.open"), add: m("apps.add"), update: m("apps.update"), remove: m("apps.remove"), layout: m("apps.layout"), command: m("apps.command"), ask: m("apps.ask"), stop: m("apps.stop"), viewTask: m("apps.viewTask") },
 	settings: { get: m("settings.get"), set: (patch) => call("settings.set", { patch }) },
 	auth: {
 		login: (provider, type, key) => call("auth.login", key ? { provider, type, key } : { provider, type }),
@@ -53,6 +54,7 @@ contextBridge.exposeInMainWorld("midnight", {
 	skills: { list: m("skill.list") },
 	connectors: { list: m("connector.list") },
 	sources: { pick: (purpose) => call("sources.pick", { purpose }), list: m("sources.list"), remove: (rootId) => call("sources.remove", { rootId }) },
+	files: { status: m("files.status"), setup: m("files.setup"), index: m("files.index"), search: m("files.search"), cancel: m("files.cancel"), clear: m("files.clear"), open: m("files.open") },
 	artifacts: { open: (artifactId, reveal) => call("artifact.open", reveal ? { artifactId, reveal: true } : { artifactId }) },
 	query: { snapshot: m("query.snapshot"), events: (afterSeq) => call("query.events", { afterSeq }), mission: (missionId) => call("query.mission", { missionId }), history: m("query.history") },
 	resources: { status: m("resources.status") },

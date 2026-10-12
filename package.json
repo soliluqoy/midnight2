@@ -1,12 +1,12 @@
 {
 	"name": "midnight-app",
 	"productName": "midnight",
-	"version": "0.2.2",
-	"description": "midnight: a quiet desktop capsule that plans, does and verifies work on your computer, in plain view",
+	"version": "0.3.0",
+	"description": "midnight: a tray-first desktop launcher that plans, does and verifies work on your computer, in plain view",
 	"author": "soliluqoy",
 	"license": "MIT",
-	"homepage": "https://github.com/soliluqoy/midnight.app",
-	"repository": "github:soliluqoy/midnight.app",
+	"homepage": "https://github.com/soliluqoy/midnight2",
+	"repository": "github:soliluqoy/midnight2",
 	"private": true,
 	"type": "module",
 	"main": "src/main.mjs",
@@ -19,6 +19,7 @@
 		"sbom": "node scripts/sbom.mjs",
 		"test:visual": "electron scripts/visual.mjs",
 		"test:ui": "electron scripts/ui-check.mjs",
+		"test:apps": "electron scripts/apps-check.mjs",
 		"test:smoke": "node scripts/smoke.mjs"
 	},
 	"dependencies": {
@@ -53,7 +54,8 @@
 		"files": [
 			"src/**/*",
 			"package.json",
-			"!src/**/*.test.*"
+			"!src/**/*.test.*",
+			"!src/**/__pycache__/**"
 		],
 		"directories": {
 			"output": "release"
@@ -114,7 +116,7 @@
 			{
 				"provider": "github",
 				"owner": "soliluqoy",
-				"repo": "midnight.app",
+				"repo": "midnight2",
 				"releaseType": "release"
 			}
 		]

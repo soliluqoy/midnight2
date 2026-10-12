@@ -14,7 +14,7 @@ const Text = (max = 20000) => Type.String({ maxLength: max });
 const Obj = (props) => Type.Object(props, { additionalProperties: false });
 const None = Obj({});
 
-const SizeState = Type.Union(["idle", "chat", "mission", "settings", "read", "stack"].map((s) => Type.Literal(s)));
+const SizeState = Type.Union(["idle", "chat", "mission", "settings", "read", "stack", "search"].map((s) => Type.Literal(s)));
 const Decision = Type.Union(["approve", "decline", "keep-draft", "allow-routine"].map((s) => Type.Literal(s)));
 const Effect = Type.String({ maxLength: 40 });
 
@@ -53,11 +53,23 @@ export const METHODS = {
 	"ui.size": { route: "shell", params: Obj({ state: SizeState }) },
 	"ui.dims": { route: "shell", params: None },
 	"ui.focus": { route: "shell", params: None },
+	"ui.hide": { route: "shell", params: None },
+	"ui.show": { route: "shell", params: None },
 	"ui.textSize": { route: "shell", params: Obj({ z: Type.Number({ minimum: 0.5, maximum: 2 }) }) },
 	"clipboard.read": { route: "shell", params: None },
 	"clipboard.write": { route: "shell", params: Obj({ text: Text(200000) }) },
 	"open.external": { route: "shell", params: Obj({ url: Text(4000) }) },
 	"browser.peek": { route: "shell", params: None },
+	"apps.state": { route: "shell", params: None },
+	"apps.open": { route: "shell", params: Obj({ id: Type.Optional(Id), add: Type.Optional(Type.Boolean()) }) },
+	"apps.add": { route: "shell", params: Obj({ url: Text(4000), name: Type.Optional(Text(80)), profile: Type.Optional(Text(60)) }) },
+	"apps.update": { route: "shell", params: Obj({ id: Id, name: Type.Optional(Text(80)), profile: Type.Optional(Text(60)), pinned: Type.Optional(Type.Boolean()) }) },
+	"apps.remove": { route: "shell", params: Obj({ id: Id, forget: Type.Boolean() }) },
+	"apps.layout": { route: "shell", params: Obj({ x: Type.Number({ minimum: 0, maximum: 20000 }), y: Type.Number({ minimum: 0, maximum: 20000 }), width: Type.Number({ minimum: 0, maximum: 20000 }), height: Type.Number({ minimum: 0, maximum: 20000 }), covered: Type.Boolean() }) },
+	"apps.command": { route: "shell", params: Obj({ id: Type.Optional(Id), action: Type.Union(["back", "forward", "reload", "home", "external", "signout", "copy", "link"].map((s) => Type.Literal(s))), text: Type.Optional(Text(40000)), url: Type.Optional(Text(4000)) }) },
+	"apps.ask": { route: "shell", params: Obj({ id: Id, text: Text(), scope: Type.Union(["page", "selection", "none"].map((s) => Type.Literal(s))), requestId: Id, missionId: Type.Optional(Id) }) },
+	"apps.stop": { route: "shell", params: Obj({ missionId: Id }) },
+	"apps.viewTask": { route: "shell", params: Obj({ missionId: Id }) },
 	"settings.get": { route: "shell", params: None },
 	"settings.set": { route: "shell", params: Obj({ patch: Type.Record(Type.String({ maxLength: 40 }), Type.Unknown()) }) },
 	"auth.login": { route: "shell", params: Obj({ provider: Id, type: Type.Union([Type.Literal("oauth"), Type.Literal("api_key")]), key: Type.Optional(Text(4000)) }) },
@@ -112,6 +124,13 @@ export const METHODS = {
 	"memory.export": { route: "host", params: None },
 	"sources.list": { route: "host", params: None },
 	"sources.remove": { route: "host", params: Obj({ rootId: Id }) },
+	"files.status": { route: "host", params: None },
+	"files.setup": { route: "host", params: None },
+	"files.index": { route: "host", params: None },
+	"files.search": { route: "host", params: Obj({ query: Text(1000), kind: Type.Optional(Text(30)), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })) }) },
+	"files.cancel": { route: "host", params: None },
+	"files.clear": { route: "host", params: None },
+	"files.open": { route: "host", params: Obj({ id: Text(120), reveal: Type.Optional(Type.Boolean()) }) },
 	"artifact.open": { route: "host", params: Obj({ artifactId: Id, reveal: Type.Optional(Type.Boolean()) }) },
 	"query.snapshot": { route: "host", params: None },
 	"query.events": { route: "host", params: Obj({ afterSeq: Type.Integer({ minimum: 0 }) }) },

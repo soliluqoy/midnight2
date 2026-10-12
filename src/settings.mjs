@@ -1,8 +1,10 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { defaultHotkey, migrateHotkey } from "./desktop/hotkey.mjs";
+import { EMBEDDING_DEFAULTS, embeddingSettings } from "./search/config.mjs";
 
-export const SETTINGS_VERSION = 2;
+export const SETTINGS_VERSION = 4;
 
 export const DEFAULTS = {
 	version: SETTINGS_VERSION,
@@ -11,8 +13,8 @@ export const DEFAULTS = {
 	taskModel: "", // "provider|id" for plans, computer use and research; "" = a stronger model when "model" is the fast default
 	thinking: "low", // off | low | medium | high
 	computerUse: "ask", // ask = allowed once a plan that needs it is approved | never
-	hotkey: "CommandOrControl+Alt+M",
-	corner: "right", // right | left
+	hotkey: defaultHotkey(),
+	corner: "right", // legacy preference; the launcher now centres on summon and can be dragged
 	launchAtLogin: false,
 	instructions: "", // standing instructions appended to the system prompt
 	// reading
@@ -31,11 +33,12 @@ export const DEFAULTS = {
 	privacy: "cloud", // cloud | local | offline
 	profile: "balanced", // quiet | balanced | focused | burst
 	local: { enabled: false, baseUrl: "http://localhost:11434/v1", model: "", vision: false },
+	embedding: { ...EMBEDDING_DEFAULTS },
 	quietHours: { enabled: true, from: "22:00", to: "07:00" },
 	budget: { costUsd: 2, toolCalls: 300 },
 	demoConnectors: false,
 	updates: "notify", // notify | off: read the public release feed at most daily; installs only when you ask
-	display: "", // id of the monitor the capsule lives on ("" = the one with the cursor at start)
+	display: "", // legacy preference; summon follows the monitor with the cursor
 };
 
 const file = () => path.join(app.getPath("userData"), "settings.json");
@@ -51,6 +54,9 @@ export function loadSettings() {
 		if (!(k in DEFAULTS)) unknown[k] = v;
 		else if (typeof v === typeof DEFAULTS[k] && (typeof v !== "object" || (v && !Array.isArray(v)))) s[k] = typeof v === "object" ? { ...DEFAULTS[k], ...v } : v;
 	}
+	s.hotkey = migrateHotkey({ ...data, hotkey: s.hotkey }) ?? DEFAULTS.hotkey;
+	s.version = SETTINGS_VERSION;
+	s.embedding = embeddingSettings(s.embedding);
 	s.textSize = Math.min(1.6, Math.max(0.9, s.textSize));
 	const write = () => {
 		fs.mkdirSync(path.dirname(file()), { recursive: true });
@@ -73,6 +79,7 @@ export function loadSettings() {
 				s[k] = typeof v === "object" && v && !Array.isArray(v) ? { ...s[k], ...v } : v;
 			}
 			s.textSize = Math.min(1.6, Math.max(0.9, Math.round(s.textSize * 100) / 100));
+			s.embedding = embeddingSettings(s.embedding);
 			if (!["ask", "prepare", "rules"].includes(s.mode)) s.mode = "ask";
 			if (!["cloud", "local", "offline"].includes(s.privacy)) s.privacy = "cloud";
 			if (!["quiet", "balanced", "focused", "burst"].includes(s.profile)) s.profile = "balanced";
@@ -94,6 +101,7 @@ export const hostSettings = (s) => ({
 	privacy: s.privacy,
 	computerUse: s.computerUse,
 	local: s.local,
+	embedding: embeddingSettings(s.embedding),
 	budget: s.budget,
 	profile: s.profile,
 	quietHours: s.quietHours,

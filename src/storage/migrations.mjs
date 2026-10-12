@@ -333,6 +333,39 @@ CREATE TABLE secrets (
 );
 `,
 	},
+	{
+		version: 2,
+		name: "selected folder file search",
+		sql: `
+CREATE TABLE search_files (
+  id TEXT PRIMARY KEY,
+  root_id TEXT NOT NULL REFERENCES roots(id) ON DELETE CASCADE,
+  path TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  modified_ms REAL NOT NULL,
+  source_hash TEXT,
+  fingerprint TEXT NOT NULL DEFAULT '',
+  state TEXT NOT NULL,
+  note TEXT,
+  truncated INTEGER NOT NULL DEFAULT 0,
+  indexed_at TEXT NOT NULL
+);
+CREATE INDEX search_files_root ON search_files(root_id);
+CREATE TABLE search_segments (
+  id TEXT PRIMARY KEY,
+  file_id TEXT NOT NULL REFERENCES search_files(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  text TEXT NOT NULL DEFAULT '',
+  locator TEXT NOT NULL DEFAULT '{}',
+  vector TEXT,
+  dimensions INTEGER NOT NULL DEFAULT 0,
+  fingerprint TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX search_segments_file ON search_segments(file_id, ordinal);
+`,
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;

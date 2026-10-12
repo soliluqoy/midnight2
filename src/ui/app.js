@@ -1,14 +1,14 @@
-// The capsule renderer. It shows the engine's projections and never decides outcomes: a mission turns mint only when
+// The launcher renderer. It shows the engine's projections and never decides outcomes: a mission turns green only when
 // the engine says its checks passed; streaming text is shown live, but the record is the engine's.
 const $ = (id) => document.getElementById(id);
 const cap = $("cap");
 const api = window.midnight;
 
-let cur = "idle"; // idle | chat | mission | read | settings | stack
+let cur = "idle"; // idle | chat | mission | read | settings | stack | search
 let prev = "chat";
 let signedIn = false;
 let prefs = { textSize: 1, autoExpand: true, highContrast: false, reducedMotion: false, mode: "ask", privacy: "cloud", onboarded: true };
-const RANK = { idle: 0, chat: 1, mission: 2, stack: 2, settings: 2, read: 3 };
+let parked = true; // hidden in the tray; minimizing never discards the current view
 const TEXT_SIZES = [0.9, 1, 1.15, 1.3, 1.45, 1.6];
 
 // engine state
@@ -43,6 +43,10 @@ function syncLayers() {
 		layer.inert = !active;
 		layer.setAttribute("aria-hidden", String(!active));
 	}
+	for (const [id, active] of [["navHome", cur === "chat"], ["navMissions", cur === "stack" || cur === "mission" || cur === "read"], ["navSearch", cur === "search"], ["navSettings", cur === "settings"]]) {
+		if (active) $(id).setAttribute("aria-current", "page");
+		else $(id).removeAttribute("aria-current");
+	}
 }
 
 const TERMINAL = new Set(["succeeded", "partially-succeeded", "failed", "cancelled"]);
@@ -64,20 +68,16 @@ function announce(t) {
 async function setState(s) {
 	if (s === cur) return;
 	wake();
-	const grow = RANK[s] > RANK[cur];
 	if (s === "settings" && cur !== "settings") prev = cur;
 	const from = cur;
 	const revision = ++viewRevision;
 	cur = s;
+	cap.dataset.s = s;
 	syncLayers();
-	if (grow) {
-		try { await api.ui.size(s); } catch (err) { showErr(err); }
-		if (revision !== viewRevision) return;
-		cap.dataset.s = s;
-	} else {
-		cap.dataset.s = s;
-		setTimeout(() => revision === viewRevision && api.ui.size(s).catch(showErr), prefs.reducedMotion ? 150 : 850);
-	}
+	if (from === "search") window.fileSearch?.leave();
+	if (s === "idle") hideLauncher();
+	try { await api.ui.size(s); } catch (err) { showErr(err); }
+	if (revision !== viewRevision) return;
 	cap.scrollTop = 0;
 	if (s === "chat") {
 		checkClipboard();
@@ -88,6 +88,7 @@ async function setState(s) {
 		}, 350);
 	}
 	if (s === "stack") renderStack();
+	if (s === "search") window.fileSearch?.enter();
 	if ((s === "mission" || s === "read") && from !== "mission" && from !== "read") setTimeout(() => {
 		if (revision !== viewRevision) return;
 		focusFooter();
@@ -122,7 +123,8 @@ function mood() {
 	else if (running) st = "working";
 	else if (snap.watching?.count) st = snap.watching.next ? `watching · ${new Date(snap.watching.next).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "watching";
 	$("idleSt").textContent = st;
-	$("l-idle").setAttribute("aria-label", `midnight, ${st}${badge ? `, ${badge} waiting` : ""}`);
+	const openCount = Object.values(snap.missions).filter((m) => !m.archived && !TERMINAL.has(m.status)).length;
+	$("startMissionCount").textContent = openCount ? `${openCount} active or waiting` : "Your work, in one place";
 }
 
 // Quiet idle: the breathing dot rests after a minute without change (it cost ~3% of a core; docs/performance.md).
@@ -211,7 +213,6 @@ async function refreshShellState() {
 	try {
 		const s = await api.settings.get();
 		if (revision !== settingsRevision) return;
-		document.body.dataset.corner = s.settings.corner;
 		applyPrefs(s.settings);
 		window.setAccel(s.settings.hotkey);
 		if (s.engine === "ready") {
@@ -242,7 +243,7 @@ function onMissionChange(before, m, type) {
 
 function finishView(m) {
 	if (m.trigger?.kind && m.trigger.kind !== "user") return; // proactive work stays quiet: it waits in the queue
-	if (cur === "idle" && m.id === current) {
+	if ((cur === "idle" || parked) && m.id === current) {
 		notify(m.status === "succeeded" ? "Done" : m.outcome?.status === "cancelled" ? "Cancelled" : "Needs a look", m.answer || m.outcome?.summary || "");
 	} else if (m.id === current && cur === "mission" && prefs.autoExpand && m.status === "succeeded" && (m.answer ?? "").length > 1200) {
 		setState("read");
@@ -290,17 +291,26 @@ api.on((m) => {
 
 function onShell(m) {
 	switch (m.type) {
+		case "apps":
+			renderPinnedApps(m.apps);
+			break;
 		case "summon":
-			summon();
+			parked = false;
+			if (m.restore && cur !== "idle") focusView();
+			else summon();
+			break;
+		case "hidden":
+			parked = true;
+			break;
+		case "shortcut-error":
+			showErr(m.error);
 			break;
 		case "open-settings":
+			parked = false;
 			openSettings();
 			break;
 		case "open-mission":
 			if (m.missionId) openMission(m.missionId);
-			break;
-		case "corner":
-			document.body.dataset.corner = m.corner;
 			break;
 		case "settings":
 			settingsRevision++;
@@ -314,7 +324,7 @@ function onShell(m) {
 			mood();
 			break;
 		case "relayout":
-			applyDims().then(() => api.ui.size(cur));
+			applyDims().then(() => api.ui.size(cur)).catch(showErr);
 			break;
 		case "screen":
 			snap.screen = m.holder ? { missionId: m.holder.missionId, epoch: m.holder.epoch, title: m.holder.title } : null;
@@ -803,10 +813,7 @@ function copyAnswer() {
 function notify(title, body) {
 	try {
 		const n = new Notification(`midnight · ${title}`, { body: String(body).replace(/[#*_`>[\]]/g, "").slice(0, 180), silent: true });
-		n.onclick = () => {
-			api.ui.focus();
-			setState("mission");
-		};
+		n.onclick = () => api.ui.show().then(() => setState("mission")).catch(showErr);
 	} catch {}
 }
 
@@ -941,15 +948,20 @@ $("chipClip").onclick = () => {
 };
 
 // ---------- input ----------
+function submitTask() {
+	const box = $("box");
+	const text = box.value.trim();
+	if (!text) return;
+	box.value = "";
+	startMission(text);
+}
+$("sendTask").onclick = submitTask;
 $("box").onkeydown = (e) => {
 	const box = $("box");
 	if (e.key === "Enter" && !e.shiftKey) {
 		e.preventDefault();
-		const t = box.value.trim();
-		if (!t) return;
-		box.value = "";
-		startMission(t);
-	} else if (e.key === "Escape") setState("idle");
+		submitTask();
+	} else if (e.key === "Escape") { e.stopPropagation(); hideLauncher(); }
 	else if (e.key === "ArrowUp" && (box.selectionStart === 0 || !box.value) && history.length) {
 		e.preventDefault();
 		hIdx = Math.min(history.length - 1, hIdx + 1);
@@ -1006,9 +1018,10 @@ document.addEventListener("keydown", (e) => {
 	if (command(e) && !e.altKey && e.key === "-") return e.preventDefault(), stepTextSize(-1);
 	if (command(e) && !e.altKey && e.key === "0") return e.preventDefault(), stepTextSize(0);
 	if (command(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "e" && mission()) return e.preventDefault(), toggleRead();
+	if (command(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") return e.preventDefault(), cur === "search" ? window.fileSearch?.focus() : setState("search");
 	if (command(e) && !e.altKey && e.shiftKey && e.key.toLowerCase() === "c") return e.preventDefault(), copyAnswer();
 	if (command(e) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "l" && (inMission() || cur === "stack") && !RUNNING.has(mission()?.status)) return e.preventDefault(), newTask();
-	if (!typing && (inMission() || cur === "stack") && e.key === "Escape") return setState("idle");
+	if (e.key === "Escape" && (cur === "chat" || cur === "stack" || cur === "settings" || cur === "search" || inMission())) return hideLauncher();
 	if (cur === "stack" && !typing && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
 		const cards = [...document.querySelectorAll("#stack .card[role=listitem]")].filter((c) => c.tagName === "BUTTON");
 		const i = cards.indexOf(document.activeElement);
@@ -1023,8 +1036,28 @@ document.addEventListener("keydown", (e) => {
 	}
 });
 
-$("bMin").onclick = () => setState("idle");
-$("bMinStack").onclick = () => setState("idle");
+function hideLauncher() {
+	parked = true;
+	api.ui.hide().catch(showErr);
+}
+for (const id of ["windowMin", "windowClose", "navHide", "bMin", "bMinStack"]) $(id).onclick = hideLauncher;
+$("navHome").onclick = newTask;
+$("navMissions").onclick = () => setState("stack");
+$("navSearch").onclick = () => setState("search");
+$("navSettings").onclick = () => openSettings();
+$("navFolders").onclick = $("startFolders").onclick = () => openSettings("sources");
+$("startAsk").onclick = () => $("box").focus();
+for (const tile of document.querySelectorAll("[data-prompt]")) tile.onclick = () => {
+	$("box").value = tile.dataset.prompt;
+	$("box").placeholder = tile.dataset.placeholder;
+	$("box").focus();
+};
+$("tileClipboard").onclick = async () => {
+	await checkClipboard();
+	if (!clip) return announce("Copy a link or a longer passage of text first.");
+	$("box").value = clip.kind === "url" ? `Summarize this page: ${clip.value}` : `Summarize this text:\n\n${clip.value}`;
+	$("box").focus();
+};
 $("bPeek").onclick = () => api.peekBrowser();
 $("bRead").onclick = () => (cur === "read" ? toggleEvidence() : toggleRead());
 $("bRead").ondblclick = toggleRead;
@@ -1056,7 +1089,6 @@ $("login").onclick = () => openSettings("accounts");
 $("gearChat").onclick = () => openSettings();
 $("gearStack").onclick = () => openSettings();
 $("chipModel").onclick = () => openSettings("model");
-$("l-idle").onkeydown = (e) => (e.key === "Enter" || e.key === " ") && summon();
 
 function openSettings(section) {
 	setState("settings");
@@ -1067,34 +1099,64 @@ function closeSettings() {
 }
 window.closeSettings = closeSettings;
 
-function summon() {
-	if (!prefs.onboarded || !signedIn) return openSettings(prefs.onboarded ? "accounts" : "welcome");
-	if (cur === "settings") return closeSettings();
-	if (cur === "idle") {
-		const needs = Object.values(snap.missions).filter((m) => NEEDS.has(m.status) && !m.archived);
-		if (needs.length === 1) return openMission(needs[0].id);
-		if (needs.length > 1) return setState("stack");
-		const m = mission();
-		return setState(m && !TERMINAL.has(m.status) ? "mission" : "chat");
-	}
-	if (cur === "chat") return setState("idle");
-	if (inMission() && TERMINAL.has(mission()?.status)) return newTask();
-	setState("idle");
+function focusView() {
+	if (cur === "chat") checkClipboard();
+	api.ui.focus().then(() => {
+		if (parked) return;
+		if (cur === "chat") $("box").focus({ preventScroll: true });
+		else if (cur === "search") window.fileSearch?.focus();
+		else if (inMission()) { focusFooter(); acknowledgeVisibleApproval(); }
+	}).catch(showErr);
 }
-$("l-idle").onclick = summon;
+function summon() {
+	parked = false;
+	if (cur === "search") return focusView();
+	if (!prefs.onboarded || !signedIn) return openSettings(prefs.onboarded ? "accounts" : "welcome");
+	if (cur !== "idle") return focusView();
+	const needs = Object.values(snap.missions).filter((m) => NEEDS.has(m.status) && !m.archived);
+	if (needs.length === 1) return openMission(needs[0].id);
+	if (needs.length > 1) return setState("stack");
+	return setState("chat");
+}
 
 function setChip(c) {
 	$("chipModel").textContent = c.model || "no model";
 	mood();
 }
 window.setAccel = (a) => {
-	$("hint").textContent = `${a.replace("CommandOrControl", commandName)} · Esc closes`;
+	$("hint").textContent = `${a.replace("CommandOrControl", commandName).replace("Control", "Ctrl").replace("Super", "Win")} · Esc hides`;
 };
 window.applyPrefs = applyPrefs;
 window.missionApi = { openMission, current: () => current };
+window.openFileSearch = () => setState("search");
+window.fileSearchTask = async (text) => {
+	await setState("chat");
+	$("box").value = text;
+	$("box").focus({ preventScroll: true });
+};
+
+let pinnedAppsKey = "";
+function renderPinnedApps(apps = []) {
+	const pinned = apps.filter((a) => a.pinned);
+	const key = JSON.stringify(pinned.map(({ id, name, profile }) => ({ id, name, profile })));
+	if (key === pinnedAppsKey) return;
+	pinnedAppsKey = key;
+	$("pinnedApps").replaceChildren(...pinned.map((app) => {
+		const button = document.createElement("button");
+		button.className = "launcher-app-pin";
+		button.textContent = app.name[0]?.toUpperCase() || "W";
+		button.title = `${app.name}${app.profile ? ` · ${app.profile}` : ""}`;
+		button.setAttribute("aria-label", `Open ${button.title}`);
+		button.onclick = () => api.apps.open({ id: app.id }).catch(showErr);
+		return button;
+	}));
+}
+$("openApps").onclick = () => api.apps.open({}).catch(showErr);
+$("addWebsite").onclick = () => api.apps.open({ add: true }).catch(showErr);
 
 async function init() {
 	wake();
+	api.apps?.state().then((s) => renderPinnedApps(s.apps)).catch(showErr);
 	syncLayers();
 	await applyDims();
 	await api.ui.size("idle");

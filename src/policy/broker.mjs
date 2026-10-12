@@ -110,6 +110,7 @@ export function createBroker(deps) {
 		const spec = tools.get(toolName) ?? foreignSpec(toolName);
 		const mission = missions.get(missionId);
 		if (!mission) return block("there is no active mission for this call");
+		if (mission.scope?.pageAssistant) return block("this app conversation can only answer or draft from shared text; it cannot use tools or change a website");
 		const stopped = stop.blocked(missionId);
 		if (stopped) return block(stopped);
 		let cls;

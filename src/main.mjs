@@ -4,8 +4,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EVENT_CHANNEL } from "./contracts/ipc.mjs";
 import { createBrowsers } from "./desktop/browsers.mjs";
+import { createAppRegistry } from "./apps/registry.mjs";
+import { createAppWorkspace } from "./desktop/app-workspace.mjs";
 import { createIpcRouter } from "./desktop/ipc.mjs";
+import { createHotkey } from "./desktop/hotkey.mjs";
+import { windowBounds, windowDims } from "./desktop/window-layout.mjs";
 import { createPlatform } from "./desktop/platform.mjs";
+import { previewFile, closeFilePreviews } from "./desktop/file-preview.mjs";
 import { createSupervisor } from "./desktop/supervisor.mjs";
 import { createUpdater } from "./desktop/updater.mjs";
 import { hostSettings, loadSettings } from "./settings.mjs";
@@ -21,11 +26,6 @@ const settings = loadSettings();
 startMissionShell();
 
 function startMissionShell() {
-	// Capsule sizes in CSS px. The renderer gets them through `ui.dims` (as CSS variables), so this is the one source.
-	// The window adds a transparent gutter for the shadow, and everything is scaled by the text-size zoom.
-	const SIZES = { idle: [264, 52], chat: [440, 150], mission: [440, 640], settings: [440, 640], stack: [440, 640], read: [740, 0] };
-	const GUTTER = 32;
-	const MARGIN = 24;
 	const dir = (p) => fileURLToPath(new URL(p, import.meta.url));
 	const UI_URL = new URL("./ui/index.html", import.meta.url).href;
 	const EXECUTABLE = /\.(exe|bat|cmd|com|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|msi|msp|lnk|scr|hta|jar|reg|cpl|pif|appref-ms)$/i;
@@ -35,11 +35,12 @@ function startMissionShell() {
 	let tray;
 	let web;
 	let browsers;
+	let appWorkspace;
 	let lease;
 	let supervisor;
 	let router;
 	let updater;
-	let hotkey = "";
+	let hotkeys;
 	let lastSize = "idle";
 	let escHeld = false;
 	const active = new Set(); // missions that are running (Esc only belongs to midnight while something runs)
@@ -61,33 +62,22 @@ function startMissionShell() {
 	}
 	app.on("second-instance", () => summon());
 
-	// ---------- placement: active-monitor aware, persisted, validated against current displays ----------
+	// ---------- placement: centre on summon; keep the user's dragged position on view/zoom changes ----------
+	let launcherDisplay;
 	function display() {
-		const all = screen.getAllDisplays();
-		const want = settings.get().display;
-		return all.find((d) => String(d.id) === want) ?? screen.getDisplayNearestPoint(screen.getCursorScreenPoint()) ?? screen.getPrimaryDisplay();
+		return launcherDisplay ?? screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
 	}
 	function dims() {
-		const z = settings.get().textSize;
-		const wa = display().workArea;
-		const maxW = Math.floor((wa.width - MARGIN * 2) / z - GUTTER);
-		const maxH = Math.floor((wa.height - MARGIN * 2) / z - GUTTER);
-		const out = {};
-		for (const [k, [w, h]] of Object.entries(SIZES)) out[k] = [Math.min(w, maxW), h ? Math.min(h, maxH) : Math.min(1100, maxH)];
-		return out;
+		return windowDims(display().workArea, settings.get().textSize);
 	}
-	function place(state) {
+	function place(state, { centre = false } = {}) {
+		const bounds = capsule.getBounds();
+		if (centre) launcherDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+		else if (bounds.width > 1) launcherDisplay = screen.getDisplayMatching(bounds);
+		const anchor = centre || bounds.width <= 1 ? undefined : { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
 		lastSize = state;
-		const z = settings.get().textSize;
-		const [cw, ch] = dims()[state] ?? dims().mission;
-		const wa = display().workArea;
-		const left = settings.get().corner === "left";
-		capsule.setBounds({
-			x: Math.round(left ? wa.x + MARGIN - GUTTER * z : wa.x + wa.width - MARGIN - (cw + GUTTER) * z),
-			y: Math.round(wa.y + wa.height - MARGIN - (ch + GUTTER) * z),
-			width: Math.round((cw + GUTTER * 2) * z),
-			height: Math.round((ch + GUTTER * 2) * z),
-		});
+		capsule.setBounds(windowBounds(state, display().workArea, settings.get().textSize, anchor));
+		if (state === "idle") hideCapsule();
 	}
 	const applyZoom = () => capsule.webContents.setZoomFactor(settings.get().textSize);
 
@@ -115,34 +105,31 @@ function startMissionShell() {
 		return r;
 	}
 
-	function summon() {
+	function summon({ toggle = true } = {}) {
 		if (!capsule || capsule.isDestroyed()) return;
-		const hidden = !capsule.isVisible();
-		if (!capsule.isFocused()) noteForeground(); // where the user was, before the capsule takes focus
-		capsule.showInactive();
-		if (hidden && lastSize !== "idle") {
-			capsule.focus();
-			return;
-		}
-		toCapsule({ kind: "shell", type: "summon" });
+		if (toggle && capsule.isVisible() && capsule.isFocused()) return hideCapsule();
+		if (!capsule.isFocused() && !process.env.MIDNIGHT_SMOKE) noteForeground(); // where the user was, before the launcher takes focus
+		const restore = lastSize !== "idle";
+		place(restore ? lastSize : "chat", { centre: true });
+		toCapsule({ kind: "shell", type: "relayout" });
+		if (capsule.isMinimized()) capsule.restore();
+		capsule.show();
+		capsule.focus();
+		toCapsule({ kind: "shell", type: "summon", restore });
 	}
 	function hideCapsule() {
-		if (capsule && !capsule.isDestroyed()) capsule.hide();
+		if (capsule && !capsule.isDestroyed()) {
+			capsule.hide();
+			toCapsule({ kind: "shell", type: "hidden" });
+		}
 	}
 	function openSettings() {
-		capsule.showInactive();
+		place("settings", { centre: true });
+		if (capsule.isMinimized()) capsule.restore();
+		capsule.show();
+		capsule.focus();
+		toCapsule({ kind: "shell", type: "relayout" });
 		toCapsule({ kind: "shell", type: "open-settings" });
-	}
-	function setHotkey(acc) {
-		if (acc === hotkey) return "";
-		let ok = false;
-		try {
-			ok = globalShortcut.register(acc, summon);
-		} catch {}
-		if (!ok) return "That shortcut is taken or not valid.";
-		if (hotkey) globalShortcut.unregister(hotkey);
-		hotkey = acc;
-		return "";
 	}
 
 	function trayIcon() {
@@ -152,7 +139,7 @@ function startMissionShell() {
 			for (let x = 0; x < n; x++) {
 				const d = Math.hypot(x - 7.5, y - 7.5);
 				const i = (y * n + x) * 4;
-				if (d <= 6.5) [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]] = [0x80 - y * 2, 0x68 + y * 3, 0xe8, 255]; // BGRA
+				if (d <= 6.5) [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]] = [0xd7, 0x78, 0x00, 255]; // BGRA · Windows blue
 			}
 		return nativeImage.createFromBuffer(buf, { width: n, height: n });
 	}
@@ -200,6 +187,7 @@ function startMissionShell() {
 			frame: false,
 			transparent: true,
 			resizable: false,
+			movable: true,
 			skipTaskbar: true,
 			alwaysOnTop: true,
 			hasShadow: false,
@@ -207,12 +195,18 @@ function startMissionShell() {
 			// background throttling on: hidden decorative animation stops (plan ch. 09)
 			webPreferences: { preload: dir("./preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: true, spellcheck: false },
 		});
-		place("idle");
-		capsule.webContents.setVisualZoomLevelLimits(1, 1);
-		capsule.webContents.on("did-finish-load", () => {
-			applyZoom();
-			toCapsule({ kind: "shell", type: "corner", corner: settings.get().corner });
+		place("idle", { centre: true });
+		capsule.on("close", (e) => { if (!app.isQuitting) { e.preventDefault(); hideCapsule(); } });
+		capsule.on("minimize", hideCapsule);
+		capsule.on("moved", () => {
+			const next = screen.getDisplayMatching(capsule.getBounds());
+			if (next.id !== launcherDisplay?.id) {
+				launcherDisplay = next;
+				toCapsule({ kind: "shell", type: "relayout" });
+			}
 		});
+		capsule.webContents.setVisualZoomLevelLimits(1, 1);
+		capsule.webContents.on("did-finish-load", applyZoom);
 		capsule.webContents.on("did-start-loading", () => router?.reset(capsule.webContents.id));
 		capsule.webContents.on("will-navigate", (e) => e.preventDefault()); // the capsule never leaves its page
 		capsule.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -232,8 +226,8 @@ function startMissionShell() {
 					: [];
 			if (items.length) items.push({ type: "separator" });
 			items.push(
-				{ label: "Hide capsule", accelerator: "CommandOrControl+H", registerAccelerator: false, click: hideCapsule },
-				{ label: `Show again: ${(hotkey || settings.get().hotkey).replace("CommandOrControl", process.platform === "darwin" ? "Cmd" : "Ctrl")}`, enabled: false },
+				{ label: "Hide to tray", accelerator: "CommandOrControl+H", registerAccelerator: false, click: hideCapsule },
+				{ label: `Show again: ${(hotkeys?.get() || settings.get().hotkey).replace("CommandOrControl", process.platform === "darwin" ? "Cmd" : "Ctrl").replace("Control", "Ctrl").replace("Super", "Win")}`, enabled: false },
 			);
 			Menu.buildFromTemplate(items).popup({ window: capsule });
 		});
@@ -273,6 +267,7 @@ function startMissionShell() {
 	let engineHook; // the headless self-test listens here
 	function onEngineMessage(m) {
 		engineHook?.(m);
+		appWorkspace?.onEngine(m);
 		if (m.kind === "update") {
 			const s = m.mission?.status;
 			if (m.missionId) {
@@ -295,10 +290,12 @@ function startMissionShell() {
 	}
 
 	async function hostCall(method, params) {
-		if ((method === "mission.create" || method === "mission.followUp") && settings.get().shareContext) {
+		if ((method === "mission.create" || method === "mission.followUp") && settings.get().shareContext && !appWorkspace?.ownsMission(params.missionId)) {
 			params = { ...params, context: await Promise.race([userContext().catch(() => ""), new Promise((r) => setTimeout(() => r(""), 800))]) };
 		}
-		return supervisor.request(method, params);
+		const result = await supervisor.request(method, params);
+		if (method === "data.delete" && ["history", "all"].includes(params.scope)) appWorkspace?.forgetHistory();
+		return result;
 	}
 
 	// ---------- shell-local IPC methods ----------
@@ -306,6 +303,8 @@ function startMissionShell() {
 		"ui.size": ({ state }) => place(state),
 		"ui.dims": () => dims(),
 		"ui.focus": () => capsule.isVisible() && capsule.focus(),
+		"ui.hide": hideCapsule,
+		"ui.show": () => summon({ toggle: false }),
 		"ui.textSize": ({ z }) => {
 			settings.set({ textSize: z });
 			applyZoom();
@@ -316,6 +315,16 @@ function startMissionShell() {
 		"clipboard.write": ({ text }) => clipboard.writeText(text),
 		"open.external": ({ url }) => (/^https?:\/\//i.test(url) ? shell.openExternal(url) : undefined),
 		"browser.peek": () => browsers.peek(),
+		"apps.state": () => appWorkspace.state(),
+		"apps.open": (p, event) => appWorkspace.open(p, { activate: event?.sender !== capsule?.webContents }),
+		"apps.add": (p) => appWorkspace.add(p),
+		"apps.update": (p) => appWorkspace.update(p),
+		"apps.remove": (p) => appWorkspace.remove(p),
+		"apps.layout": (p) => appWorkspace.layout(p),
+		"apps.command": (p) => appWorkspace.command(p),
+		"apps.ask": (p) => appWorkspace.ask(p),
+		"apps.stop": (p) => appWorkspace.stop(p),
+		"apps.viewTask": (p) => appWorkspace.viewTask(p),
 		"settings.get": async () => {
 			const [accounts, models, current] = await Promise.all([supervisor.auth("accounts").catch(() => []), supervisor.auth("models").catch(() => []), supervisor.auth("current").catch(() => ({ provider: "", model: "" }))]);
 			return { settings: settings.get(), accounts, models, current, version: app.getVersion(), dataDir: app.getPath("userData"), engine: supervisor.state() };
@@ -323,21 +332,18 @@ function startMissionShell() {
 		"settings.set": async ({ patch }) => {
 			const before = settings.get();
 			let error = "";
-			if (typeof patch.hotkey === "string" && patch.hotkey !== before.hotkey) {
-				error = setHotkey(patch.hotkey);
+			if (typeof patch.hotkey === "string") {
+				error = await hotkeys.set(patch.hotkey);
 				if (error) delete patch.hotkey;
 			}
 			const after = settings.set(patch);
-			if (after.corner !== before.corner || after.display !== before.display) {
-				toCapsule({ kind: "shell", type: "corner", corner: after.corner });
-				place(lastSize);
-			}
 			if (after.launchAtLogin !== before.launchAtLogin && app.isPackaged && process.platform !== "linux") app.setLoginItemSettings({ openAtLogin: after.launchAtLogin });
 			if (after.textSize !== before.textSize) {
 				applyZoom();
 				toCapsule({ kind: "shell", type: "relayout" });
 			}
 			supervisor.settings(hostSettings(after));
+			appWorkspace?.refresh();
 			toCapsule({ kind: "shell", type: "settings", settings: after });
 			const current = await supervisor.auth("current").catch(() => ({ provider: "", model: "" }));
 			toCapsule({ kind: "shell", type: "model", ...current });
@@ -362,6 +368,7 @@ function startMissionShell() {
 		"data.clearBrowser": async () => {
 			await browsers.clear();
 			await web.clear();
+			await appWorkspace.clear();
 		},
 		"data.openFolder": () => shell.openPath(app.getPath("userData")),
 		// The only way a folder becomes readable: the user picks it in the OS dialog.
@@ -402,9 +409,17 @@ function startMissionShell() {
 			},
 		});
 		await createWindows();
+		appWorkspace = createAppWorkspace({
+			registry: createAppRegistry(path.join(app.getPath("userData"), "apps.json")), settings: () => settings.get(),
+			request: (method, params) => supervisor.request(method, params),
+			onChanged: (apps) => toCapsule({ kind: "shell", type: "apps", apps }),
+			onReset: (id) => router?.reset(id),
+			onViewTask: (missionId) => { summon({ toggle: false }); toCapsule({ kind: "shell", type: "open-mission", missionId }); },
+		});
 		router = createIpcRouter({
 			ipcMain,
-			isTrusted: (event) => event.sender === capsule?.webContents && (event.senderFrame?.url ?? "").split("#")[0] === UI_URL,
+			isTrusted: (event) => (event.sender === capsule?.webContents && event.senderFrame === capsule.webContents.mainFrame && (event.senderFrame?.url ?? "").split("#")[0] === UI_URL) || appWorkspace.isTrusted(event),
+			canCall: (event, method) => event.sender === capsule?.webContents || method.startsWith("apps."),
 			shell: shellMethods,
 			host: hostCall,
 			log,
@@ -412,7 +427,7 @@ function startMissionShell() {
 		supervisor = createSupervisor({
 			dataDir,
 			settings: () => hostSettings(settings.get()),
-			platform: createPlatform({ web, browsers, lease, onAct, allowedOpen }),
+			platform: createPlatform({ web, browsers, lease, onAct, allowedOpen, previewFile }),
 			onMessage: onEngineMessage,
 			onState: (s) => {
 				log("engine", s.state, s.error ?? "");
@@ -432,7 +447,7 @@ function startMissionShell() {
 			openPage: (url) => url && shell.openExternal(url),
 		});
 		if (settings.get().updates === "notify" && app.isPackaged) setTimeout(() => updater.check().then((r) => r.available && toCapsule({ kind: "shell", type: "update", ...r })), 60000);
-		capsule.showInactive();
+		// Start quietly in the tray: there is no resting pill or other visible launcher window.
 
 		// Power, lock and session signals: stop starting actions, give the screen back, catch up after waking.
 		for (const ev of ["suspend", "resume", "on-ac", "on-battery", "lock-screen", "unlock-screen"]) {
@@ -443,15 +458,25 @@ function startMissionShell() {
 		}
 		if (powerMonitor.isOnBatteryPower?.()) supervisor.signal({ type: "on-battery" });
 
-		if (setHotkey(settings.get().hotkey)) setHotkey("CommandOrControl+Alt+M");
+		hotkeys = createHotkey({
+			globalShortcut,
+			onTrigger: summon,
+			onError: (error) => { log("shortcut", error); toCapsule({ kind: "shell", type: "shortcut-error", error }); },
+		});
 		tray = new Tray(trayIcon());
 		tray.setToolTip("midnight");
 		tray.on("click", summon);
 		rebuildTray();
-		screen.on("display-metrics-changed", () => toCapsule({ kind: "shell", type: "relayout" }));
+		const shortcutError = await hotkeys.set(settings.get().hotkey);
+		if (shortcutError) { log("shortcut", shortcutError); toCapsule({ kind: "shell", type: "shortcut-error", error: shortcutError }); }
+		screen.on("display-metrics-changed", (_e, d) => {
+			if (d.id === launcherDisplay?.id) launcherDisplay = d;
+			toCapsule({ kind: "shell", type: "relayout" });
+		});
 		screen.on("display-removed", () => {
-			if (!screen.getAllDisplays().some((d) => String(d.id) === settings.get().display)) settings.set({ display: "" });
-			place(lastSize); // never leave the capsule on a monitor that is gone
+			launcherDisplay = screen.getDisplayMatching(capsule.getBounds());
+			place(lastSize); // never leave the launcher on a monitor that is gone
+			toCapsule({ kind: "shell", type: "relayout" });
 		});
 
 		if (process.env.MIDNIGHT_SELFTEST) selftest(process.env.MIDNIGHT_SELFTEST);
@@ -503,8 +528,58 @@ function startMissionShell() {
 		await new Promise((r) => setTimeout(r, 2500)); // let the renderer finish its first paint and requests
 		const ui = await capsule.webContents.executeJavaScript("({ state: document.getElementById('cap').dataset.s, status: document.getElementById('idleSt').textContent })").catch((err) => ({ error: String(err) }));
 		clearTimeout(timeout);
+		const checks = [];
+		const check = (name, ok) => { checks.push({ name, ok }); if (!ok) errors.push(`window check failed: ${name}`); };
+		check("startup is tray-only", !capsule.isVisible());
+		check("summon shortcut registered", hotkeys.get() === settings.get().hotkey);
+		const centred = () => {
+			const b = capsule.getBounds(), wa = display().workArea;
+			return Math.abs(b.x + b.width / 2 - (wa.x + wa.width / 2)) <= 1 && Math.abs(b.y + b.height / 2 - (wa.y + wa.height / 2)) <= 1;
+		};
+		summon();
+		await new Promise((r) => setTimeout(r, 600));
+		check("summon is visible and centred", capsule.isVisible() && centred());
+		const original = capsule.getBounds();
+		const wa = display().workArea;
+		const dx = Math.min(30, Math.floor((wa.x + wa.width - original.x - original.width) / 2));
+		const dy = -Math.min(20, Math.floor((original.y - wa.y) / 2));
+		capsule.setPosition(original.x + dx, original.y + dy);
+		await capsule.webContents.executeJavaScript("window.midnight.ui.size(document.getElementById('cap').dataset.s)");
+		check("relayout preserves dragged position", capsule.getBounds().x === original.x + dx && capsule.getBounds().y === original.y + dy);
+		await capsule.webContents.executeJavaScript("window.midnight.apps.open({})");
+		await new Promise((r) => setTimeout(r, 150));
+		const appsWindow = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("/apps.html"));
+		check("Apps opens without hiding or taking focus from Midnight", capsule.isVisible() && capsule.isFocused() && appsWindow?.isVisible() && !appsWindow.isFocused() && !appsWindow.isAlwaysOnTop());
+		appsWindow.minimize();
+		await new Promise((r) => setTimeout(r, 150));
+		capsule.focus(); // reopening comes from a click in Midnight
+		await capsule.webContents.executeJavaScript("window.midnight.apps.open({})");
+		await new Promise((r) => setTimeout(r, 150));
+		check("minimized Apps reopens without taking focus", appsWindow.isVisible() && !appsWindow.isMinimized() && capsule.isFocused());
+		appsWindow.close();
+		check("closing Apps leaves Midnight visible", !appsWindow.isVisible() && capsule.isVisible());
+		await capsule.webContents.executeJavaScript("window.midnight.apps.open({add:true})");
+		await new Promise((r) => setTimeout(r, 150));
+		check("adding a website preserves Midnight focus", capsule.isFocused() && appsWindow.isVisible() && await appsWindow.webContents.executeJavaScript("document.getElementById('appDialog').open"));
+		appsWindow.close();
+		await capsule.webContents.executeJavaScript("document.getElementById('windowMin').click()");
+		await new Promise((r) => setTimeout(r, 100));
+		check("minimize hides without destroying", !capsule.isVisible() && !capsule.isDestroyed());
+		summon();
+		await new Promise((r) => setTimeout(r, 300));
+		check("restoring recentres", capsule.isVisible() && centred());
+		capsule.minimize();
+		await new Promise((r) => setTimeout(r, 100));
+		check("native minimize hides to tray", !capsule.isVisible());
+		summon();
+		await new Promise((r) => setTimeout(r, 300));
+		check("native minimize can be restored", capsule.isVisible() && !capsule.isMinimized() && centred());
+		capsule.close();
+		check("native close hides to tray", !capsule.isDestroyed() && !capsule.isVisible());
 		console.log(`[smoke] engine ready in ${ms} ms · seq ${snap.seq} · missions ${Object.keys(snap.missions).length} · weather "${res.weather?.text}" · ui ${JSON.stringify(ui)} · renderer errors ${errors.length}`);
+		for (const c of checks) console.log(`[smoke] ${c.ok ? "PASS" : "FAIL"} ${c.name}`);
 		for (const e of errors) console.log(`[smoke] renderer error: ${e}`);
+		hotkeys.stop();
 		await supervisor.stop();
 		app.exit(errors.length ? 1 : 0);
 	}
@@ -537,8 +612,11 @@ function startMissionShell() {
 	}
 	app.on("before-quit", () => {
 		app.isQuitting = true;
+		appWorkspace?.dispose();
+		closeFilePreviews();
 	});
 	app.on("will-quit", async (e) => {
+		hotkeys?.stop();
 		globalShortcut.unregisterAll();
 		if (supervisor && supervisor.state() !== "stopped") {
 			e.preventDefault();

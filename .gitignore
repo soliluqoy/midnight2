@@ -4,3 +4,5 @@ dist/
 *.log
 .DS_Store
 test/visual/out/
+.reference/
+__pycache__/

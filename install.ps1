@@ -1,12 +1,12 @@
 # midnight installer for Windows (x64). Per-user, no admin needed:
-#   irm https://raw.githubusercontent.com/soliluqoy/midnight.app/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/soliluqoy/midnight2/main/install.ps1 | iex
 # Uninstall:
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/soliluqoy/midnight.app/main/install.ps1))) -Uninstall
+#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/soliluqoy/midnight2/main/install.ps1))) -Uninstall
 param([switch]$Uninstall)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue' # Invoke-WebRequest is many times faster without the progress bar
 
-$repo = 'soliluqoy/midnight.app'
+$repo = 'soliluqoy/midnight2'
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\midnight'
 $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'midnight.lnk'
 
@@ -42,10 +42,10 @@ $ws = New-Object -ComObject WScript.Shell
 $s = $ws.CreateShortcut($lnk)
 $s.TargetPath = Join-Path $dest 'midnight.exe'
 $s.WorkingDirectory = $dest
-$s.Description = 'midnight: a desktop capsule that searches, reads and works in plain view'
+$s.Description = 'midnight: a desktop launcher that searches, reads and works in plain view'
 $s.Save()
 
-Start-Process (Join-Path $dest 'midnight.exe')
+Start-Process (Join-Path $dest 'midnight.exe') -WindowStyle Hidden
 Write-Host ''
-Write-Host 'midnight is installed and running: look for the pill above your taskbar.'
-Write-Host 'Summon it with Ctrl+Alt+M. Start menu: "midnight". Sign in from its settings (gear icon).'
+Write-Host 'midnight is installed and running in the system tray.'
+Write-Host 'Summon it with Ctrl+Win. Start menu: "midnight". Sign in from its settings (gear icon).'

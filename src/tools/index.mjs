@@ -10,13 +10,15 @@ import { createRecipes, createSkills } from "../skills/registry.mjs";
 import { createData } from "../storage/data.mjs";
 import { connectorTools } from "./connector-tools.mjs";
 import { fileTools } from "./files.mjs";
+import { fileSearchTools } from "./file-search.mjs";
+import { createFileSearch } from "../search/service.mjs";
 import { missionTools } from "./mission-tools.mjs";
 import { shellTools } from "./shell-tools.mjs";
 import { workTools } from "./work.mjs";
 
 // Tools every mission gets; shell tools are left out for offline missions (the broker would block them anyway).
 const MISSION = ["plan", "step", "ask_user", "remember"];
-const LOCAL = ["files_find", "files_read", "file_publish", "files_move", "files_undo_moves", "sheet_read", "calculate", "chart_create", "report_create", "crm_query", "mail_draft", "mail_send", "open_draft"];
+const LOCAL = ["files_find", "files_search", "files_read", "file_publish", "files_move", "files_undo_moves", "sheet_read", "calculate", "chart_create", "report_create", "crm_query", "mail_draft", "mail_send", "open_draft"];
 const WEB = ["search", "read_pages", "browser", "user_browser"];
 
 export function buildTools(s) {
@@ -35,7 +37,8 @@ export function buildTools(s) {
 		askUser: (...a) => s.coord().askUser(...a),
 	};
 	const shell = shellTools({ platform: s.platform, evidence: s.evidence, commit: s.commit });
-	const groups = [missionTools(coordProxy), fileTools(s).all, workTools(s).all, connectorTools({ connectors, evidence: s.evidence, commit: s.commit, platform: s.platform }).all, shell.all];
+	const fileSearch = createFileSearch({ ...s, runtime: s.searchRuntime });
+	const groups = [missionTools(coordProxy), fileTools(s).all, fileSearchTools({ ...s, search: fileSearch }).all, workTools(s).all, connectorTools({ connectors, evidence: s.evidence, commit: s.commit, platform: s.platform }).all, shell.all];
 	const all = groups.flat();
 	const names = new Set(all.map((t) => t.name));
 	const skills = createSkills({ toolNames: names });
@@ -45,6 +48,7 @@ export function buildTools(s) {
 	const vault = createVault({ store: s.store, platform: s.platform });
 	return {
 		all,
+		fileSearch,
 		connectors,
 		memory,
 		attention,
@@ -56,6 +60,7 @@ export function buildTools(s) {
 		resources: undefined, // set by the host once the queue exists
 		/** Tool names offered to a mission's model. */
 		forMission(mission, settings) {
+			if (mission.scope?.pageAssistant) return [];
 			const out = [...MISSION, ...LOCAL];
 			if (mission.privacy !== "offline") out.push(...WEB);
 			if (settings.computerUse !== "never" && mission.privacy !== "offline") out.push("computer");

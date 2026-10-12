@@ -4,7 +4,7 @@
 import { IPC_CHANNEL, validateRequest } from "../contracts/ipc.mjs";
 
 /**
- * @param {{ ipcMain: object, isTrusted: (event) => boolean, shell: Record<string, Function>, host: (method: string, params: object, event: object) => Promise<any>, log?: Function }} o
+ * @param {{ ipcMain: object, isTrusted: (event) => boolean, canCall?: (event, method: string) => boolean, shell: Record<string, Function>, host: (method: string, params: object, event: object) => Promise<any>, log?: Function }} o
  */
 export function createIpcRouter(o) {
 	const lastSeq = new Map(); // webContents id -> last sequence number
@@ -20,6 +20,7 @@ export function createIpcRouter(o) {
 			return { ok: false, error: v.error };
 		}
 		lastSeq.set(id, envelope.seq);
+		if (o.canCall && !o.canCall(event, v.method)) return { ok: false, error: "This window cannot use that capability." };
 		try {
 			const result = v.route === "shell" ? await o.shell[v.method](v.params, event) : await o.host(v.method, v.params, event);
 			return { ok: true, result: result ?? null };

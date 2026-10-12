@@ -13,7 +13,7 @@ const src = path.join(root, "src");
 const files = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(path.join(dir, e.name)) : /\.(mjs|js|cjs)$/.test(e.name) ? [path.join(dir, e.name)] : []));
 const imports = (f) => [...fs.readFileSync(f, "utf8").matchAll(/(?:^|\n)\s*import\s[^;]*?from\s+"([^"]+)"|import\("([^"]+)"\)/g)].map((m) => m[1] ?? m[2]);
 const rel = (f) => path.relative(src, f).replace(/\\/g, "/");
-const ENGINE = ["contracts", "storage", "policy", "missions", "scheduler", "memory", "evidence", "skills", "resources", "connectors", "windows", "runtime", "tools/documents"];
+const ENGINE = ["contracts", "storage", "policy", "missions", "scheduler", "memory", "evidence", "skills", "resources", "connectors", "windows", "runtime", "search", "tools/documents"];
 const all = files(src);
 
 test("contracts depend on nothing else in Midnight", () => {

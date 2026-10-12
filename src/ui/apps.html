@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>midnight · Apps</title>
+<link rel="stylesheet" href="style.css"><link rel="stylesheet" href="apps.css">
+</head>
+<body class="apps-window">
+<header class="apps-header"><strong><span class="brand-mark" aria-hidden="true">✦</span> midnight <span> / Apps</span></strong><button id="assistantToggle" aria-expanded="false" aria-controls="assistant">Ask Midnight <kbd>Ctrl J</kbd></button></header>
+<div class="workspace" id="workspace">
+  <aside class="app-sidebar" aria-label="Saved apps">
+    <div class="sidebar-heading"><span>Your apps</span><button id="addApp" aria-label="Add website" title="Add website">+</button></div>
+    <nav id="appList" aria-label="Switch app"></nav>
+    <p class="sidebar-note">Your websites.<br>Your own sign-ins.</p>
+  </aside>
+  <main class="site-region">
+    <div class="site-toolbar">
+      <div class="navigation"><button id="back" title="Back" aria-label="Back">←</button><button id="forward" title="Forward" aria-label="Forward">→</button><button id="reload" title="Reload" aria-label="Reload">↻</button></div>
+      <div class="site-identity"><strong id="appTitle">Your everyday apps</strong><span id="siteAddress">Add a website to get started</span></div>
+      <button id="external" title="Open this page in your default browser">Open in browser ↗</button><button id="manage" aria-label="App settings" title="App settings">⋯</button>
+    </div>
+    <p id="pageError" role="status" hidden></p>
+    <div id="siteViewport"><div class="apps-empty" id="emptyState"><span aria-hidden="true">✦</span><h1>A place for your everyday apps</h1><p>Pin a website and use it as usual.<br>Open Midnight beside it when you need a summary or a draft.</p><button id="emptyAdd" class="primary">Add a website</button><small>Browsing works without an AI account.</small></div></div>
+  </main>
+  <aside class="assistant" id="assistant" aria-label="Midnight page assistant" hidden>
+    <div class="assistant-heading"><div><strong>Midnight</strong><small>Questions and drafts</small></div><button id="newConversation" title="Start a new conversation">New</button><button id="closeAssistant" aria-label="Close assistant">×</button></div>
+    <div class="context-label" id="contextLabel">Choose an app</div>
+    <label class="conversation-picker" id="conversationPicker" hidden>Conversation<select id="conversationSelect" aria-label="App conversation"></select></label>
+    <div class="conversation" id="conversation"><div class="assistant-empty"><h2>A little help, right here.</h2><p>Ask about the page or prepare something to copy back into the website.</p><button data-prompt="Summarize this page.">Summarize this page</button><button data-prompt="Help me draft a response to this page.">Help me draft a response</button></div></div>
+    <div class="task-actions" id="taskActions" hidden><span id="taskStatus" role="status"></span><button id="stopTask" hidden>Stop</button><button id="copyAnswer">Copy answer</button><button id="viewTask">Open in tasks</button></div>
+    <form id="askForm" class="app-composer">
+      <label for="contextScope">Include with your message</label><select id="contextScope"><option value="page">Page text</option><option value="selection">Selected text</option><option value="none">No new page text</option></select>
+      <p id="sharingNote">Page text is shared only when you send.</p>
+      <label for="appPrompt" class="sr">Ask Midnight about this app</label><textarea id="appPrompt" rows="3" maxlength="20000" placeholder="Ask about this page, or describe a draft…"></textarea>
+      <div class="send-row"><span>Drafts stay here for you to review.</span><button id="sendAppPrompt" class="primary" type="submit">Send ↵</button></div>
+    </form>
+  </aside>
+</div>
+<div class="app-error" id="appError" role="alert" hidden><span id="appErrorText"></span><button id="dismissError" aria-label="Dismiss error">×</button></div>
+<dialog id="appDialog" aria-labelledby="dialogTitle">
+  <form id="appForm"><div class="dialog-heading"><h2 id="dialogTitle">Add a website</h2><button id="closeDialog" type="button" aria-label="Close">×</button></div>
+    <p id="dialogNote">Give it a home in Midnight. Sign in on the website after adding it.</p>
+    <label for="websiteUrl">Website address</label><input id="websiteUrl" placeholder="https://example.com" maxlength="4000" required>
+    <label for="websiteName">Name <span>(optional)</span></label><input id="websiteName" placeholder="Project tracker" maxlength="80">
+    <label for="websiteProfile">Profile label <span>(optional)</span></label><input id="websiteProfile" placeholder="Work, Personal, Client…" maxlength="60">
+    <small>Each app has a separate sign-in profile. This label helps you recognize it; the website shows the actual account.</small>
+    <p id="dialogError" role="alert" hidden></p>
+    <div class="manage-actions" id="manageActions" hidden><button id="pinApp" type="button">Unpin</button><button id="signoutApp" type="button">Sign out of this profile</button><button id="forgetApp" type="button" class="danger">Remove app and site data</button></div>
+    <p id="confirmNote" hidden></p><button id="confirmDestructive" class="danger" type="button" hidden>Confirm</button>
+    <div class="dialog-actions"><button id="cancelDialog" type="button">Cancel</button><button id="saveApp" type="submit" class="primary">Add website</button></div>
+  </form>
+</dialog>
+<script src="md.js"></script><script src="apps.js"></script>
+</body></html>

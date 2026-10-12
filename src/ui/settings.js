@@ -13,6 +13,7 @@
 	let status = { text: "", err: false };
 	let updateReady = false;
 	let scrollTo;
+	let cancelHotkeyCapture;
 
 	const h = (tag, props = {}, ...kids) => {
 		const el = document.createElement(tag);
@@ -25,7 +26,7 @@
 		return el;
 	};
 
-	const pretty = (acc) => acc.replace("CommandOrControl", /Mac/.test(navigator.platform) ? "Cmd" : "Ctrl").replace("Super", "Win");
+	const pretty = (acc) => acc.replace("CommandOrControl", /Mac/.test(navigator.platform) ? "Cmd" : "Ctrl").replace("Control", "Ctrl").replace("Super", "Win");
 	const save = async (patch) => {
 		try {
 			const r = window.checkedResult(await api.settings.set(patch));
@@ -323,6 +324,19 @@
 		);
 	}
 
+	function fileSearchSection() {
+		const embedding = S.settings.embedding ?? {};
+		const python = h("input", { class: "sinp", value: embedding.pythonPath ?? "", placeholder: "python (or a Python executable path)", "aria-label": "File search Python executable", onchange: (e) => save({ embedding: { pythonPath: e.target.value.trim() } }) });
+		return sec(
+			"file-search",
+			"LOCAL FILE SEARCH",
+			field("Search by meaning", "EmbeddingGemma 2 runs on this computer; filename and word matches work without it", toggle(!!embedding.enabled, () => save({ embedding: { enabled: !embedding.enabled } }), "Enable local meaning search")),
+			h("p", { class: "hint" }, "Searches only the folders selected above. Indexes documents, images, audio and video; results can become the starting point for a task."),
+			h("div", { class: "row" }, h("button", { class: "sb", onclick: () => window.openFileSearch?.() }, "Open file search")),
+			h("details", {}, h("summary", { class: "hint" }, "Python runtime"), h("p", { class: "hint" }, "Install local search in the search view downloads packages and the model. Python must already be installed. Leave this blank to use Python on your PATH."), python),
+		);
+	}
+
 	const EFFECT_LABEL = { "external.communication": "Send email", "local.write": "Save files", "local.move": "Move files", "read.connector": "Read connected accounts", "connector.write": "Change connected records", "browser.commit": "Submit on websites" };
 	function rulesSection() {
 		const label = h("input", { class: "sinp", placeholder: "Rule name, e.g. Weekly report to Sam", "aria-label": "Rule name" });
@@ -461,8 +475,8 @@
 			"behaviour",
 			"BEHAVIOUR",
 			field("Know where I was", "Tell midnight the window or page you were on when you opened it", toggle(st.shareContext, () => save({ shareContext: !st.shareContext }), "Know where I was")),
-			field("Summon shortcut", "", hotkeyButton()),
-			field("Capsule position", "", dropdown({ label: "Capsule position", value: st.corner, groups: [{ items: [{ value: "right", label: "Bottom right" }, { value: "left", label: "Bottom left" }] }], onPick: (v) => save({ corner: v }) })),
+			field("Summon shortcut", "Ctrl + Win: press both keys, then release. Other shortcuts can include a letter.", hotkeyButton()),
+			h("p", { class: "hint" }, "midnight opens in the centre of the screen. Drag its title bar to move it. Minimize, close or Esc hides it in the tray; your work keeps running."),
 			field("Start with Windows", "Takes effect in the installed app", toggle(st.launchAtLogin, () => save({ launchAtLogin: !st.launchAtLogin }), "Start with Windows")),
 			field("Standing instructions", "Added to every mission", null),
 			ta,
@@ -470,14 +484,24 @@
 	}
 
 	function hotkeyButton() {
-		const b = h("button", { class: "sb" }, h("kbd", {}, pretty(S.settings.hotkey)), " change");
+		const b = h("button", { class: "sb", "aria-label": "Change summon shortcut" }, h("kbd", {}, pretty(S.settings.hotkey)), " change");
 		b.onclick = () => {
-			b.textContent = "Press the new shortcut… (Esc cancels)";
+			cancelHotkeyCapture?.();
+			b.textContent = "Press shortcut… (Esc cancels)";
+			let chord = false;
+			const done = () => {
+				document.removeEventListener("keydown", onKey, true);
+				document.removeEventListener("keyup", onRelease, true);
+				cancelHotkeyCapture = undefined;
+			};
 			const onKey = (e) => {
 				e.preventDefault();
 				e.stopPropagation();
-				if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) return;
-				document.removeEventListener("keydown", onKey, true);
+				if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) {
+					chord = /Win/.test(navigator.platform) && e.ctrlKey && e.metaKey && !e.altKey && !e.shiftKey;
+					return;
+				}
+				done();
 				if (e.key === "Escape") return render();
 				const mods = [e.ctrlKey && "CommandOrControl", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Super"].filter(Boolean);
 				const names = { ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right", " ": "Space" };
@@ -485,7 +509,14 @@
 				if (!mods.length) return setStatus("Use at least one of Ctrl, Alt, Shift or Win.", true);
 				save({ hotkey: [...mods, key].join("+") });
 			};
+			const onRelease = (e) => {
+				if (!chord || !["Control", "Meta"].includes(e.key)) return;
+				e.preventDefault(); e.stopPropagation(); done();
+				save({ hotkey: "Control+Super" });
+			};
+			cancelHotkeyCapture = done;
 			document.addEventListener("keydown", onKey, true);
+			document.addEventListener("keyup", onRelease, true);
 		};
 		return b;
 	}
@@ -497,9 +528,9 @@
 		return sec(
 			"reading",
 			"READING",
-			field("Text size", "Ctrl + / Ctrl − / Ctrl 0 anywhere in the capsule", segmented(near, sizes, (v) => save({ textSize: v }), "Text size")),
+			field("Text size", "Ctrl + / Ctrl − / Ctrl 0 anywhere in midnight", segmented(near, sizes, (v) => save({ textSize: v }), "Text size")),
 			field("High contrast", "Brighter text, stronger edges", toggle(st.highContrast, () => save({ highContrast: !st.highContrast }), "High contrast")),
-			field("Reduce motion", "No breathing dot or morphing; instant changes", toggle(st.reducedMotion, () => save({ reducedMotion: !st.reducedMotion }), "Reduce motion")),
+			field("Reduce motion", "Instant view changes, no animated status light", toggle(st.reducedMotion, () => save({ reducedMotion: !st.reducedMotion }), "Reduce motion")),
 			field("Reading view for long answers", "Opens the wide view automatically · Ctrl+E toggles it", toggle(st.autoExpand, () => save({ autoExpand: !st.autoExpand }), "Reading view for long answers")),
 			field("Answer length", "", segmented(st.answerLength, [{ value: "brief", label: "Brief" }, { value: "normal", label: "Normal" }, { value: "detailed", label: "Detailed" }], (v) => save({ answerLength: v }), "Answer length")),
 		);
@@ -523,7 +554,7 @@
 			field("Export everything", "Missions, receipts, rules, watches and memory as JSON", h("button", { class: "sb", onclick: attempt(async () => { const r = await api.data.export(); setStatus(`Exported to ${r.file}`); }) }, "Export")),
 			field("Delete finished missions' content", "Answers, evidence, drafts and transcripts. Records of actions that left the computer stay.", h("button", { class: "sb danger", onclick: () => confirm("Delete the content of finished missions?") && attempt(() => api.data.remove("history"), "Deleted.")() }, "Delete")),
 			field("Delete all memory", "", h("button", { class: "sb danger", onclick: () => confirm("Forget everything midnight remembers?") && attempt(() => api.data.remove("memory"), "Memory deleted.")() }, "Delete")),
-			field("Background browser", "Cookies, logins and cache used by midnight's browser", h("button", { class: "sb danger", onclick: attempt(() => api.data.clearBrowser(), "Browser data cleared.") }, "Clear")),
+			field("Website data", "Cookies, logins and cache for saved apps and midnight's background browser", h("button", { class: "sb danger", onclick: attempt(() => api.data.clearBrowser(), "Website data cleared. Saved apps are still pinned.") }, "Clear")),
 			field("Support bundle", "Preview what it contains, then save it. No prompts, files, screenshots or secrets.", h("button", { class: "sb", onclick: attempt(async () => { const p = await api.data.diagnostics(); if (confirm(`${p.note}\n\n${JSON.stringify(p.preview, null, 1).slice(0, 1500)}…\n\nSave it?`)) await api.data.saveDiagnostics(); }) }, "Preview")),
 			field("App data folder", "", h("button", { class: "sb", onclick: () => api.data.openFolder() }, "Open")),
 			field(
@@ -539,7 +570,7 @@
 			),
 			field("Demo connectors", "Fixture CRM and mail for trying the sales-brief workflow. Nothing is really sent.", toggle(!!st.demoConnectors, () => save({ demoConnectors: !st.demoConnectors }).then(() => setStatus("Restart the engine (tray → Restart engine) to apply.")), "Demo connectors")),
 			h("p", { class: "hint" }, "Shortcuts: ? quick · ?? deep research · ↑ last prompt · Ctrl+E reading view (click ⤢ again for evidence) · Ctrl+Shift+C copy · 1–9 open a source · Ctrl+L new task · Esc takes over"),
-			h("p", { class: "hint" }, `midnight.app ${S.version} · engine ${S.engine} · ${S.dataDir}`),
+			h("p", { class: "hint" }, `midnight ${S.version} · engine ${S.engine} · ${S.dataDir}`),
 		);
 	}
 
@@ -604,6 +635,7 @@
 	// ---------- render ----------
 	function render() {
 		if (!S) return;
+		cancelHotkeyCapture?.();
 		closeMenu();
 		const keep = root.querySelector(".sbody")?.scrollTop ?? 0;
 		root.textContent = "";
@@ -617,7 +649,7 @@
 			),
 			page === "welcome"
 				? welcome()
-				: h("div", { class: "sbody" }, autonomySection(), modelSection(), accountsSection(), sourcesSection(), rulesSection(), watchesSection(), memorySection(), routinesSection(), resourcesSection(), readingSection(), webSection(), behaviourSection(), dataSection()),
+				: h("div", { class: "sbody" }, autonomySection(), modelSection(), accountsSection(), sourcesSection(), fileSearchSection(), rulesSection(), watchesSection(), memorySection(), routinesSection(), resourcesSection(), readingSection(), webSection(), behaviourSection(), dataSection()),
 		);
 		if (modal) root.append(modal);
 		const body = root.querySelector(".sbody");

@@ -2,6 +2,7 @@
 // budgets. It has no Electron dependency so it runs headless in tests and in an Electron utility process in the app.
 // Anything that needs the desktop shell (web windows, screen, secret storage) goes through `platform`.
 import fs from "node:fs";
+import { pageAssistantContext } from "../apps/page-context.mjs";
 import { newId } from "../contracts/events.mjs";
 import { createCoordinator } from "../missions/coordinator.mjs";
 import { emptyProjection, reduce, reduceAll, stackOf } from "../missions/projection.mjs";
@@ -23,6 +24,7 @@ import { buildTools, createResources } from "../tools/index.mjs";
 import { createModelRuntime, createPiRuntime, RUNTIME_VERSION } from "./adapter.mjs";
 import { registerLocalEndpoint } from "./models.mjs";
 import { corePaths, dataPaths } from "./paths.mjs";
+import { EMBEDDING_DEFAULTS, embeddingSettings } from "../search/config.mjs";
 
 export const HOST_DEFAULTS = {
 	provider: "",
@@ -34,6 +36,7 @@ export const HOST_DEFAULTS = {
 	privacy: "cloud",
 	computerUse: "ask",
 	local: { enabled: false, baseUrl: "http://localhost:11434/v1", model: "", vision: false },
+	embedding: { ...EMBEDDING_DEFAULTS },
 	budget: {},
 	profile: "balanced",
 	quietHours: { enabled: false, from: "22:00", to: "07:00" },
@@ -51,6 +54,7 @@ export async function createHost(o) {
 	const journal = createJournal(store);
 	const { commit, emit } = createUnitOfWork(store, journal);
 	let settings = { ...HOST_DEFAULTS, ...(o.settings ?? {}) };
+	settings.embedding = embeddingSettings(settings.embedding);
 	const platform = o.platform;
 
 	const repo = createMissionRepo(store, emit);
@@ -106,7 +110,7 @@ export async function createHost(o) {
 		},
 	});
 	const services = { store, journal, commit, emit, repo, ledger, grants, approvals, budgets, roots, evidence, platform, settings: () => settings, paths, broker, stop, version: RUNTIME_VERSION };
-	const tools = buildTools({ ...services, coord: () => coord });
+	const tools = buildTools({ ...services, searchRuntime: o.searchRuntime, coord: () => coord });
 	for (const t of [...tools.all, ...(o.extraTools ?? [])]) toolMap.set(t.name, t);
 
 	const toPiTool = (spec, missionId, runId) => ({
@@ -183,6 +187,30 @@ export async function createHost(o) {
 
 	// ---- methods (route "host" in contracts/ipc.mjs) ----
 	const methods = {
+		// Shell-owned page snapshots only; this method is deliberately absent from renderer IPC.
+		"mission.pageAssist": (p) => {
+			const { page } = p;
+			if (!page || !/^app_[a-f\d-]{36}$/.test(page.appId) || typeof page.text !== "string" || page.text.length > 18000 || !p.text?.trim()) throw new Error("Invalid app page context.");
+			const duplicate = repo.runByRequest(p.requestId) ?? store.get("SELECT id FROM missions WHERE json_extract(scope, '$.pending.requestId') = ?", p.requestId);
+			if (duplicate) {
+				const id = duplicate.mission_id ?? duplicate.id;
+				if (repo.get(id)?.scope.pageAssistant?.appId !== page.appId || (p.missionId && p.missionId !== id)) throw new Error("This request belongs to another app conversation.");
+				return { missionId: id, duplicate: true };
+			}
+			const context = pageAssistantContext(page);
+			const contextEvidence = page.url && page.text ? { kind: "web", source: page.url, locator: { title: page.title, appId: page.appId, profile: page.profile, scope: page.scope }, excerpt: page.text, freshness: page.capturedAt } : undefined;
+			if (p.missionId) {
+				const mission = repo.get(p.missionId);
+				if (mission?.scope.pageAssistant?.appId !== page.appId) throw new Error("This conversation belongs to another app.");
+				if (mission.privacy !== settings.privacy) throw new Error("Your model privacy setting changed. Start a new conversation to use the new setting.");
+				if (!["succeeded", "partially-succeeded", "failed", "cancelled"].includes(mission.status) || runtime.isRunning(mission.id)) throw new Error("Wait for this response or stop it before sending another.");
+				if (contextEvidence) commit(() => evidence.record(mission.id, contextEvidence));
+				coord.followUp(mission.id, p.text, p.requestId, context);
+				return { missionId: mission.id };
+			}
+			if (repo.list().some((m) => m.scope.pageAssistant?.appId === page.appId && !["succeeded", "partially-succeeded", "failed", "cancelled"].includes(m.status))) throw new Error("This app already has an active conversation. Finish or stop it first.");
+			return coord.createMission({ text: p.text, requestId: p.requestId, context, contextEvidence, mode: "prepare", scope: { pageAssistant: { appId: page.appId } }, trigger: { kind: "user", appId: page.appId, appName: page.appName, profile: page.profile } });
+		},
 		"mission.create": (p) => coord.createMission({ text: p.text, requestId: p.requestId, mode: p.mode, skill: p.skill, privacy: p.privacy, context: p.context }),
 		"mission.followUp": (p) => coord.followUp(p.missionId, p.text, p.requestId, p.context),
 		"mission.steer": (p) => coord.steer(p.missionId, p.text),
@@ -201,7 +229,10 @@ export async function createHost(o) {
 		"recipe.run": (p) => tools.recipes.run(p.recipeId, { requestId: p.requestId }),
 		"skill.list": () => tools.skills.list(),
 		"connector.list": () => tools.connectors.list(),
-		"stop.emergency": () => coord.emergencyStop(),
+		"stop.emergency": () => {
+			tools.fileSearch.cancel();
+			return coord.emergencyStop();
+		},
 		"stop.clear": () => (coord.clearEmergency(), { ok: true }),
 		"proactive.pause": (p) => (stop.setProactivePaused(p.paused), { paused: p.paused }),
 		"approval.displayed": (p) => ({ ok: approvals.markDisplayed(p.approvalId, p.nonce) }),
@@ -231,7 +262,21 @@ export async function createHost(o) {
 		"sources.list": () => roots.list(),
 		"sources.add": (p) => roots.add(p.path, p.purpose), // only the shell's trusted folder picker calls this
 		"data.backup": async () => ({ file: await store.backup() }), // only the shell's updater calls this
-		"sources.remove": (p) => ({ ok: roots.remove(p.rootId) }),
+		"sources.remove": (p) => {
+			const ok = roots.remove(p.rootId);
+			tools.fileSearch.removeRoot(p.rootId);
+			return { ok };
+		},
+		"files.status": () => tools.fileSearch.status(),
+		"files.setup": () => tools.fileSearch.setup(),
+		"files.index": () => tools.fileSearch.index(),
+		"files.search": (p) => tools.fileSearch.search(p),
+		"files.cancel": () => tools.fileSearch.cancel(),
+		"files.clear": () => tools.fileSearch.clear(),
+		"files.open": async (p) => {
+			const result = await tools.fileSearch.resolve(p.id);
+			return platform.call("open.searchResult", { path: result.path, kind: result.path.toLowerCase().endsWith(".pdf") ? "pdf" : result.kind, locator: result.locator, reveal: !!p.reveal });
+		},
 		"artifact.open": (p) => {
 			const a = evidence.artifact(p.artifactId);
 			if (!a) throw new Error("no such artifact");
@@ -247,7 +292,10 @@ export async function createHost(o) {
 		}),
 		"query.history": (p) => repo.list({ limit: p.limit ?? 50 }).map((m) => viewOf(m.id)).filter(Boolean),
 		"data.export": () => tools.data.exportAll(),
-		"data.delete": (p) => tools.data.remove(p.scope),
+		"data.delete": (p) => {
+			if (p.scope === "all") tools.fileSearch.clear();
+			return tools.data.remove(p.scope);
+		},
 		"diagnostics.preview": () => tools.data.diagnostics(),
 		"resources.status": () => ({ queue: queue.status(), profile: settings.profile, weather: tools.resources?.weather() }),
 	};
@@ -282,6 +330,10 @@ export async function createHost(o) {
 		setSettings(next) {
 			const before = settings;
 			settings = { ...settings, ...next };
+			settings.embedding = embeddingSettings(settings.embedding);
+			if (JSON.stringify(before.embedding) !== JSON.stringify(settings.embedding)) {
+				tools.fileSearch.cancel();
+			}
 			if (JSON.stringify(before.local) !== JSON.stringify(settings.local)) {
 				try {
 					registerLocalEndpoint(modelRuntime, settings.local);
@@ -304,12 +356,14 @@ export async function createHost(o) {
 		},
 		async close() {
 			tools.watches?.stop();
+			await tools.fileSearch.close();
 			for (const id of runtime.running()) await runtime.abort(id).catch(() => {});
 			store.close();
 		},
 		/** Test hook: drop everything without cleanup, as a crash would. */
 		crash() {
 			tools.watches?.stop();
+			tools.fileSearch.close();
 			try {
 				store.raw.close();
 			} catch {}
