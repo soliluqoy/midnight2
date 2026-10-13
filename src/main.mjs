@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, session, shell, Tray } from "electron";
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, powerMonitor, screen, session, shell, Tray } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -385,7 +385,6 @@ function startMissionShell() {
 			}
 			const after = settings.set(patch);
 			if (after.launchAtLogin !== before.launchAtLogin && app.isPackaged && process.platform !== "linux") app.setLoginItemSettings({ openAtLogin: after.launchAtLogin });
-			if (after.theme !== before.theme) nativeTheme.themeSource = after.theme;
 			if (after.mcpServer !== before.mcpServer) await syncMcpServer();
 			if (after.language !== before.language) {
 				rebuildTray();
@@ -500,7 +499,6 @@ function startMissionShell() {
 
 	app.whenReady().then(async () => {
 		app.setAppUserModelId("midnight.app"); // lets notifications show while the capsule is tucked away
-		nativeTheme.themeSource = settings.get().theme; // every window's prefers-color-scheme follows this
 		// The microphone: only the launcher, only audio, and only while voice input is on. Everything else is refused.
 		const micAllowed = (wc, permission, mediaTypes = []) => permission === "media" && wc === capsule?.webContents && settings.get().voice && mediaTypes.length > 0 && mediaTypes.every((t) => t === "audio");
 		session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => cb(micAllowed(wc, permission, details?.mediaTypes)));

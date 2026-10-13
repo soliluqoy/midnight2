@@ -358,19 +358,6 @@ body[data-contrast=high] .pb.pri,body[data-contrast=high] .sb.pri,body[data-cont
 body[data-motion=reduced] *{animation-duration:.001s!important;animation-iteration-count:1!important;transition-duration:.001s!important}
 #cap[data-rest][data-m=idle] .dot{animation:none}
 
-/* Light appearance: follows Windows/macOS (Settings → Appearance can force dark or light; the shell sets the
-   native theme source, so prefers-color-scheme reflects that choice in every midnight window). */
-@media (prefers-color-scheme:light){
-  :root{color-scheme:light;
-    --paper:#f7f6fa;--surface:#fff;--surface-low:#f0eef5;--chrome:#eceaf2;--field:#fff;
-    --ink:#1d1b24;--muted:#48445a;--faint:#625d73;--line:#d9d6e2;--divider:#0000000f;--control-line:#bfbacd;
-    --accent:#6a55b0;--accent-hover:#5d49a2;--accent-soft:#ece7f9;--accent-line:#b4a7de;--highlight:#5340a3;
-    --surface-hover:#ebe8f3;--surface-pressed:#e0dcea;--green:#1d7445;--amber:#835500;--danger:#b3261e;--blue:#2b5aa8;
-    --green-surface:#e4f3e9;--green-line:#8cc2a1;--amber-surface:#fbf0dc;--amber-line:#d9b574;--danger-surface:#fbe8e7;--danger-line:#e09d98;
-    --shadow:#00000026;--shadow-soft:#00000014;--scrim:#1d1b2459;--close-hover:#c42b1c;--warm-hover:#fbf0dc}
-  body[data-contrast=high]{--ink:#000;--muted:#141218;--faint:#2a2733;--line:#5b566c;--divider:#6d6880;--control-line:#5b566c;--accent:#46368c;--accent-hover:#3c2e7a;--highlight:#35277a;--accent-line:#46368c}
-  body[data-contrast=high] #cap{border-color:var(--ink)}
-}
 /* Windows High Contrast and other forced-color modes: system colors, visible edges on every control. */
 @media (forced-colors:active){
   #cap,.modal .box,.dd-menu,.card,.continue-mission,.launcher-app-pin,.launcher-add-app,.task-file,.ui-error,.f-ask,.f-q,.f-rec{border:1px solid CanvasText}
@@ -384,13 +371,7 @@ body[data-motion=reduced] *{animation-duration:.001s!important;animation-iterati
   .caret{background:CanvasText}
   ::-webkit-scrollbar-thumb{background:ButtonText}
 }
-/* Light high contrast: primary actions become outlined, so their edge contrasts with both the fill and the page. */
-@media (prefers-color-scheme:light){
-  body[data-contrast=high] .pb.pri,body[data-contrast=high] .sb.pri{background:var(--surface);color:var(--ink);border-color:var(--ink);border-width:2px}
-  body[data-contrast=high] .switch.on{background:var(--ink);border-color:var(--ink)}
-}
-
-/* Code blocks in answers (both windows): language, copy button and token colors that follow the theme. */
+/* Code blocks in answers (both windows): language, copy button and token colors. */
 .code-block{border:1px solid var(--line);border-radius:var(--radius-control);margin:0 0 .8em;overflow:hidden;background:var(--field)}
 .code-block pre,.ans .code-block pre{margin:0;border:0;border-radius:0}
 .code-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 6px 3px 10px;border-bottom:1px solid var(--line);background:var(--surface-low);font-size:11px;color:var(--faint);user-select:none}
@@ -398,7 +379,6 @@ body[data-motion=reduced] *{animation-duration:.001s!important;animation-iterati
 .code-copy:hover{background:var(--surface-hover);border-color:var(--control-line);color:var(--ink)}
 :root{--tok-k:#c4a7ff;--tok-s:#9bd4b0;--tok-c:#8d89a0;--tok-n:#edc483;--tok-t:#a7bfeb;--tok-a:#e8b4c8}
 .tok-k{color:var(--tok-k)}.tok-s{color:var(--tok-s)}.tok-c{color:var(--tok-c);font-style:italic}.tok-n{color:var(--tok-n)}.tok-t{color:var(--tok-t)}.tok-a{color:var(--tok-a)}
-@media (prefers-color-scheme:light){:root{--tok-k:#6639ba;--tok-s:#0f6b3a;--tok-c:#6b6679;--tok-n:#8a4b00;--tok-t:#1f5bb5;--tok-a:#9c2860}}
 @media (forced-colors:active){.tok-k,.tok-s,.tok-c,.tok-n,.tok-t,.tok-a{color:CanvasText}.code-block{border-color:CanvasText}}
 
 /* Attached files and pictures in Ask, and the drop target while dragging files over the launcher. */

@@ -1,6 +1,6 @@
 // Interaction regressions against the actual renderer, with delayed/rejected bridge responses.
 import assert from "node:assert/strict";
-import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -25,7 +25,6 @@ ipcMain.handle("fixture:size", () => null);
 const json = (v) => JSON.stringify(v);
 
 app.whenReady().then(async () => {
-	nativeTheme.themeSource = "dark"; // the checks below are for the default dark appearance; light has its own checks
 	const win = new BrowserWindow({ width: 1300, height: 1400, show: false, webPreferences: { preload: path.join(root, "test/visual/preload.cjs"), contextIsolation: true, sandbox: true, offscreen: true } });
 	const js = (code) => win.webContents.executeJavaScript(`(async () => { ${code} })()`);
 	const errors = [];
@@ -75,30 +74,6 @@ app.whenReady().then(async () => {
 					assert.ok(marker.outline ? contrast(over(marker.outlineColor, adjacent), adjacent) >= 3 : marker.changed && contrast(over(marker.border, background), background) >= 3, `${selector} has a distinguishable focus marker`);
 				}
 			} finally { win.webContents.debugger.detach(); }
-		}],
-		["light appearance keeps text readable and high-contrast edges visible", async () => {
-			nativeTheme.themeSource = "light";
-			try {
-				await reset();
-				await js(`await setState('chat'); document.activeElement.blur();`);
-				await sleep(200);
-				const scheme = await js(`return matchMedia('(prefers-color-scheme: light)').matches && getComputedStyle(document.documentElement).colorScheme;`);
-				assert.equal(scheme, "light", "the light tokens apply");
-				const text = await js(`const s=getComputedStyle(document.documentElement),c=k=>s.getPropertyValue(k).trim();return {paper:c('--paper'),surface:c('--surface'),ink:c('--ink'),muted:c('--muted'),faint:c('--faint'),accent:c('--accent'),onAccent:c('--on-accent'),shell:getComputedStyle(cap).backgroundColor};`);
-				const hex = (h) => (h.length === 4 ? [...h.slice(1)].map((x) => parseInt(x + x, 16)) : [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
-				for (const k of ["ink", "muted", "faint"]) for (const bg of ["paper", "surface"]) assert.ok(contrast(hex(text[k]), hex(text[bg])) >= 4.5, `${k} on ${bg} reaches 4.5:1 in light`);
-				assert.ok(contrast(hex(text.onAccent), hex(text.accent)) >= 4.5, "primary button text reaches 4.5:1 in light");
-				assert.deepEqual(color(text.shell).slice(0, 3), hex(text.paper), "the launcher surface is the light paper");
-				await js(`applyPrefs({highContrast:true});`);
-				await sleep(200);
-				const edges = await js(`return [...document.querySelectorAll('.continue-mission,.home-mode,#box,#chipModel,#sendTask')].map(el=>{const s=getComputedStyle(el);return {name:el.id || el.textContent.trim(),width:parseFloat(s.borderTopWidth),style:s.borderTopStyle,border:s.borderTopColor,background:s.backgroundColor,shell:getComputedStyle(cap).backgroundColor};});`);
-				for (const edge of edges) {
-					const shell = color(edge.shell), background = over(edge.background, shell), border = over(edge.border, background);
-					assert.ok(edge.width > 0 && edge.style !== "none" && contrast(border, background) >= 3 && contrast(border, shell) >= 3, `${edge.name} has visible edges in light high contrast`);
-				}
-			} finally {
-				nativeTheme.themeSource = "dark";
-			}
 		}],
 		["Windows High Contrast (forced colors) gives every control a system-colored edge", async () => {
 			win.webContents.debugger.attach("1.3");

@@ -609,7 +609,6 @@
 		return sec(
 			"reading",
 			"READING",
-			field("Theme", "Follows Windows unless you choose", segmented(st.theme ?? "system", [{ value: "system", label: "System" }, { value: "dark", label: "Dark" }, { value: "light", label: "Light" }], (v) => save({ theme: v }), "Theme")),
 			field("Language", "Midnight reloads to switch", segmented(st.language ?? "", [{ value: "", label: "System" }, { value: "en", label: "English" }, { value: "id", label: "Bahasa Indonesia" }], (v) => save({ language: v }), "Language")),
 			field("Text size", "Ctrl + / Ctrl − / Ctrl 0 anywhere in midnight", segmented(near, sizes, (v) => save({ textSize: v }), "Text size")),
 			field("High contrast", "Brighter text, stronger edges", toggle(st.highContrast, () => save({ highContrast: !st.highContrast }), "High contrast")),
