@@ -21,11 +21,28 @@
 		"sbom": "node scripts/sbom.mjs",
 		"test:visual": "electron scripts/visual.mjs",
 		"test:ui": "electron scripts/ui-check.mjs",
+		"test:quick-ui": "electron scripts/quick-ui-check.mjs",
+		"test:ptt": "electron scripts/ptt-check.mjs",
+		"test:ptt-voice": "electron scripts/ptt-voice-check.mjs",
+		"test:plugins": "electron scripts/plugin-check.mjs",
 		"test:apps": "electron scripts/apps-check.mjs",
 		"test:smoke": "node scripts/smoke.mjs",
 		"test:search-model": "electron scripts/search-model.mjs",
+		"test:embeddings": "node scripts/native-embedding-check.mjs",
+		"test:residency": "node scripts/residency-check.mjs",
+		"test:cloud-writing": "node scripts/cloud-writing-check.mjs",
+		"test:cloud-builder": "node scripts/builder-cloud-check.mjs",
+		"test:builder-scheduling": "node scripts/builder-scheduling-check.mjs",
+		"test:source-sandbox": "node scripts/source-sandbox-check.mjs",
+		"test:source-validation": "node scripts/source-validation-check.mjs",
+		"test:source-worker": "node scripts/source-worker-check.mjs",
+		"test:core-builder": "node scripts/core-builder-cloud-check.mjs",
+		"test:workflow": "node scripts/word-voice-cloud-check.mjs",
+		"test:recovery": "node scripts/recovery-check.mjs",
+		"test:package": "node scripts/package-check.mjs",
 		"build:native": "node scripts/build-native.mjs",
-		"test:voice-model": "electron scripts/voice-model.mjs"
+		"test:voice-model": "electron scripts/voice-model.mjs",
+		"test:word": "node scripts/word-qualification.mjs"
 	},
 	"dependencies": {
 		"@earendil-works/chord": "file:vendor/earendil-works-chord-1.0.1.tgz",
@@ -39,7 +56,8 @@
 		"@huggingface/transformers": "^4.3.1",
 		"pdfjs-dist": "^6.4.299",
 		"sqlite-vec": "^0.1.9",
-		"typebox": "1.3.27"
+		"typebox": "1.3.27",
+		"ws": "8.22.0"
 	},
 	"devDependencies": {
 		"@electron/fuses": "^2.1.3",
@@ -57,6 +75,7 @@
 		"@earendil-works/pi-codemode": "$@earendil-works/pi-codemode"
 	},
 	"build": {
+		"extends": "./scripts/package-files.cjs",
 		"appId": "app.midnight.capsule",
 		"productName": "midnight",
 		"asar": true,
@@ -92,9 +111,8 @@
 			],
 			"signAndEditExecutable": true,
 			"verifyUpdateCodeSignature": true,
-			"files": [
-				"!node_modules/onnxruntime-node/bin/napi-v6/{darwin,linux}/**",
-				"!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**"
+			"extraFiles": [
+				{ "from": "src/desktop/native/midnight-recovery.exe", "to": "midnight-recovery.exe" }
 			],
 			"signExts": [
 				".exe"
@@ -110,11 +128,7 @@
 				}
 			],
 			"category": "public.app-category.productivity",
-			"identity": null,
-			"files": [
-				"!node_modules/onnxruntime-node/bin/napi-v6/{win32,linux}/**",
-				"!node_modules/onnxruntime-node/bin/napi-v6/darwin/x64/**"
-			]
+			"identity": null
 		},
 		"linux": {
 			"target": [
@@ -125,13 +139,10 @@
 					]
 				}
 			],
-			"category": "Utility",
-			"files": [
-				"!node_modules/onnxruntime-node/bin/napi-v6/{win32,darwin}/**",
-				"!node_modules/onnxruntime-node/bin/napi-v6/linux/arm64/**"
-			]
+			"category": "Utility"
 		},
 		"nsis": {
+			"include": "scripts/installer.nsh",
 			"oneClick": true,
 			"perMachine": false,
 			"allowElevation": false,

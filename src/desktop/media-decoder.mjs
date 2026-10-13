@@ -102,13 +102,13 @@ export function createMediaDecoder({ log = () => {} } = {}) {
 	}
 
 	/** A decoding session for bytes already in memory (for example audio recorded in the launcher). */
-	async function fromBytes(bytes, kind, type = "") {
+	async function fromBytes(bytes, kind, type = "", options = {}) {
 		if (bytes.byteLength > MAX_BYTES) throw new Error("This media is larger than the size limit.");
 		const id = `m${++seq}`;
 		open.add(id);
 		let info;
 		try {
-			info = await call("open", { id, kind, bytes, type });
+			info = await call("open", { id, kind, bytes, type }, options);
 		} catch (err) {
 			open.delete(id);
 			call("close", { id }).catch(() => {});

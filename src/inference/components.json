@@ -1,0 +1,93 @@
+{
+  "schema": "midnight.runtime-manifest.v1",
+  "runtimeVersion": "0.1.0",
+  "minAppVersion": "0.1.0",
+  "components": [
+    {
+      "id": "llama.cpp",
+      "kind": "llama.cpp",
+      "version": "b11560",
+      "platform": "win-x64",
+      "license": "MIT",
+      "variants": [
+        {
+          "id": "cpu",
+          "file": "llama-b11560-bin-win-cpu-x64.zip",
+          "sha256": "a8c9ad8c39957294dbb3d694251fe43f98f481bff118e579f133b4dbbd545099",
+          "bytes": 19501163,
+          "bundled": true
+        },
+        {
+          "id": "vulkan",
+          "file": "llama-b11560-bin-win-vulkan-x64.zip",
+          "sha256": "2ef19cf51dd5f037dcac25e57f2299b4ffae0c9620b83a14cf9b3f60860b72fc",
+          "bytes": 32084455,
+          "bundled": true
+        }
+      ]
+    },
+    {
+      "id": "model.embedder.text",
+      "kind": "model",
+      "role": "embedder",
+      "family": "embeddinggemma-2",
+      "license": "Apache-2.0",
+      "extraTerms": "Gemma Prohibited Use Policy",
+      "source": {
+        "hf": "ggml-org/embeddinggemma-2-GGUF",
+        "revision": "bfcd298762cc34d0357ece5ebdd31791a3a374d8",
+        "file": "embeddinggemma-2-Q8_0.gguf"
+      },
+      "sha256": "2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135",
+      "bytes": 309855456,
+      "requires": {
+        "llamaMin": "b11452"
+      }
+    },
+    {
+      "id": "model.embedder.mmproj",
+      "kind": "model",
+      "role": "embedder-projector",
+      "family": "embeddinggemma-2",
+      "license": "Apache-2.0",
+      "extraTerms": "Gemma Prohibited Use Policy",
+      "source": {
+        "hf": "ggml-org/embeddinggemma-2-GGUF",
+        "revision": "bfcd298762cc34d0357ece5ebdd31791a3a374d8",
+        "file": "mmproj-embeddinggemma-2-Q8_0.gguf"
+      },
+      "sha256": "c4a8a52691ecef40618438928bdf9e68379b854e24166f292592353db0aab64f",
+      "bytes": 554821024,
+      "pairsWith": "model.embedder.text"
+    },
+    {
+      "id": "model.executor.gemma4-e2b",
+      "kind": "model",
+      "role": "executor",
+      "family": "gemma-4",
+      "license": "Apache-2.0",
+      "source": {
+        "hf": "unsloth/gemma-4-E2B-it-GGUF",
+        "revision": "0314792d7f1f7e229411f620751375812bb9faf2",
+        "file": "gemma-4-E2B-it-Q4_K_M.gguf"
+      },
+      "sha256": "740185b21d22ceb83a11c3aa62ad5842ef32c70f6096d756bbee85a1e4ec34b8",
+      "bytes": 3106738272
+    },
+    {
+      "id": "model.executor.gemma4-e4b",
+      "kind": "model",
+      "role": "executor",
+      "family": "gemma-4",
+      "license": "Apache-2.0",
+      "source": {
+        "hf": "unsloth/gemma-4-E4B-it-GGUF",
+        "revision": "bfc15c382204943c3a8fff0c750b94ae2364d7a3",
+        "file": "gemma-4-E4B-it-Q4_K_M.gguf"
+      },
+      "sha256": "85a896a047553e842f25297ee5b031d64ff30147d9c4af17b1e4b394cd1fab87",
+      "bytes": 4977171584
+    }
+  ],
+  "signature": "ed25519:/wEfgHqVxL/uhhjKfJUKCMqdlEAyoCk8fyPFZ1xsuUi441R2bNyU2E0yFVI6/Tl+uHI+5yIPkxBRVXvkbsO/Dw=="
+}

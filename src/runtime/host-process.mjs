@@ -2,29 +2,16 @@
 // crashes the capsule and tray stay usable and the shell restarts it; recovery then reconciles whatever was in flight.
 // The host reaches the desktop only through the shell's fixed set of platform operations.
 import { createHost } from "./host.mjs";
+import { holdRecoveryProfile } from "../recovery/profile.mjs";
+import { createPlatformBridge } from "./platform-bridge.mjs";
 
 const port = process.parentPort;
-const pending = new Map(); // platform request id -> { resolve, reject }
 let seq = 0;
 let host;
+const bridge = createPlatformBridge({ send: message => port.postMessage(message) });
 
 const platform = {
-	call(op, args = {}, { signal } = {}) {
-		const id = ++seq;
-		return new Promise((resolve, reject) => {
-			pending.set(id, { resolve, reject });
-			port.postMessage({ kind: "platform", id, op, args });
-			signal?.addEventListener(
-				"abort",
-				() => {
-					port.postMessage({ kind: "platform-cancel", id });
-					pending.delete(id);
-					reject(new Error("aborted"));
-				},
-				{ once: true },
-			);
-		});
-	},
+	call: bridge.call,
 	lease: {
 		async acquire(missionId, { signal } = {}) {
 			const r = await platform.call("lease.acquire", { missionId }, { signal });
@@ -41,6 +28,7 @@ port.on("message", async ({ data: m }) => {
 	try {
 		switch (m.kind) {
 			case "init":
+				if (m.recoveryProfile) holdRecoveryProfile(m.recoveryProfile); // Retained until actual engine process exit.
 				host = await createHost({ dataDir: m.dataDir, platform, settings: m.settings, log });
 				host.subscribe((out) => port.postMessage(out));
 				await host.start();
@@ -55,11 +43,7 @@ port.on("message", async ({ data: m }) => {
 				}
 				break;
 			case "platform-response": {
-				const p = pending.get(m.id);
-				pending.delete(m.id);
-				if (!p) break;
-				if (m.ok) p.resolve(m.result);
-				else p.reject(Object.assign(new Error(m.error), { code: m.code, uncertain: m.uncertain }));
+				bridge.respond(m);
 				break;
 			}
 			case "settings":
@@ -74,6 +58,7 @@ port.on("message", async ({ data: m }) => {
 				break;
 			case "auth":
 				// Model sign-in runs here because the host owns the model runtime.
+				if (["login", "logout"].includes(m.op)) host?.perception.settingsChanged();
 				try {
 					const result = await auth(m.op, m.args);
 					port.postMessage({ kind: "response", id: m.id, ok: true, result });

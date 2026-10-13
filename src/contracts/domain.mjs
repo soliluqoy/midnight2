@@ -86,12 +86,14 @@ export function canTransitionAction(from, to) {
  */
 export const EFFECTS = {
 	"read.local": { external: false, reversible: true, label: "read local files" },
+	"read.app": { external: false, reversible: true, label: "read Midnight status" },
 	"read.web": { external: false, reversible: true, label: "read public web pages" },
 	"read.connector": { external: false, reversible: true, label: "read connected account data" },
 	"compute": { external: false, reversible: true, label: "calculate" },
 	"artifact.stage": { external: false, reversible: true, label: "create a draft in the mission workspace" },
 	"local.write": { external: false, reversible: true, label: "write files in a chosen folder" },
 	"local.move": { external: false, reversible: true, label: "move files (with an undo manifest)" },
+	"app.edit": { external: false, reversible: true, label: "change the captured app target" },
 	"local.delete": { external: false, reversible: false, label: "delete files" },
 	"browser.navigate": { external: false, reversible: true, label: "open pages in midnight's browser" },
 	"browser.commit": { external: true, reversible: false, label: "submit a form or press a commit button on a website" },

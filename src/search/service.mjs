@@ -256,7 +256,9 @@ export function createFileSearch({ store, roots, settings, paths, runtime = crea
 	}
 	function status() {
 		const totals = counts();
-		return { enabled: !!settingsNow().embedding?.enabled, state: state === "idle" && totals.files ? "ready" : state, busy: !!active, operation: active?.operation ?? null, phase, error, progress: { ...progress }, counts: totals, runtime: runtime.status(), limits: SEARCH_LIMITS, skipped, truncated, warnings: [...warnings], lastIndexedAt: closed ? null : store.meta("search.last-indexed-at") ?? null };
+		const local = runtime.status();
+		const needsReindex = !closed && local.available && Number(store.get("SELECT COUNT(*) AS n FROM search_files WHERE state = 'indexed' AND fingerprint <> ?", fingerprint()).n) > 0;
+		return { enabled: !!settingsNow().embedding?.enabled, state: state === "idle" && totals.files ? "ready" : state, needsReindex, busy: !!active, operation: active?.operation ?? null, phase, error, progress: { ...progress }, counts: totals, runtime: local, limits: SEARCH_LIMITS, skipped, truncated, warnings: [...warnings], lastIndexedAt: closed ? null : store.meta("search.last-indexed-at") ?? null };
 	}
 	function reportProgress(value, signal) {
 		if (closed || signal.aborted) return;

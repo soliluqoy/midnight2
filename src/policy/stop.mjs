@@ -3,6 +3,7 @@
 // an effect that was already delivered may finish, and its receipt says so.
 export function createStopControl({ now = () => Date.now() } = {}) {
 	let emergency;
+	let sessionBlocked;
 	const missions = new Map(); // missionId -> "paused" | "cancelled"
 	let proactivePaused = false;
 	const listeners = new Set();
@@ -22,6 +23,10 @@ export function createStopControl({ now = () => Date.now() } = {}) {
 			tell({ type: "clear" });
 		},
 		isEmergency: () => !!emergency,
+		setSessionBlocked(reason) {
+			sessionBlocked = reason;
+			tell({ type: "session", reason });
+		},
 		stopMission(missionId, reason) {
 			missions.set(missionId, reason);
 			tell({ type: "mission", missionId, reason });
@@ -36,6 +41,7 @@ export function createStopControl({ now = () => Date.now() } = {}) {
 		proactivePaused: () => proactivePaused,
 		blocked(missionId) {
 			if (emergency) return "the emergency stop is on";
+			if (sessionBlocked) return sessionBlocked;
 			const r = missions.get(missionId);
 			return r ? `the mission was ${r}` : undefined;
 		},

@@ -2,7 +2,7 @@
 // inside the work area; resizing preserves its current centre instead of snapping back to a taskbar corner.
 export const GUTTER = 16;
 export const MARGIN = 16;
-export const SIZES = { idle: [760, 460], chat: [760, 460], mission: [760, 640], settings: [760, 640], stack: [760, 640], search: [760, 460], read: [940, 0] };
+export const SIZES = { idle: [760, 460], chat: [760, 460], mission: [760, 640], settings: [760, 640], stack: [760, 640], search: [760, 460], read: [940, 0], quickInput: [460, 320], quickPreview: [460, 490], quickNotice: [460, 180] };
 
 export function windowDims(workArea, zoom = 1) {
 	const maxW = Math.max(1, Math.floor((workArea.width - MARGIN * 2) / zoom - GUTTER * 2));

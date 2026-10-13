@@ -1,0 +1,16 @@
+.quick-panel{position:absolute;inset:16px;background:var(--paper);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 28px var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+.quick-panel header{height:38px;display:flex;align-items:center;gap:12px;padding-left:16px;background:var(--chrome);-webkit-app-region:drag;flex:none}
+.quick-panel header strong{flex:1;font-size:13px;font-weight:600}.quick-panel header span{color:var(--muted);font-weight:400;margin-left:6px}
+.quick-panel button{border:1px solid var(--control-line);padding:7px 12px;background:var(--surface);color:var(--ink);border-radius:8px;-webkit-app-region:no-drag}
+.quick-panel header button{border:0;background:transparent;border-radius:0;padding:4px 14px;font-size:21px;height:38px}
+.quick-panel button:hover:enabled{background:var(--surface-hover)}.quick-panel header button:hover{background:var(--close-hover)}
+.quick-panel button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}.quick-panel button.primary:hover:enabled{background:var(--accent-hover)}
+.quick-panel :is(button,textarea,summary):focus-visible{outline:2px solid var(--highlight);outline-offset:2px}
+.content{padding:12px 16px 14px;overflow:auto;flex:1;min-height:0}.scope{color:var(--highlight);font-size:11px}.content p{margin:7px 0}
+#message{overflow-wrap:anywhere}.privacy{font-size:11px;color:var(--muted)}.text{white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;max-height:120px;overflow:auto;line-height:1.55}
+details{color:var(--muted);font-size:12px;margin:7px 0 12px}summary{cursor:pointer}details .text{max-height:72px}label{display:block;margin-bottom:6px}
+textarea{width:100%;resize:none;background:var(--field);border:1px solid var(--control-line);padding:8px;min-height:64px;line-height:1.5;user-select:text}
+.actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:10px}.comparison{display:grid;gap:8px;margin-top:8px}.comparison>div{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--surface-low)}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0}.comparison .text{max-height:100px}.error{color:var(--danger);font-size:12px;overflow-wrap:anywhere}
+#panel[data-phase=closed]{visibility:hidden}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}

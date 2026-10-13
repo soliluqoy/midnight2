@@ -1,8 +1,7 @@
 // Real-model check for local search, run in Electron so media goes through the real hidden decoder window:
 //   npm run test:search-model
-// Downloads EmbeddingGemma 2 (pinned revision, about 850 MB) into MIDNIGHT_TEST_SEARCH_DATA (default: a cache folder
-// in your home directory) on first use, then indexes synthetic text, image, audio and PDF fixtures in a throwaway
-// folder and checks retrieval by meaning, previews and agent context. Never reads personal files.
+// Reuses the signed native cache when present, otherwise explicit setup downloads the pinned ONNX model.
+// Tests synthetic text/image/audio/PDF fixtures in a disposable profile; never reads personal files.
 import { app, nativeImage } from "electron";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -21,6 +20,7 @@ import { createFileSearch } from "../src/search/service.mjs";
 import { openStore } from "../src/storage/db.mjs";
 import { createJournal } from "../src/storage/journal.mjs";
 import { createUnitOfWork } from "../src/storage/uow.mjs";
+import { createInferenceArbiter } from "../src/inference/arbiter.mjs";
 
 app.disableHardwareAcceleration();
 const results = [];
@@ -73,7 +73,9 @@ async function run() {
 		return { ...s, ocr: ocrEngine?.available() ? async (o) => ocrEngine.image((await s.frame({ ...o, max: 2400, format: "jpeg" })).jpeg) : undefined };
 	};
 	const settings = { embedding: { enabled: true, assist: true, dimensions: 768, device: "cpu" } };
-	const runtime = createEmbeddingRuntime({ paths: { dataDir }, settings, decodeMedia });
+	const arbiter = createInferenceArbiter();
+	const runtime = createEmbeddingRuntime({ paths: { dataDir }, settings, decodeMedia, arbiter, download: process.env.MIDNIGHT_TEST_SEARCH_NO_DOWNLOAD === "1" ? async () => { throw new Error("Model download is disabled for this qualification."); } : undefined });
+	if (process.env.MIDNIGHT_TEST_SEARCH_NO_DOWNLOAD === "1" && !runtime.status().available && !runtime.status().cacheReuseAvailable) throw new Error("No cached embedding backend is available; download is disabled for this qualification.");
 	const store = await openStore(path.join(base, "Data"));
 	const roots = createRoots(store);
 	roots.add(source);
@@ -163,9 +165,19 @@ async function run() {
 				context.close();
 			}
 		});
+		if (runtime.status().backend === "gguf") await check("interactive preemption waits for the actual native child to exit", async () => {
+			await runtime.embedText(["warm up"], { query: true }); const pid = runtime.status().pid; assert.ok(pid); process.kill(pid, 0);
+			const pending = runtime.embedText(Array.from({ length: 120 }, () => "A railway connects commuters to work. ".repeat(40)), { priority: 2 });
+			const rejected = assert.rejects(pending, error => error.name === "AbortError" || /cancel|yield/i.test(error.message));
+			const end = Date.now() + 2000; while (arbiter.status().running[0]?.role !== "embedding") { if (Date.now() > end) throw new Error("Native embedding did not obtain admission."); await new Promise(resolve => setTimeout(resolve, 10)); }
+			await new Promise(resolve => setTimeout(resolve, 20));
+			await arbiter.run({ role: "speech-qualification", priority: 0 }, () => { assert.throws(() => process.kill(pid, 0), error => error.code === "ESRCH"); });
+			await rejected; assert.equal(runtime.status().ready, false);
+		});
 	} finally {
 		await search.close();
-		runtime.close();
+		await runtime.close();
+		arbiter.close();
 		store.close();
 		decoder.dispose();
 		fs.rmSync(base, { recursive: true, force: true });

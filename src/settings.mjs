@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultHotkey, migrateHotkey } from "./desktop/hotkey.mjs";
 import { EMBEDDING_DEFAULTS, embeddingSettings } from "./search/config.mjs";
+import { DEFAULT_PERCEPTION, perceptionSettings } from "./perception/config.mjs";
 
 export const SETTINGS_VERSION = 4;
 
@@ -21,6 +22,9 @@ export const DEFAULTS = {
 	highContrast: false,
 	reducedMotion: false,
 	voice: false, // dictation into Ask with local Whisper
+	pushToTalk: false, // explicitly enabled, held Windows chord for selected-target help
+	voiceLanguage: "en", // auto | en | ms | zh | ta | hi; explicit ASR setting, never a model/privacy route
+	perception: { ...DEFAULT_PERCEPTION }, // separate explicit consent to send bounded raw media to its API provider
 	mcpServer: false, // let other apps on this computer use midnight through its MCP connector
 	autoExpand: true, // open the wide reading view when an answer is long
 	answerLength: "normal", // brief | normal | detailed
@@ -58,6 +62,8 @@ export function loadSettings() {
 	s.hotkey = migrateHotkey({ ...data, hotkey: s.hotkey }) ?? DEFAULTS.hotkey;
 	s.version = SETTINGS_VERSION;
 	s.embedding = embeddingSettings(s.embedding);
+	s.perception = perceptionSettings(s.perception);
+	if (!["auto", "en", "ms", "zh", "ta", "hi"].includes(s.voiceLanguage)) s.voiceLanguage = "en";
 	s.textSize = Math.min(1.6, Math.max(0.9, s.textSize));
 	const write = () => {
 		fs.mkdirSync(path.dirname(file()), { recursive: true });
@@ -81,6 +87,8 @@ export function loadSettings() {
 			}
 			s.textSize = Math.min(1.6, Math.max(0.9, Math.round(s.textSize * 100) / 100));
 			s.embedding = embeddingSettings(s.embedding);
+			s.perception = perceptionSettings(s.perception);
+			if (!["auto", "en", "ms", "zh", "ta", "hi"].includes(s.voiceLanguage)) s.voiceLanguage = "en";
 			if (!["ask", "prepare", "rules"].includes(s.mode)) s.mode = "ask";
 			if (!["cloud", "local", "offline"].includes(s.privacy)) s.privacy = "cloud";
 			if (!["quiet", "balanced", "focused", "burst"].includes(s.profile)) s.profile = "balanced";
@@ -106,4 +114,8 @@ export const hostSettings = (s) => ({
 	profile: s.profile,
 	quietHours: s.quietHours,
 	demoConnectors: s.demoConnectors,
+	voice: s.voice,
+	pushToTalk: s.pushToTalk,
+	voiceLanguage: s.voiceLanguage,
+	perception: perceptionSettings(s.perception),
 });

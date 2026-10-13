@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Midnight quick edit</title>
+<link rel="stylesheet" href="../ui/style.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="quick-panel" id="panel" aria-label="Quick edit" data-phase="closed">
+  <header><strong>midnight <span>quick edit</span></strong><button id="dismiss" aria-label="Dismiss quick edit" title="Dismiss (Esc)">×</button></header>
+  <div class="content">
+    <div id="scope" class="scope"></div>
+    <p id="message" role="status" aria-live="polite"></p>
+    <section id="entry" hidden>
+      <details><summary>Captured selection</summary><p id="captured" class="text"></p></details>
+      <label for="instruction">What would you like to change?</label>
+      <textarea id="instruction" maxlength="1000" rows="2" placeholder="Make this paragraph clearer…"></textarea>
+      <p id="privacy" class="privacy"></p>
+      <div class="actions"><button id="submit" class="primary">Preview ↵</button></div>
+    </section>
+    <section id="preview" hidden aria-label="Proposed change">
+      <div class="comparison"><div><h2>Before</h2><p id="before" class="text"></p></div><div><h2>Proposed</h2><p id="after" class="text"></p></div></div>
+      <div class="actions"><button id="apply" class="primary">Apply to selection</button></div>
+    </section>
+    <div class="actions" id="notice"><button id="expand" class="primary" hidden>Review preview</button><button id="undo" hidden>Undo this edit</button><button id="reconcile" hidden>Check outcome</button></div>
+    <p id="error" class="error" role="alert" hidden></p>
+  </div>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

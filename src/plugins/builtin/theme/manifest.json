@@ -1,0 +1,12 @@
+{
+  "id": "midnight.theme",
+  "name": "Midnight accent colors",
+  "version": "1.0.0",
+  "api": 1,
+  "schema": 1,
+  "entry": "renderer.js",
+  "contributions": [{ "point": "ui.theme", "name": "colors", "input": "ui-colors-1", "output": "ui-colors-json-1" }],
+  "permissions": [],
+  "dependencies": [],
+  "state": { "schema": 1, "migration": "none" }
+}

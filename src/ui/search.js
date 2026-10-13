@@ -52,15 +52,16 @@
 	function renderStatus() {
 		const busy = operation || metadata.busy;
 		const installed = metadata.runtime?.available || metadata.runtime?.ready;
-		if (busy || !installed || !sources.length || (!metadata.counts?.segments && metadata.enabled !== false)) manage(true);
+		const reuse = !installed && metadata.runtime?.cacheReuseAvailable;
+		if (busy || !installed || !sources.length || metadata.needsReindex || (!metadata.counts?.segments && metadata.enabled !== false)) manage(true);
 		const details = metadata.progress ?? {};
 		byId("fileSetup").disabled = !!busy;
 		byId("fileIndex").disabled = !!busy || !sources.length || !installed || metadata.enabled === false;
 		byId("fileIndex").title = !installed ? "Install local search first" : !sources.length ? "Choose folders first" : metadata.enabled === false ? "Enable meaning search in Settings first" : "Read the selected folders for meaning search";
 		byId("fileClear").disabled = !!busy || !(metadata.counts?.segments || metadata.counts?.files);
 		byId("fileStop").hidden = !metadata.busy;
-		byId("fileSetup").textContent = installed ? "Repair local search" : "Install local search";
-		byId("fileSetupNote").textContent = installed ? "EmbeddingGemma 2 is installed on this computer. Choose folders, then index them to search their contents by meaning." : "First, install EmbeddingGemma 2 (a one-time download of about 850 MB; nothing else to install). Then choose folders and index them. Indexing and search run on this computer.";
+		byId("fileSetup").textContent = installed ? "Repair local search" : reuse ? "Use existing Gemma model" : "Install local search";
+		byId("fileSetupNote").textContent = installed ? "EmbeddingGemma 2 is installed on this computer. Choose folders, then index them to search their contents by meaning." : reuse ? "Existing Gemma embeddings were found on this computer. Check and reuse them without downloading a model, then index your selected folders. Your previous model cache is preserved; vectors from different versions are kept separate." : "First, install EmbeddingGemma 2 (a one-time download of about 850 MB; nothing else to install). Then choose folders and index them. Indexing and search run on this computer.";
 		const progress = byId("fileProgress");
 		progress.hidden = !metadata.busy;
 		if (details.bytesTotal > 0 && metadata.operation === "setup") {
@@ -94,8 +95,9 @@
 		}
 		const count = metadata.counts?.files ?? 0;
 		if (metadata.state === "cancelled") return statusMessage("Stopped. Choose Install local search or Index selected folders to continue.");
-		if (!installed) return statusMessage("Meaning search needs setup. Click Install local search to begin.");
+		if (!installed) return statusMessage(reuse ? "Meaning search needs setup. Click Use existing Gemma model to check the cached model." : "Meaning search needs setup. Click Install local search to begin.");
 		if (!sources.length) return statusMessage("Local model installed. Click Choose folders to select what to search.");
+		if (metadata.needsReindex && metadata.enabled !== false) return statusMessage("Index selected folders again to use the current local model. Word matches remain available.");
 		if (metadata.enabled !== false && !metadata.counts?.segments) return statusMessage("Folders selected. Click Index selected folders to enable meaning search.");
 		const ready = metadata.enabled === false ? "Word matches; local meaning search is off" : installed ? "Local meaning search ready" : "Word matches available; local meaning search is not ready";
 		statusMessage(`${count} indexed ${count === 1 ? "file" : "files"} in ${sources.length} selected ${sources.length === 1 ? "folder" : "folders"} · ${ready}`);

@@ -13,6 +13,10 @@
   --w-stack:760px;--h-stack:640px;--w-read:940px;--h-read:900px;
   --w-search:760px;--h-search:460px;
 }
+.change-card{margin:14px 0;padding:12px;border:1px solid var(--line);border-radius:10px;overflow-wrap:anywhere}
+.change-preview{display:block;width:100%;height:auto;border-radius:6px;margin:8px 0;background:#fff}
+.change-theme-preview{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;border:1px solid;border-radius:8px;margin:8px 0}
+.change-theme-preview .sample-button{padding:6px 12px;border-radius:6px}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:transparent;overflow:hidden;color:var(--ink);font:13px/1.4 "Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased;user-select:none}
 button,input,textarea,select{font:inherit;color:inherit;-webkit-app-region:no-drag}
@@ -359,6 +363,7 @@ kbd{font:11px "Segoe UI",sans-serif;border:0;padding:0;color:var(--ink)}
 .rail-button:focus-visible,.window-control:focus-visible,.ib:focus-visible,.seg button:focus-visible{outline-offset:-3px}
 body[data-contrast=high]{--ink:#fff;--muted:#eee;--faint:#ddd;--line:#b8b2c9;--divider:#a9a4b7;--control-line:#b8b2c9;--accent:#584787;--accent-hover:#655298;--highlight:#dfd3ff;--accent-line:#c8b8ee;--green-line:var(--green);--amber-line:var(--amber);--danger-line:var(--danger)}
 body[data-contrast=high] #cap{border-color:var(--ink)}
+body[data-contrast=high]{--on-accent:#fff;--accent-soft:#322d43}
 body[data-contrast=high] .continue-mission,body[data-contrast=high] .launcher-app-pin,body[data-contrast=high] .launcher-add-app,body[data-contrast=high] .rail-button,body[data-contrast=high] .ib{border-color:var(--line)}
 body[data-contrast=high] .pb.pri,body[data-contrast=high] .sb.pri,body[data-contrast=high] .switch.on{border-color:var(--highlight)}
 @media(max-width:660px){.ask-meta{gap:6px}.mh{gap:6px}.field{gap:8px;flex-wrap:wrap}.home-search{padding:10px 12px}.file-content{grid-template-columns:minmax(140px,.85fr) minmax(0,1fr)}.file-preview{padding:12px}}
@@ -428,3 +433,4 @@ body[data-motion=reduced] *{animation-duration:.001s!important;animation-iterati
 @keyframes mic-pulse{50%{opacity:.45}}
 .pb.mic #micTime:empty{display:none}
 @media (forced-colors:active){.pb.mic[data-state=recording]{forced-color-adjust:none;background:Highlight;color:HighlightText}}
+.source-diff { max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }

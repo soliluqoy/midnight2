@@ -12,8 +12,11 @@ const framework = path.join(windir, "Microsoft.NET", "Framework64", "v4.0.30319"
 const winmd = (name) => path.join(windir, "System32", "WinMetadata", `${name}.winmd`);
 const TARGETS = [
 	{ source: "src/desktop/native/MidnightHotkey.cs", out: "src/desktop/native/midnight-hotkey.exe", refs: ["System.Windows.Forms.dll"] },
+	{ source: "src/desktop/native/MidnightPtt.cs", out: "src/desktop/native/midnight-ptt.exe", refs: ["System.Windows.Forms.dll"] },
+	{ source: "src/desktop/native/MidnightRecovery.cs", out: "src/desktop/native/midnight-recovery.exe", target: "winexe", refs: ["System.Core.dll", "System.Web.Extensions.dll", "System.Windows.Forms.dll", "System.Drawing.dll"] },
 	// The stdio bridge MCP clients launch to reach midnight's connector over a named pipe.
 	{ source: "src/desktop/native/MidnightMcp.cs", out: "src/desktop/native/midnight-mcp.exe", refs: ["System.Core.dll"] },
+	{ source: "src/desktop/native/MidnightWord.cs", out: "src/desktop/native/midnight-word.exe", refs: ["System.Core.dll", "System.Xml.dll", "Microsoft.CSharp.dll", "System.Web.Extensions.dll", "System.Windows.Forms.dll"] },
 	// Windows' built-in OCR through WinRT metadata that ships with Windows 10 and 11.
 	{
 		source: "src/desktop/native/MidnightOcr.cs",
@@ -45,7 +48,7 @@ export function buildNative({ quiet = false } = {}) {
 		const source = path.join(root, t.source);
 		const out = path.join(root, t.out);
 		if (fs.existsSync(out) && fs.statSync(out).mtimeMs >= fs.statSync(source).mtimeMs) continue;
-		execFileSync(csc, ["/nologo", "/optimize+", "/platform:anycpu", "/target:exe", `/out:${out}`, ...t.refs.map((r) => `/reference:${r}`), source], { stdio: quiet ? "pipe" : "inherit", windowsHide: true });
+		execFileSync(csc, ["/nologo", "/optimize+", "/platform:anycpu", `/target:${t.target ?? "exe"}`, `/out:${out}`, ...t.refs.map((r) => `/reference:${r}`), source], { stdio: quiet ? "pipe" : "inherit", windowsHide: true });
 		built.push(out);
 	}
 	return built;

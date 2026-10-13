@@ -6,14 +6,14 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { METHODS } from "../src/contracts/ipc.mjs";
+import { METHODS, QUICK_METHODS } from "../src/contracts/ipc.mjs";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const src = path.join(root, "src");
 const files = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(path.join(dir, e.name)) : /\.(mjs|js|cjs)$/.test(e.name) ? [path.join(dir, e.name)] : []));
 const imports = (f) => [...fs.readFileSync(f, "utf8").matchAll(/(?:^|\n)\s*import\s[^;]*?from\s+"([^"]+)"|import\("([^"]+)"\)/g)].map((m) => m[1] ?? m[2]);
 const rel = (f) => path.relative(src, f).replace(/\\/g, "/");
-const ENGINE = ["contracts", "storage", "policy", "missions", "scheduler", "memory", "evidence", "skills", "resources", "connectors", "windows", "runtime", "search", "tools/documents"];
+const ENGINE = ["contracts", "storage", "policy", "missions", "scheduler", "memory", "evidence", "skills", "resources", "connectors", "windows", "runtime", "search", "context", "inference", "plugins", "builder", "perception", "tools/documents"];
 const all = files(src);
 
 test("contracts depend on nothing else in Midnight", () => {
@@ -38,10 +38,8 @@ test("the agent host and its modules never import Electron", () => {
 });
 
 test("the renderer has no module imports and no Node access", () => {
-	for (const f of fs.readdirSync(path.join(src, "ui")).filter((x) => x.endsWith(".js"))) {
-		const s = fs.readFileSync(path.join(src, "ui", f), "utf8");
-		assert.doesNotMatch(s, /\brequire\(|^import /m, `ui/${f}`);
-	}
+	for (const directory of ["ui", "quick"]) for (const f of fs.readdirSync(path.join(src, directory)).filter(x => x.endsWith(".js"))) assert.doesNotMatch(fs.readFileSync(path.join(src, directory, f), "utf8"), /\brequire\(|^import /m, `${directory}/${f}`);
+	assert.doesNotMatch(fs.readFileSync(path.join(src, "voice", "ptt-recorder.js"), "utf8"), /\brequire\(|^import /m);
 	// The hidden media decoder is a separate sandboxed page; its only module is the pinned pdf.js build.
 	const decoder = fs.readFileSync(path.join(src, "decoder", "media-decoder.js"), "utf8");
 	assert.doesNotMatch(decoder, /require\(/);
@@ -55,8 +53,13 @@ test("the renderer has no module imports and no Node access", () => {
 test("preload, contract and host expose exactly the same methods; nothing generic", () => {
 	const pre = fs.readFileSync(path.join(src, "preload.cjs"), "utf8");
 	const used = new Set([...pre.matchAll(/(?:call|m)\("([a-z]+\.[A-Za-z]+)"/g)].map((x) => x[1]));
-	assert.deepEqual([...used].sort(), Object.keys(METHODS).sort());
+	assert.deepEqual([...used].sort(), Object.keys(METHODS).filter(name => !Object.hasOwn(QUICK_METHODS, name)).sort());
+	const quick = fs.readFileSync(path.join(src, "quick", "preload.cjs"), "utf8");
+	const quickUsed = new Set([...quick.matchAll(/(?:call|m)\("([a-z]+\.[A-Za-z]+)"/g)].map(x => x[1]));
+	assert.deepEqual([...quickUsed].sort(), Object.keys(QUICK_METHODS).sort());
+	assert.deepEqual([...new Set([...used, ...quickUsed])].sort(), Object.keys(METHODS).sort());
 	assert.doesNotMatch(pre, /exposeInMainWorld\([^)]*invoke\s*:/);
+	assert.doesNotMatch(quick, /exposeInMainWorld\([^)]*invoke\s*:/);
 	const host = fs.readFileSync(path.join(src, "runtime", "host.mjs"), "utf8");
 	const impl = new Set([...host.matchAll(/\t\t"([a-z]+\.[A-Za-z]+)": /g)].map((x) => x[1]));
 	for (const [k, v] of Object.entries(METHODS)) if (v.route === "host") assert.ok(impl.has(k), `host does not implement ${k}`);

@@ -1,3 +1,5 @@
+import { render as barChartSvg } from "../plugins/builtin/chart/renderer.js";
+import { validateChartSvg } from "../plugins/chart-validation.mjs";
 // Work tools for verified artifacts (plan ch. 11, 15; T02/T03): read spreadsheet ranges with cell-level evidence,
 // calculate deterministically with a recorded formula, and produce charts and reports that are validated by
 // parsing them back before they count.
@@ -92,70 +94,11 @@ export function evaluate(expr, inputs = {}) {
 	return Math.round(v * 1e10) / 1e10;
 }
 
-// ---------------- charts ----------------
-const PALETTE = ["#8068e8", "#ff9fc7", "#5fb39a", "#e0a23d", "#5c9fd9"];
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-const fmt = (v) => (Math.abs(v) >= 1000 ? v.toLocaleString("en-US", { maximumFractionDigits: 1 }) : String(Math.round(v * 100) / 100));
-
-/** Grouped bar chart as SVG; every bar carries data-series/data-category/data-value for validation. */
-export function barChartSvg({ title, categories, series, unit = "", note = "" }) {
-	const W = 760;
-	const H = 420;
-	const L = 64;
-	const R = 24;
-	const T = 64;
-	const B = 72;
-	const max = Math.max(0, ...series.flatMap((s) => s.values));
-	const min = Math.min(0, ...series.flatMap((s) => s.values));
-	const span = max - min || 1;
-	const step = 10 ** Math.floor(Math.log10(span / 4 || 1));
-	const tick = [1, 2, 2.5, 5, 10].map((m) => m * step).find((t) => span / t <= 6) ?? step * 10;
-	const top = Math.ceil(max / tick) * tick || tick;
-	const bottom = Math.floor(min / tick) * tick;
-	const y = (v) => T + ((top - v) / (top - bottom)) * (H - T - B);
-	const groupW = (W - L - R) / categories.length;
-	const barW = Math.min(36, (groupW * 0.7) / series.length);
-	const parts = [];
-	parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Segoe UI, sans-serif" role="img" aria-label="${esc(title)}">`);
-	parts.push(`<rect width="${W}" height="${H}" fill="#ffffff"/>`, `<text x="${L}" y="34" font-size="18" font-weight="600" fill="#1f1a3a">${esc(title)}</text>`);
-	for (let v = bottom; v <= top + 1e-9; v += tick) {
-		parts.push(`<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="#e6e2f3"/>`, `<text x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" font-size="11" text-anchor="end" fill="#6f6890">${fmt(v)}${unit}</text>`);
-	}
-	categories.forEach((c, ci) => {
-		const gx = L + ci * groupW + (groupW - barW * series.length) / 2;
-		series.forEach((s, si) => {
-			const v = s.values[ci];
-			const y0 = y(Math.max(0, v));
-			const h = Math.abs(y(v) - y(0));
-			parts.push(
-				`<rect class="bar" x="${(gx + si * barW).toFixed(1)}" y="${y0.toFixed(1)}" width="${(barW - 3).toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${PALETTE[si % PALETTE.length]}" data-series="${esc(s.name)}" data-category="${esc(c)}" data-value="${v}"><title>${esc(`${s.name} · ${c}: ${fmt(v)}${unit}`)}</title></rect>`,
-			);
-		});
-		parts.push(`<text class="cat" x="${(L + ci * groupW + groupW / 2).toFixed(1)}" y="${H - B + 20}" font-size="12" text-anchor="middle" fill="#2a2150">${esc(c)}</text>`);
-	});
-	series.forEach((s, si) => parts.push(`<rect x="${L + si * 140}" y="${H - 30}" width="12" height="12" rx="2" fill="${PALETTE[si % PALETTE.length]}"/><text class="legend" x="${L + si * 140 + 18}" y="${H - 20}" font-size="12" fill="#2a2150">${esc(s.name)}</text>`));
-	if (note) parts.push(`<text x="${W - R}" y="${H - 20}" font-size="10" text-anchor="end" fill="#8b86aa">${esc(note)}</text>`);
-	parts.push("</svg>");
-	return parts.join("\n");
-}
-
-export function validateChartSvg(svg, { categories, series }) {
-	const issues = [];
-	const bars = [...svg.matchAll(/data-series="([^"]*)" data-category="([^"]*)" data-value="([^"]*)"/g)].map((m) => ({ s: m[1], c: m[2], v: Number(m[3]) }));
-	if (bars.length !== categories.length * series.length) issues.push(`expected ${categories.length * series.length} bars, found ${bars.length}`);
-	series.forEach((s) =>
-		categories.forEach((c, ci) => {
-			const b = bars.find((x) => x.s === esc(s.name) && x.c === esc(c));
-			if (!b || b.v !== s.values[ci]) issues.push(`${s.name}/${c} should be ${s.values[ci]}`);
-		}),
-	);
-	for (const c of categories) if (!svg.includes(`>${esc(c)}</text>`)) issues.push(`missing label ${c}`);
-	const totals = Object.fromEntries(series.map((s) => [s.name, Math.round(s.values.reduce((a, b) => a + b, 0) * 1e6) / 1e6]));
-	return { ok: issues.length === 0, issues, facts: { bars: bars.length, totals } };
-}
+export { render as barChartSvg } from "../plugins/builtin/chart/renderer.js";
+export { validateChartSvg } from "../plugins/chart-validation.mjs";
 
 // ---------------- tools ----------------
-export function workTools({ roots, evidence, commit }) {
+export function workTools({ roots, evidence, commit, repo, plugins, pluginRuntime }) {
 	const sheetRead = {
 		name: "sheet_read",
 		label: "Read spreadsheet",
@@ -252,16 +195,23 @@ export function workTools({ roots, evidence, commit }) {
 			filename: Type.Optional(Type.String()),
 			sources: Type.Optional(Type.Array(Type.String())),
 		}),
-		classify: (a) => ({ effect: "artifact.stage", target: a.title, canonical: a, feed: `chart › ${a.title}` }),
+		classify: (a, { mission }) => {
+			const pin = mission.scope?.pluginBindings?.bindings?.["chart.bar"] ?? plugins?.base;
+			if (pin) plugins.get(pin.digest);
+			return { effect: "artifact.stage", target: a.title, canonical: pin ? { args: a, renderer: pin, generation: mission.scope?.pluginBindings?.generation ?? 0 } : a, toolVersion: pin?.digest ?? "1", feed: `chart › ${a.title}` };
+		},
 		async execute(a, ctx) {
 			for (const s of a.series) if (s.values.length !== a.categories.length) throw new Error(`series ${s.name} has ${s.values.length} values for ${a.categories.length} categories`);
 			const name = a.filename ?? `${a.title.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "chart"}.svg`;
-			const svg = barChartSvg({ ...a, note: "midnight" });
-			const validation = validateChartSvg(svg, a);
+			const pin = repo?.get(ctx.missionId)?.scope.pluginBindings?.bindings?.["chart.bar"] ?? plugins?.base;
+			const rendered = pluginRuntime && pin ? await pluginRuntime.render(pin, { title: a.title, categories: a.categories, series: a.series, unit: a.unit ?? "", note: "midnight" }, { signal: ctx.signal }) : undefined;
+			const svg = rendered?.svg ?? barChartSvg({ ...a, note: "midnight" });
+			const validation = rendered?.validation ?? validateChartSvg(svg, a);
+			if (!validation.ok) throw new Error(`Chart failed host validation: ${validation.issues.join("; ")}`);
 			const dataset = toCsv([["category", ...a.series.map((s) => s.name)], ...a.categories.map((c, i) => [c, ...a.series.map((s) => s.values[i])])]);
 			const { art, data } = commit(() => {
 				const d = evidence.stage(ctx.missionId, ctx.runId, { name: name.replace(/\.svg$/i, ".csv"), type: "dataset", data: dataset, sources: a.sources ?? [], validation: { ok: true, issues: [], facts: { rows: a.categories.length } } });
-				const c = evidence.stage(ctx.missionId, ctx.runId, { name: name.endsWith(".svg") ? name : `${name}.svg`, type: "chart", data: svg, sources: [...(a.sources ?? []), d.id], validation: { ...validation, facts: { ...validation.facts, datasetHash: d.hash } } });
+				const c = evidence.stage(ctx.missionId, ctx.runId, { name: name.endsWith(".svg") ? name : `${name}.svg`, type: "chart", data: svg, toolVersion: pin?.digest ?? "1", sources: [...(a.sources ?? []), d.id], validation: { ...validation, facts: { ...validation.facts, datasetHash: d.hash } } });
 				return { art: c, data: d };
 			});
 			return {

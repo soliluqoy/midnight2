@@ -1,11 +1,13 @@
-// Local EmbeddingGemma 2 for file search and context, with no Python: ONNX Runtime through Transformers.js runs in a
-// worker thread of the engine, and media (images, PDF pages, video frames, audio) is decoded by the shell's hidden
-// Chromium decoder (src/desktop/media-decoder.mjs). Only setup may use the network; the model revision is pinned.
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+// Local EmbeddingGemma 2 reuses the verified native cache when ONNX is not prepared. Both routes are Python-free;
+// media decoding stays in the shell. Only explicit ONNX setup may download. Each backend has its own fingerprint.
+import { existsSync, readFileSync, writeFileSync, renameSync, openSync, closeSync, fsyncSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { downloadModel, MODEL_BYTES, MODEL_ID, MODEL_REVISION } from "./model-files.mjs";
+import { createNativeEmbeddingAssets } from "./native-assets.mjs";
+import { createNativeEmbeddingWorker } from "./native-worker.mjs";
 
 export const EMBEDDING_MODEL = MODEL_ID;
 export const EMBEDDING_REVISION = MODEL_REVISION;
@@ -19,6 +21,7 @@ const HOP_S = 25;
 const VIDEO_STEP_S = 5;
 const abortError = () => Object.assign(new Error("Local search was cancelled."), { name: "AbortError", code: "SEARCH_CANCELLED" });
 const failure = (message, code = "SEARCH_RUNTIME_ERROR") => Object.assign(new Error(message), { code });
+const defaultWorkerFactory = data => new Worker(WORKER, { workerData: data });
 
 /** The GPU choice maps to the platform's ONNX Runtime provider; anything unavailable falls back to the CPU. */
 export const onnxDevice = (device, platform = process.platform) => device !== "gpu" ? "cpu" : platform === "win32" ? "dml" : platform === "darwin" ? "coreml" : "cuda";
@@ -26,15 +29,18 @@ export const onnxDevice = (device, platform = process.platform) => device !== "g
 /**
  * @param {{ settings: object | (() => object), paths: { dataDir: string }, decodeMedia?: (filePath: string, kind: string, o?: object) => Promise<object>, workerFactory?: (data: object) => object, download?: typeof downloadModel, timeoutMs?: number, idleMs?: number }} o
  */
-export function createEmbeddingRuntime({ settings, paths, decodeMedia, workerFactory = (data) => new Worker(WORKER, { workerData: data }), download = downloadModel, timeoutMs = 20 * 60_000, idleMs = 60_000 }) {
+export function createEmbeddingRuntime({ settings, paths, decodeMedia, workerFactory = defaultWorkerFactory, nativeAssets, nativeWorkerFactory = createNativeEmbeddingWorker, download = downloadModel, timeoutMs = 20 * 60_000, idleMs = 60_000, arbiter, residencyBudget }) {
 	const getSettings = typeof settings === "function" ? settings : () => settings ?? {};
 	const runtimeDir = path.join(paths.dataDir, "search-runtime");
 	const cacheDir = path.join(runtimeDir, "models");
 	const manifestPath = path.join(runtimeDir, "prepared.json");
+	nativeAssets ??= workerFactory === defaultWorkerFactory ? createNativeEmbeddingAssets() : undefined;
 	// Setup's worker must not read the "prepared" manifest it is about to write, so loads never depend on it.
 	let worker, pending = new Map(), startup, sequence = 0, chain = Promise.resolve(), phase = "missing", lastError, workerInfo, workerFingerprint, progressSink;
 	let setupPromise, setupController;
 	let idleTimer, closed = false, queued = 0;
+	let terminating = Promise.resolve();
+	let activeOperations = 0; const retiring = new Set();
 	function configuration() {
 		const embedding = getSettings().embedding ?? {};
 		const dimensions = embedding.dimensions ?? 768;
@@ -43,23 +49,38 @@ export function createEmbeddingRuntime({ settings, paths, decodeMedia, workerFac
 		if (!["cpu", "gpu"].includes(device)) throw failure("Embedding device must be cpu or gpu.", "SEARCH_CONFIG_INVALID");
 		return { dimensions, device };
 	}
+	const prepared = () => { try { return JSON.parse(readFileSync(manifestPath, "utf8")); } catch { return null; } };
+	function onnxPrepared(info) { return info?.model === EMBEDDING_MODEL && info.revision === EMBEDDING_REVISION && info.dtype === EMBEDDING_DTYPE && existsSync(cacheDir); }
+	function backend() { const info = prepared(); return info?.backend === "gguf" || (!onnxPrepared(info) && nativeAssets?.present()) ? "gguf" : "onnx"; }
+	const identity = () => backend() === "gguf" ? nativeAssets?.identity : { model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION, dtype: EMBEDDING_DTYPE };
 	function manifest() {
-		try {
-			const info = JSON.parse(readFileSync(manifestPath, "utf8"));
-			return info.model === EMBEDDING_MODEL && info.revision === EMBEDDING_REVISION && info.dtype === EMBEDDING_DTYPE && existsSync(cacheDir) ? info : null;
-		} catch {
-			return null;
+		const info = prepared();
+		if (backend() === "gguf") return nativeAssets?.present() && info?.pipeline === PIPELINE && info.qualified === true && Object.keys(nativeAssets.identity).every(key => info[key] === nativeAssets.identity[key]) ? info : null;
+		return onnxPrepared(info) ? info : null;
+	}
+	function savePrepared(info) {
+		if (existsSync(manifestPath)) {
+			const original = readFileSync(manifestPath), old = prepared();
+			if (old?.model !== info.model || old?.revision !== info.revision || old?.dtype !== info.dtype || old?.backend !== info.backend) {
+				const backup = path.join(runtimeDir, `prepared.previous-${createHash("sha256").update(original).digest("hex")}.json`);
+				if (!existsSync(backup)) writeFileSync(backup, original, { flag: "wx" });
+			}
 		}
+		const temporary = `${manifestPath}.${randomUUID()}.tmp`, fd = openSync(temporary, "wx");
+		try { writeFileSync(fd, JSON.stringify(info, null, 2)); fsyncSync(fd); } finally { closeSync(fd); }
+		renameSync(temporary, manifestPath);
 	}
 	function fingerprint() {
 		const config = configuration();
 		// Vectors depend on the model, quantization, output size and pipeline; the device does not change them.
-		return JSON.stringify({ model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION, dtype: EMBEDDING_DTYPE, dimensions: config.dimensions, pipeline: PIPELINE });
+		return JSON.stringify({ ...identity(), dimensions: config.dimensions, pipeline: PIPELINE });
 	}
 	function status() {
 		const config = configuration();
 		const available = !!manifest();
-		return { ...(workerInfo ?? {}), model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION, dtype: EMBEDDING_DTYPE, ...config, runtimeDir, available, busy: queued > 0 || !!setupPromise, ready: !!worker && phase === "ready" && workerFingerprint === fingerprint(), phase: phase === "missing" && available ? "available" : phase, fingerprint: fingerprint(), modalities: ["text", "image", "pdf", "audio", "video"], ...(lastError ? { error: lastError } : {}) };
+		const ready = !!worker && phase === "ready" && workerFingerprint === fingerprint();
+		const liveInfo = ready ? workerInfo ?? {} : {};
+		return { ...liveInfo, ...identity(), ...config, device: liveInfo.device ?? config.device, requestedDevice: config.device, runtimeDir, available, cacheReuseAvailable: !!nativeAssets?.present(), legacyCache: prepared()?.model === "google/embeddinggemma-2", busy: queued > 0 || !!setupPromise, ready, phase: phase === "missing" && available ? "available" : phase, fingerprint: fingerprint(), modalities: ["text", "image", "pdf", "audio", "video"], ...(lastError ? { error: lastError } : {}) };
 	}
 	function stop(error = failure("Local search runtime closed.", "SEARCH_RUNTIME_CLOSED")) {
 		clearTimeout(idleTimer);
@@ -71,8 +92,9 @@ export function createEmbeddingRuntime({ settings, paths, decodeMedia, workerFac
 		workerFingerprint = undefined;
 		for (const p of pending.values()) p.reject(error);
 		pending = new Map();
-		running?.terminate();
+		if (running) { retiring.add(running); let result; try { result = running.terminate(); } catch (error) { result = Promise.reject(error); } terminating = Promise.resolve(result).then(() => retiring.delete(running), () => {}); }
 		if (phase !== "setting-up") phase = manifest() ? "available" : "missing";
+		return terminating;
 	}
 	function releaseWhenIdle() {
 		clearTimeout(idleTimer);
@@ -81,7 +103,7 @@ export function createEmbeddingRuntime({ settings, paths, decodeMedia, workerFac
 		idleTimer.unref?.();
 	}
 	function spawn(onProgress) {
-		const w = workerFactory({ cacheDir, model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION, dtype: EMBEDDING_DTYPE });
+		const w = backend() === "gguf" ? nativeWorkerFactory({ assets: nativeAssets, timeoutMs: Math.min(timeoutMs, 180_000) }) : workerFactory({ cacheDir, model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION, dtype: EMBEDDING_DTYPE });
 		const fail = (error) => {
 			if (worker !== w) return;
 			lastError = error.message;
@@ -96,7 +118,7 @@ export function createEmbeddingRuntime({ settings, paths, decodeMedia, workerFac
 			m.ok ? p.resolve(m.result) : p.reject(failure(m.error?.message ?? "Local embedding failed.", m.error?.code));
 		});
 		w.on("error", (err) => fail(failure(`The local model stopped: ${err.message}`, "SEARCH_WORKER_STOPPED")));
-		w.on("exit", (code) => fail(failure(`The local model stopped (${code}).`, "SEARCH_WORKER_STOPPED")));
+		w.on("exit", (code) => { retiring.delete(w); fail(failure(`The local model stopped (${code}).`, "SEARCH_WORKER_STOPPED")); });
 		return w;
 	}
 	function send(w, message, timeout = timeoutMs) {
@@ -115,27 +137,51 @@ export function createEmbeddingRuntime({ settings, paths, decodeMedia, workerFac
 	async function setup({ signal, onProgress } = {}) {
 		if (closed) throw failure("Local search runtime is closed.", "SEARCH_RUNTIME_CLOSED");
 		if (setupPromise) return setupPromise;
-		stop();
 		phase = "setting-up";
 		lastError = undefined;
 		setupController = new AbortController();
 		const combined = signal ? AbortSignal.any([signal, setupController.signal]) : setupController.signal;
 		setupPromise = (async () => {
 			let w;
-			const cancel = () => w?.terminate();
+			const cancel = () => { if (w && worker === w) stop(abortError()); };
 			try {
 				await mkdir(cacheDir, { recursive: true });
-				onProgress?.({ phase: "downloading", message: `Downloading EmbeddingGemma 2 (about ${Math.round(MODEL_BYTES / 1e6)} MB, once)` });
-				// Pinned files, each checked against its hash before it is kept; already-verified files are reused.
-				await download({ cacheDir, signal: combined, onProgress });
+				if (backend() === "gguf") onProgress?.({ phase: "verifying", message: "Reusing the existing Gemma embeddings; no model download" });
+				else {
+					onProgress?.({ phase: "downloading", message: `Downloading EmbeddingGemma 2 (about ${Math.round(MODEL_BYTES / 1e6)} MB, once)` });
+					// Pinned files, each checked against its hash before it is kept; already-verified files are reused.
+					await download({ cacheDir, signal: combined, onProgress });
+				}
 				if (combined.aborted) throw abortError();
 				// Load once offline (text, then the image and audio encoders) before reporting the model installed.
 				onProgress?.({ phase: "verifying", message: "Checking the local model" });
-				w = spawn(onProgress);
 				combined.addEventListener("abort", cancel, { once: true });
 				const abort = new Promise((_, reject) => combined.addEventListener("abort", () => reject(abortError()), { once: true }));
-				const info = await Promise.race([send(w, { op: "load", device: "cpu", dimensions: 768, verify: true }, timeoutMs), abort]);
-				writeFileSync(manifestPath, JSON.stringify({ model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION, dtype: EMBEDDING_DTYPE, pipeline: PIPELINE, preparedAt: new Date().toISOString(), modalities: info?.modalities }, null, 2));
+				const verify = async admittedSignal => {
+					activeOperations++; let memoryLease;
+					try {
+					admittedSignal?.throwIfAborted();
+					await stop();
+					admittedSignal?.throwIfAborted();
+					if (retiring.size) throw failure("The previous embedding worker has not exited.", "SEARCH_WORKER_STOPPED");
+					memoryLease = await residencyBudget?.acquire("embedding", { signal: admittedSignal, priority: 0 });
+					admittedSignal?.throwIfAborted();
+					w = spawn(onProgress);
+					worker = w;
+					const terminate = () => stop(admittedSignal.reason ?? abortError());
+					let rejectAbort;
+					const abortVerification = () => rejectAbort(admittedSignal.reason ?? abortError());
+					admittedSignal?.addEventListener("abort", terminate, { once: true });
+					try {
+						admittedSignal?.throwIfAborted();
+						const admittedAbort = new Promise((_, reject) => { rejectAbort = reject; admittedSignal?.addEventListener("abort", abortVerification, { once: true }); });
+						return await Promise.race([send(w, { op: "load", device: "cpu", dimensions: 768, verify: true }, timeoutMs), abort, admittedAbort]);
+					} finally { admittedSignal?.removeEventListener("abort", terminate); admittedSignal?.removeEventListener("abort", abortVerification); await stop(); }
+					} finally { await terminating; memoryLease?.release(); activeOperations--; }
+				};
+				const info = arbiter ? await arbiter.run({ role: "embedding", priority: 0, signal: combined }, verify) : await verify(combined);
+				if (combined.aborted || closed) throw abortError();
+				savePrepared({ ...identity(), qualified: true, pipeline: PIPELINE, preparedAt: new Date().toISOString(), modalities: info?.modalities });
 				phase = "available";
 				return status();
 			} catch (error) {
@@ -144,19 +190,22 @@ export function createEmbeddingRuntime({ settings, paths, decodeMedia, workerFac
 				throw error;
 			} finally {
 				combined.removeEventListener("abort", cancel);
-				w?.terminate();
+				await w?.terminate();
 				setupPromise = undefined;
 				setupController = undefined;
 			}
 		})();
 		return setupPromise;
 	}
-	function startWorker(signal, onProgress) {
+	async function startWorker(signal, onProgress) {
+		await terminating; signal?.throwIfAborted();
+		if (closed || retiring.size) throw failure("The embedding runtime is closed or its previous worker has not exited.", "SEARCH_WORKER_STOPPED");
 		clearTimeout(idleTimer);
 		idleTimer = undefined;
-		if (worker && workerFingerprint !== fingerprint()) stop();
+		if (worker && workerFingerprint !== fingerprint()) await stop();
 		if (worker && phase === "ready") return Promise.resolve();
 		if (startup) return startup;
+		if (worker) await stop();
 		if (!status().available) return Promise.reject(failure("Local search is not set up. Open Files → Manage search and choose Install local search.", "SEARCH_SETUP_REQUIRED"));
 		if (signal?.aborted) return Promise.reject(abortError());
 		phase = "loading";
@@ -185,27 +234,36 @@ export function createEmbeddingRuntime({ settings, paths, decodeMedia, workerFac
 		return startup;
 	}
 	/** Serialized worker operation; a cancelled caller stops waiting without disturbing another caller's work. */
-	function request(op, input, { signal, onProgress, keepWorkerOnAbort = false } = {}) {
-		const task = async () => {
+	function request(op, input, { signal, onProgress, keepWorkerOnAbort = false, priority = 2, deadline = Infinity } = {}) {
+		if (queued >= 32) return Promise.reject(failure("Local search queue is full.", "SEARCH_QUEUE_FULL"));
+		const task = async (admittedSignal = signal) => {
+			const callerSignal = signal;
+			signal = admittedSignal;
 			if (closed) throw failure("Local search runtime is closed.", "SEARCH_RUNTIME_CLOSED");
 			if (signal?.aborted) throw abortError();
 			if (setupPromise) throw failure("Local search setup is still running.", "SEARCH_SETUP_RUNNING");
-			await startWorker(signal, onProgress);
-			if (signal?.aborted) throw abortError();
-			const cancel = () => { if (!keepWorkerOnAbort) stop(abortError()); };
+			if (!status().available) throw failure("Local search is not set up. Open Files → Manage search and choose Install local search.", "SEARCH_SETUP_REQUIRED");
+			activeOperations++; let memoryLease;
+			const cancel = () => { if (!keepWorkerOnAbort || arbiter) stop(signal.reason ?? abortError()); };
 			signal?.addEventListener("abort", cancel, { once: true });
-			progressSink = onProgress;
 			try {
+				await terminating; signal?.throwIfAborted(); if (retiring.size) throw failure("The previous embedding worker has not exited.", "SEARCH_WORKER_STOPPED"); memoryLease = await residencyBudget?.acquire("embedding", { signal, priority, deadline }); signal?.throwIfAborted();
+				await startWorker(signal, onProgress);
+				if (signal?.aborted) throw signal.reason ?? abortError();
+				progressSink = onProgress;
 				return await send(worker, { op, ...input });
 			} finally {
 				progressSink = undefined;
 				signal?.removeEventListener("abort", cancel);
+				await terminating;
+				memoryLease?.release(); activeOperations--;
+				signal = callerSignal;
 				releaseWhenIdle();
 			}
 		};
 		queued++;
-		const result = chain.then(task, task).finally(() => queued--);
-		chain = result.catch(() => {});
+		const result = (arbiter ? arbiter.run({ role: "embedding", signal, priority, deadline, preemptible: priority >= 2 }, task) : chain.then(() => task(), () => task())).finally(() => queued--);
+		if (!arbiter) chain = result.catch(() => {});
 		if (!signal) return result;
 		return new Promise((resolve, reject) => {
 			const cancel = () => reject(abortError());
@@ -214,11 +272,11 @@ export function createEmbeddingRuntime({ settings, paths, decodeMedia, workerFac
 			result.then(resolve, reject).finally(() => signal.removeEventListener("abort", cancel));
 		});
 	}
-	async function embedText(texts, { query = false, signal, onProgress, keepWorkerOnAbort = false } = {}) {
+	async function embedText(texts, { query = false, signal, onProgress, keepWorkerOnAbort = false, priority = query ? 0 : 2, deadline = Infinity } = {}) {
 		if (!Array.isArray(texts) || texts.some((text) => typeof text !== "string")) throw failure("Embedding text must be an array of strings.");
 		if (!texts.length) return [];
 		const prompted = texts.map((text) => (query ? `task: search result | query: ${text}` : `title: none | text: ${text}`));
-		return request("text", { texts: prompted }, { signal, onProgress, keepWorkerOnAbort });
+		return request("text", { texts: prompted }, { signal, onProgress, keepWorkerOnAbort, priority, deadline });
 	}
 	const checkSignal = (signal) => { if (signal?.aborted) throw abortError(); };
 	async function embedMedia(filePath, kind, { signal, maxSegments = 120, onProgress } = {}) {
@@ -292,5 +350,5 @@ export function createEmbeddingRuntime({ settings, paths, decodeMedia, workerFac
 			if (last) return false;
 		}
 	}
-	return { fingerprint, status, setup, embedText, embedMedia, close() { closed = true; setupController?.abort(); stop(); } };
+	return { fingerprint, status, setup, embedText, embedMedia, residency: () => ({ resident: !!worker || retiring.size > 0, busy: activeOperations > 0, unloading: retiring.size > 0 }), setResidencyBudget(value) { if (activeOperations || residencyBudget && residencyBudget !== value) throw new Error("Embeddings already have an active memory owner."); residencyBudget = value; }, unload: () => stop(), close() { closed = true; setupController?.abort(); return stop(); } };
 }

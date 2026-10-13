@@ -32,6 +32,112 @@ app.whenReady().then(async () => {
 	const reset = async () => { errors.length = 0; win.webContents.setZoomFactor(1); win.setContentSize(1300, 1400); await win.loadFile(path.join(root, "src/ui/index.html")); await sleep(250); };
 	const calls = (method) => js(`return __fixture.calls().filter(c => c.method === ${JSON.stringify(method)});`);
 	const tests = [
+		["voice settings expose an opt-in held chord and an explicit local speech language", async () => {
+			await js(`__fixture.configure({'voice.status':{result:{model:'Whisper',available:true}}}); await midnight.settings.set({voice:true,pushToTalk:false,voiceLanguage:'en'}); await setState('settings'); await renderSettings('voice');`); await sleep(100);
+			await js(`document.querySelector('[aria-label="Spoken language"]').click(); [...document.querySelectorAll('.dd-i')].find(button=>button.textContent==='Auto detect').click();`); await sleep(80);
+			assert.equal((await calls("settings.set")).at(-1).args[0].voiceLanguage, "auto");
+			assert.match(await js(`return document.getElementById('sec-voice').textContent;`), /Help with the selection/);
+		}],
+		["selection help shows readiness and turns on hold to speak with its prerequisite", async () => {
+			await js(`__fixture.configure({'voice.status':{result:{available:false,bytes:81e6}},'assist.status':{result:{platform:'win32',shortcut:'CommandOrControl+Alt+Space',shortcutRegistered:false,holdShortcut:'Ctrl+Alt+Shift+Space',holdListening:false,office:{installed:true,provider:'wps',chartsQualified:true,error:''}}}}); await midnight.settings.set({voice:false,pushToTalk:false}); await setState('settings'); await renderSettings('assist');`); await sleep(150);
+			const text = await js(`return document.getElementById('sec-assist').textContent;`);
+			assert.match(text, /Another app has taken this shortcut/); assert.match(text, /WPS Office.*bar\/column charts/); assert.match(text, /Ctrl\+Alt\+Shift\+Space/);
+			await js(`document.querySelector('#sec-assist [aria-label="Hold to speak about the selection"]').click();`); await sleep(120);
+			assert.deepEqual((await calls("settings.set")).at(-1).args[0], { voice: true, pushToTalk: true });
+			assert.match(await js(`return document.getElementById('sec-assist').textContent;`), /Install speech recognition/);
+			assert.ok((await calls("assist.status")).length >= 2, "readiness is checked again after the toggle");
+			await js(`await midnight.settings.set({voice:false,pushToTalk:false});`);
+		}],
+		["native hearing consent stays separate from text and embeddings and exposes its account check", async () => {
+			await js(`__fixture.configure({'perception.status':{result:{available:false,qualification:'unqualified',reason:'Connect a media provider API key in Settings → Models.'}}}); await midnight.settings.set({voice:true,pushToTalk:true,privacy:'cloud',perception:{enabled:false,provider:'google',model:'gemini-3.8-flash'}}); await setState('settings'); await renderSettings('voice'); document.querySelector('[aria-label="Use native cloud hearing"]').click();`); await sleep(100);
+			let patch = (await calls("settings.set")).at(-1).args[0]; assert.deepEqual(Object.keys(patch), ["perception"]); assert.equal(patch.perception.enabled, true);
+			assert.equal(await js(`return !!document.getElementById('checkNativeMedia');`), true, "An unavailable local speech runtime must not clear the media settings.");
+			assert.equal(await js(`return document.getElementById('checkNativeMedia').disabled;`), true); assert.equal((await calls("perception.qualify")).length, 0);
+			await js(`document.querySelector('[aria-label="Media provider"]').click(); [...document.querySelectorAll('.dd-i')].find(button=>button.textContent.startsWith('OpenAI Realtime')).click();`); await sleep(100);
+			patch = (await calls("settings.set")).at(-1).args[0]; assert.deepEqual(patch.perception, {enabled:true,provider:'openai',model:'gpt-realtime-2.1'}); assert.equal(Object.hasOwn(patch,'provider'), false); assert.equal(Object.hasOwn(patch,'embedding'), false);
+			await js(`__fixture.configure({'perception.status':{result:{available:true,qualification:'unqualified',reason:'Run the synthetic checks.'}}}); await renderSettings('voice'); document.getElementById('checkNativeMedia').click();`); await sleep(100); assert.equal((await calls("perception.qualify")).length, 1);
+			assert.match(await js(`return document.getElementById('sec-voice').textContent;`), /no document goes to that provider/); await js(`await midnight.settings.set({perception:{enabled:false,provider:'google',model:'gemini-3.8-flash'}});`);
+		}],
+		["self improvement settings submits an explicit private or official candidate request", async () => {
+			await js(`await setState('settings'); await window.renderSettings('changes'); document.getElementById('changePrompt').value='Use my blue chart palette'; document.getElementById('changePrompt').dispatchEvent(new Event('input')); document.getElementById('requestChange').click();`); await sleep(80);
+			assert.deepEqual((await calls("builder.request"))[0].args[0], { scope: "user", text: "Use my blue chart palette", pluginId: "midnight.chart" });
+			await js(`await window.renderSettings('changes'); [...document.querySelectorAll('#sec-changes [role=radio]')].find(button=>button.textContent==='Official proposal').click(); document.getElementById('changePrompt').value='Improve official chart margins'; document.getElementById('changePrompt').dispatchEvent(new Event('input')); document.getElementById('requestChange').click();`); await sleep(80);
+			assert.deepEqual((await calls("builder.request"))[1].args[0], { scope: "official", text: "Improve official chart margins", pluginId: "midnight.chart" });
+			assert.equal((await calls("builder.activate")).length, 0);
+		}],
+		["app source requests use official scope and display a literal diff with pending build and preview", async () => {
+			await js(`__fixture.configure({'builder.components':{result:[{id:'midnight.chart',label:'Charts'},{id:'midnight.core',label:'App source',scopes:['official'],available:true}]}}); await setState('settings'); await window.renderSettings('changes'); [...document.querySelectorAll('#sec-changes [role=radio]')].find(button=>button.textContent==='App source').click(); document.getElementById('changePrompt').value='Repair app startup'; document.getElementById('changePrompt').dispatchEvent(new Event('input')); document.getElementById('requestChange').click();`); await sleep(80);
+			assert.deepEqual((await calls("builder.request"))[0].args[0], { scope: "official", text: "Repair app startup", pluginId: "midnight.core" });
+			await js(`__fixture.configure({'builder.list':{result:[{id:'change_core',kind:'core',scope:'official',component:'App source',request:'Repair startup',status:'source-proposed',sourceDiff:'<script>window.BAD=true</script>',changed:['src/main.mjs'],kernelChanges:['src/main.mjs'],validation:{counts:{passed:294,skipped:9}},windowsBuild:'pending',appPreview:'pending'}]}}); await window.renderSettings('changes');`);
+			assert.match(await js(`return document.getElementById('sec-changes').textContent;`), /Windows build and app preview are pending/);
+			assert.equal(await js(`return document.querySelector('.source-diff').textContent;`), "<script>window.BAD=true</script>");
+			assert.equal(await js(`return !!window.BAD;`), false);
+			assert.equal(await js(`return [...document.querySelectorAll('#sec-changes button')].some(button=>button.textContent==='Use this version');`), false);
+		}],
+		["an installation without matching source cannot start an app source repair", async () => {
+			await js(`__fixture.configure({'builder.components':{result:[{id:'midnight.core',label:'App source',available:false,reason:'Matching source files are required.'}]}}); await setState('settings'); await window.renderSettings('changes'); [...document.querySelectorAll('#sec-changes [role=radio]')].find(button=>button.textContent==='App source').click();`);
+			assert.equal(await js(`return document.getElementById('requestChange').disabled;`), true);
+			assert.match(await js(`return document.getElementById('sec-changes').textContent;`), /Matching source files are required/);
+			assert.equal((await calls("builder.request")).length, 0);
+		}],
+		["waiting changes show their resource reason and remain cancellable", async () => {
+			await js(`__fixture.configure({'builder.list':{result:[{id:'change_waiting',scope:'user',component:'Charts',request:'Make my chart blue',status:'waiting',waitingReason:'Waiting for power <private>'}]}}); await setState('settings'); await window.renderSettings('changes');`);
+			assert.match(await js(`return document.getElementById('sec-changes').textContent;`), /Waiting for power <private>/);
+			assert.equal(await js(`return document.querySelectorAll('#sec-changes private').length;`), 0);
+			await js(`[...document.querySelectorAll('#sec-changes button')].find(button=>button.textContent==='Cancel').click();`); await sleep(60);
+			assert.deepEqual((await calls("builder.cancel"))[0].args[0], { jobId: "change_waiting" });
+		}],
+		["preparing app source stays cancellable before model generation starts", async () => {
+			await js(`__fixture.configure({'builder.list':{result:[{id:'change_preparing',kind:'core',scope:'official',component:'App source',request:'Repair startup',status:'preparing'}]}}); await setState('settings'); await window.renderSettings('changes'); [...document.querySelectorAll('#sec-changes button')].find(button=>button.textContent==='Cancel').click();`); await sleep(60);
+			assert.deepEqual((await calls("builder.cancel"))[0].args[0], { jobId: "change_preparing" });
+			assert.equal((await calls("builder.activate")).length, 0);
+		}],
+		["color component requests stay explicit and preview the exact validated palette before activation", async () => {
+			await js(`await setState('settings'); await window.renderSettings('changes'); [...document.querySelectorAll('#sec-changes [role=radio]')].find(button=>button.textContent==='Accent colors').click(); document.getElementById('changePrompt').value='Make launcher colors teal'; document.getElementById('changePrompt').dispatchEvent(new Event('input')); document.getElementById('requestChange').click();`); await sleep(80);
+			assert.deepEqual((await calls("builder.request"))[0].args[0], { scope: "user", text: "Make launcher colors teal", pluginId: "midnight.theme" });
+			await js(`__fixture.configure({'builder.list':{result:[{id:'change_theme',scope:'user',component:'Accent colors',pluginId:'midnight.theme',request:'Make colors teal',status:'preview-ready',baseGeneration:3,candidate:{digest:'sha256:${"a".repeat(64)}'},previewTokens:{accent:'#176b65','accent-hover':'#176b65','accent-soft':'#173530','accent-line':'#65547f',highlight:'#a0e8d0','on-accent':'#ffffff'}}]}}); await window.renderSettings('changes');`);
+			assert.equal(await js(`return document.querySelector('.change-theme-preview .sample-button').style.backgroundColor;`), "rgb(23, 107, 101)");
+			assert.equal((await calls("builder.activate")).length, 0);
+			await js(`[...document.querySelectorAll('#sec-changes button')].find(button=>button.textContent==='Use this version').click();`); await sleep(60);
+			assert.deepEqual((await calls("builder.activate"))[0].args[0], { jobId: "change_theme", digest: `sha256:${"a".repeat(64)}`, expectedGeneration: 3 });
+		}],
+		["late color reads cannot override a newer preset and high contrast retains its own button colors", async () => {
+			await js(`await setState('chat');`); await sleep(100);
+			await js(`const tokens={accent:'#85dccc','accent-hover':'#bfeede','accent-soft':'#173530','accent-line':'#65547f',highlight:'#d9fff0','on-accent':'#000000'}; __fixture.configure({'theme.current':{queue:[{result:{tokens:{...tokens,accent:'#176b65'}},delay:160},{result:{tokens},delay:5}]}}); window.__oldTheme=refreshTheme();`);
+			await sleep(10); await js(`await refreshTheme(); await __oldTheme; document.getElementById('openApps').focus(); applyPrefs({highContrast:true});`);
+			assert.equal(await js(`return document.documentElement.style.getPropertyValue('--accent');`), "#85dccc");
+			assert.equal(await js(`return getComputedStyle(document.body).getPropertyValue('--on-accent').trim();`), "#fff");
+			assert.equal(await js(`return document.activeElement.id;`), "openApps");
+		}],
+		["invalid color responses restore the official CSS without writing markup or taking focus", async () => {
+			await js(`await setState('chat');`); await sleep(100);
+			await js(`__fixture.configure({'theme.current':{result:{tokens:{accent:'url(https://example.test)',highlight:'<script>'}}}}); document.getElementById('openApps').focus(); await refreshTheme();`);
+			assert.equal(await js(`return document.documentElement.style.getPropertyValue('--accent');`), "");
+			assert.equal(await js(`return document.activeElement.id;`), "openApps");
+		}],
+		["tray restoration resets colors without engine RPC and fences an older palette reply", async () => {
+			await js(`await setState('chat');`); await sleep(100);
+			await js(`const tokens={accent:'#176b65','accent-hover':'#176b65','accent-soft':'#173530','accent-line':'#65547f',highlight:'#a0e8d0','on-accent':'#ffffff'}; __fixture.configure({'theme.current':{result:{tokens},delay:160}}); document.documentElement.style.setProperty('--accent','#176b65'); window.__oldTheme=refreshTheme(); engine='stopped'; document.getElementById('openApps').focus(); __fixture.emit({kind:'shell',type:'plugins-restored'});`);
+			assert.equal(await js(`return document.documentElement.style.getPropertyValue('--accent');`), "");
+			await js(`await __oldTheme;`);
+			assert.equal(await js(`return document.documentElement.style.getPropertyValue('--accent');`), "");
+			assert.equal(await js(`return document.activeElement.id;`), "openApps");
+		}],
+		["lock during microphone permission closes the late stream without recording", async () => {
+			await js(`voiceReady=true; window.__stoppedTracks=0; navigator.mediaDevices.getUserMedia=()=>new Promise(resolve=>window.__grantMicrophone=resolve); window.__pendingMic=startDictation(); __fixture.emit({kind:'shell',type:'session-state',blocked:true}); __grantMicrophone({getTracks:()=>[{stop(){window.__stoppedTracks++;}}]}); await __pendingMic;`);
+			assert.equal(await js(`return __stoppedTracks;`), 1);
+			assert.equal(await js(`return !!recording;`), false);
+			assert.equal((await calls("voice.transcribe")).length, 0);
+		}],
+		["a transcript arriving after lock and unlock does not insert text or take focus", async () => {
+			await js(`await setState('chat'); document.getElementById('box').value='My later work'; __fixture.configure({'voice.transcribe':{delay:200,result:{text:'OBSOLETE TRANSCRIPT'}}}); window.__pendingDictation=finishDictation({chunks:[new Blob(['fixture'])],type:'audio/webm',epoch:voiceEpoch});`);
+			await sleep(30);
+			await js(`__fixture.emit({kind:'shell',type:'session-state',blocked:true}); __fixture.emit({kind:'shell',type:'session-state',blocked:false}); document.getElementById('openApps').focus();`);
+			await js(`await __pendingDictation;`);
+			assert.equal((await calls("voice.transcribe")).length, 1);
+			assert.equal(await js(`return document.getElementById('box').value;`), "My later work");
+			assert.equal(await js(`return document.activeElement.id;`), "openApps");
+		}],
 		["app launch targets preserve Midnight and its draft without starting an AI task", async () => {
 			await js(`await setState('chat'); __fixture.emit({kind:'shell',type:'summon',restore:true}); document.getElementById('box').value='Still writing this'; __fixture.emit({kind:'shell',type:'apps',apps:[{id:'app1',name:'<img onerror=alert(1)>',profile:'Work',pinned:true},{id:'app2',name:'Personal',pinned:false}]});`);
 			assert.equal(await js(`return document.querySelectorAll('.launcher-app-pin').length;`), 1);
@@ -325,6 +431,21 @@ app.whenReady().then(async () => {
 			await sleep(80);
 			assert.match(await js(`return document.getElementById('fileActivity').textContent;`), /budget\.pdf: Could not read the PDF/);
 		}],
+		["cached Gemma setup offers reuse without promising a download or readiness", async () => {
+			await js(`__fixture.configure({'sources.list':{result:[]},'files.status':{result:{state:'idle',busy:false,enabled:true,counts:{files:0,segments:0},runtime:{available:false,cacheReuseAvailable:true,legacyCache:true}}}}); await setState('search'); fileSearch.focus();`);
+			await sleep(80);
+			assert.equal(await js(`return document.getElementById('fileSetup').textContent;`), "Use existing Gemma model");
+			assert.match(await js(`return document.getElementById('fileSetupNote').textContent;`), /without downloading.*previous model cache is preserved/i);
+			assert.doesNotMatch(await js(`return document.getElementById('fileSetupNote').textContent;`), /850 MB/);
+			assert.equal(await js(`return document.getElementById('fileIndex').disabled;`), true);
+		}],
+		["a changed embedding model asks for reindexing while word matches remain available", async () => {
+			await js(`__fixture.configure({'sources.list':{result:[{id:'root',path:'C:\\\\Selected'}]},'files.status':{result:{state:'ready',busy:false,enabled:true,needsReindex:true,counts:{files:8,segments:10},runtime:{available:true}}}}); await setState('search'); fileSearch.focus();`);
+			await sleep(80);
+			assert.match(await js(`return document.getElementById('fileStatus').textContent;`), /Index selected folders again.*Word matches remain available/);
+			assert.equal(await js(`return document.getElementById('fileManagement').hidden;`), false);
+			assert.equal(await js(`return document.getElementById('fileIndex').disabled;`), false);
+		}],
 		["ready refreshes model availability", async () => {
 			await js(`signedIn = false; engine = 'starting'; __fixture.variant('done');`);
 			await sleep(100);
@@ -424,7 +545,7 @@ app.whenReady().then(async () => {
 		}],
 		["an approval takes keyboard focus on its card, keeps Tab inside it, and never starts on Approve", async () => {
 			await js(`__fixture.variant('approval'); await setState('mission');`);
-			await sleep(400);
+			for (let attempt = 0; attempt < 30 && await js(`return document.activeElement?.id;`) !== "fAsk"; attempt++) await sleep(50);
 			assert.equal(await js(`return document.activeElement?.id;`), "fAsk", "focus moves to the approval card itself");
 			win.webContents.debugger.attach("1.3");
 			try {
@@ -618,12 +739,14 @@ app.whenReady().then(async () => {
 		}],
 	];
 	let failures = 0;
-	for (const [name, run] of tests) {
+	const selectedTests = process.env.MIDNIGHT_UI_FILTER ? tests.filter(([name]) => name.includes(process.env.MIDNIGHT_UI_FILTER)) : tests;
+	if (!selectedTests.length) throw new Error("The UI filter selected no checks.");
+	for (const [name, run] of selectedTests) {
 		await reset();
 		try { await run(); assert.deepEqual(errors, []); console.log(`[ui] PASS ${name}`); }
 		catch (err) { failures++; console.log(`[ui] FAIL ${name}: ${err.stack}`); }
 	}
 	win.destroy();
-	console.log(`[ui] ${tests.length - failures}/${tests.length} passed`);
+	console.log(`[ui] ${selectedTests.length - failures}/${selectedTests.length} passed`);
 	app.exit(failures ? 1 : 0);
 }).catch((err) => { console.error(err); app.exit(1); });

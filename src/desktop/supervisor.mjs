@@ -56,7 +56,7 @@ export function createSupervisor(o) {
 			setState("restarting");
 			setTimeout(() => !stopping && start(), BACKOFF[crashes.length - 1]);
 		});
-		child.postMessage({ kind: "init", dataDir: o.dataDir, settings: o.settings() });
+		child.postMessage({ kind: "init", dataDir: o.dataDir, recoveryProfile: o.recoveryProfile, settings: o.settings() });
 	}
 
 	async function onMessage(m) {

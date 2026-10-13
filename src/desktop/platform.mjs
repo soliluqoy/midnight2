@@ -24,6 +24,12 @@ export function createPlatform(d) {
 		},
 	};
 	const computer = computerTool(computerState);
+	async function inspectClip({ data, mimeType }, { signal } = {}) {
+		if (!(data instanceof Uint8Array) || data.length > 8 * 1024 * 1024 || !["video/webm", "video/mp4"].includes(mimeType)) throw new Error("Invalid bounded native-video inspection.");
+		signal?.throwIfAborted();
+		const clip = await d.mediaDecoder.fromBytes(data, "video", mimeType, { timeout: 15_000 });
+		try { signal?.throwIfAborted(); return clip.info; } finally { await clip.close(); }
+	}
 	const toolByName = (name) => web.tools.find((t) => t.name === name);
 
 	// Media decoding sessions for local search (the host asks; the shell reads the file and decodes it). Sessions the
@@ -42,6 +48,7 @@ export function createPlatform(d) {
 	sweep.unref?.();
 	const mediaOps = d.mediaDecoder
 		? {
+				"media.inspectClip": inspectClip,
 				"media.open": async (a, c) => {
 					if (!["image", "pdf", "audio", "video"].includes(a.kind)) throw new Error("Unsupported media kind");
 					const p = path.resolve(String(a.path ?? ""));
@@ -70,6 +77,17 @@ export function createPlatform(d) {
 
 	const ops = {
 		...mediaOps,
+		"plugin.execute": (a, c) => d.pluginExecutor.execute(a, c),
+		"builder.run": (a, c) => d.builderRunner.run(a, c),
+		"word.inspect": (a, c) => {
+			if (d.appEditAllowed?.() === false) throw Object.assign(new Error("The app session is blocked."), { code: "TARGET_EDIT_DENIED" });
+			return d.wordBroker.inspect(a.handle, c);
+		},
+		"word.receipt": (a, c) => d.wordBroker.receipt(a.editId, c),
+		"word.apply": (a, c) => {
+			if (d.appEditAllowed?.() === false) throw Object.assign(new Error("The app session is blocked."), { code: "TARGET_EDIT_DENIED" });
+			return d.wordBroker.apply(a, c);
+		},
 		"tool.search": (a, c) => toolByName("search").execute("s", a, c.signal),
 		"tool.read_pages": (a, c) => toolByName("read_pages").execute("r", a, c.signal),
 		"tool.browser": (a, c) => {

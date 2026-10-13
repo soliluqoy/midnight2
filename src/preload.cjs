@@ -16,9 +16,13 @@ async function call(method, params = {}) {
 const m = (method) => (params) => call(method, params);
 
 contextBridge.exposeInMainWorld("midnight", {
+	builder: { request: m("builder.request"), components: m("builder.components"), list: m("builder.list"), get: m("builder.get"), cancel: m("builder.cancel"), resume: m("builder.resume"), activate: m("builder.activate") },
+	theme: { current: m("theme.current") },
 	ui: { size: (state) => call("ui.size", { state }), dims: m("ui.dims"), focus: m("ui.focus"), hide: m("ui.hide"), show: m("ui.show"), textSize: (z) => call("ui.textSize", { z }) },
 	clipboard: { read: m("clipboard.read"), write: (text) => call("clipboard.write", { text }) },
 	voice: { status: m("voice.status"), setup: m("voice.setup"), transcribe: (audio, type) => call("voice.transcribe", { audio, type }) },
+	perception: { status: m("perception.status"), qualify: m("perception.qualify") },
+	assist: { status: m("assist.status") },
 	// Only real File objects from a drop or paste have a disk path (page scripts cannot forge one); the shell reads them.
 	attachments: {
 		fromFiles: (files) => Promise.allSettled([...(files ?? [])].map((f) => webUtils.getPathForFile(f)).filter(Boolean).map((p) => call("attachments.add", { path: p }))),

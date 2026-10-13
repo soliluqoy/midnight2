@@ -8,7 +8,8 @@
 	let keyFor = ""; // provider id whose API-key box is open
 	let modal; // open auth prompt; kept across re-renders
 	let page = "main"; // main | welcome
-	let extra = { sources: [], grants: [], watches: [], memory: [], recipes: [], connectors: [], skills: [] };
+	let extra = { sources: [], grants: [], watches: [], memory: [], recipes: [], connectors: [], skills: [], changes: [] };
+	let changeText = "", changeScope = "user", changeComponent = "midnight.chart";
 	const POPULAR = ["openai-codex", "anthropic", "github-copilot", "openai", "google", "xai", "openrouter", "mistral", "deepseek", "groq"];
 	let status = { text: "", err: false };
 	let updateReady = false;
@@ -35,6 +36,7 @@
 			if (r.error) setStatus(r.error, true);
 			if (patch.hotkey && !r.error) window.setAccel(r.settings.hotkey);
 			window.applyPrefs?.(r.settings);
+			if (patch.perception) extra.perception = await api.perception.status().catch(() => ({}));
 			render();
 		} catch (err) { setStatus(String(err.message ?? err), true); }
 	};
@@ -55,7 +57,7 @@
 
 	async function loadExtra() {
 		const safe = (p) => p.catch(() => []);
-		const [sources, grants, watches, memory, recipes, connectors, mcp, skills] = await Promise.all([
+		const [sources, grants, watches, memory, recipes, connectors, mcp, skills, changes, perception, components] = await Promise.all([
 			safe(api.sources.list()),
 			safe(api.grants.list()),
 			safe(api.watches.list()),
@@ -64,8 +66,11 @@
 			safe(api.connectors.list()),
 			safe(api.connectors.mcpList()),
 			safe(api.skills.list()),
+			safe(api.builder?.list() ?? Promise.resolve([])),
+			(api.perception?.status() ?? Promise.resolve({})).catch(() => ({})),
+			safe(api.builder?.components?.() ?? Promise.resolve([])),
 		]);
-		extra = { sources, grants, watches, memory, recipes, connectors, mcp, skills };
+		extra = { sources, grants, watches, memory, recipes, connectors, mcp, skills, changes, perception, components };
 	}
 	async function refresh() {
 		S = await api.settings.get();
@@ -211,23 +216,86 @@
 		);
 	}
 
+	// One place that says whether selection help will work right now, and what to do when it won't.
+	let assist, assistLoading = false;
+	const loadAssist = async () => {
+		if (assistLoading) return;
+		assistLoading = true;
+		try { assist = await api.assist.status(); } catch (err) { assist = { error: String(err.message ?? err) }; }
+		assistLoading = false;
+		render();
+	};
+	function assistSection() {
+		const st = S.settings;
+		if (!assist && !assistLoading) loadAssist();
+		if (st.voice && !voiceLoaded && !voicePolling) pollVoice();
+		const a = assist ?? {}, office = a.office ?? {};
+		const check = (ok, label, detail, action) => h("div", { class: "field" }, h("label", {}, `${ok ? "✓" : "!"} ${label}`, detail ? h("small", { class: ok ? "" : "hint warn" }, detail) : null), action ?? null);
+		const model = S.current?.model;
+		const rows = !assist
+			? [h("p", { class: "hint" }, "Checking this computer…")]
+			: a.error
+				? [h("p", { class: "hint warn" }, a.error)]
+				: [
+					check(a.shortcutRegistered, `Shortcut ${pretty(a.shortcut ?? "")}`, a.shortcutRegistered ? "Select a paragraph or chart, then press it." : "Another app has taken this shortcut. Close that app or change its shortcut, then restart midnight."),
+					check(office.installed, office.provider === "wps" ? "WPS Office" : office.provider === "microsoft-word" ? "Microsoft Word" : "Word or WPS", office.error || (!office.installed ? "Install WPS Office or Microsoft Word. Other apps aren't supported yet." : office.chartsQualified ? "Paragraphs and single-series bar/column charts → pie." : "Paragraphs only. Chart changes are tested on WPS Office only.")),
+					check(!!model, "Writing model", model ? `${model}. Only the selected text and your instruction are sent.` : "Choose a model first.", model ? null : h("button", { class: "sb", onclick: () => window.renderSettings("model") }, "Choose")),
+				];
+		const whisperReady = !!voice.available;
+		const holdOn = !!(st.voice && st.pushToTalk);
+		const mb = (n) => Math.round((n ?? 0) / 1e6);
+		return sec(
+			"assist",
+			"HELP WITH THE SELECTION",
+			h("p", { class: "hint" }, "Rewrite a paragraph or change a chart in the document you're working on. Nothing changes until you review and apply it, and you can undo it afterwards."),
+			...rows,
+			field("Hold to speak instead of typing", `Hold ${pretty(a.holdShortcut ?? "Ctrl+Alt+Shift+Space")} while you say what to change, then release. ${st.perception?.enabled ? "Native cloud hearing is on (Voice input), so audio goes to that provider." : "Speech is turned into text on this computer."} Also turns on the Ask microphone.`, toggle(holdOn, () => save(holdOn ? { pushToTalk: false } : { voice: true, pushToTalk: true }).then(loadAssist), "Hold to speak about the selection")),
+			holdOn
+				? whisperReady
+					? check(!!a.holdListening, "Listening for the held shortcut", a.holdListening ? "" : "The listener isn't running. Turn this off and on again.")
+					: h("div", { class: "row" },
+						h("button", { class: "sb pri", disabled: !!voice.setup, onclick: attempt(async () => { const r = await api.voice.setup(); setTimeout(pollVoice, 500); return r; }) }, voice.setup ? `Installing… ${mb(voice.progress?.done)} / ${mb(voice.progress?.total ?? voice.bytes)} MB` : `Install speech recognition (${mb(voice.bytes ?? 81e6)} MB)`),
+						voice.error ? h("small", { class: "hint warn" }, voice.error) : h("small", { class: "hint" }, "Needed once before holding to speak works."))
+				: null,
+			h("div", { class: "row" }, h("button", { class: "sb", disabled: assistLoading, onclick: loadAssist }, assistLoading ? "Checking…" : "Check again")),
+		);
+	}
+
 	let voice = {};
+	let voiceLoaded = false, voicePolling = false;
+	const pollVoice = async () => {
+		if (voicePolling) return;
+		voicePolling = true;
+		voice = (await api.voice.status().catch(() => ({}))) ?? {}; voiceLoaded = true; voicePolling = false;
+		render();
+		if (voice.setup || voice.progress?.total && !voice.available && !voice.error) setTimeout(pollVoice, 1000);
+	};
+	let checkingMedia = false;
 	function voiceSection() {
 		const st = S.settings;
-		const poll = async () => {
-			voice = await api.voice.status().catch(() => ({}));
-			render();
-			if (voice.setup || voice.progress?.total && !voice.available && !voice.error) setTimeout(poll, 1000);
+		const media = st.perception ?? { enabled: false, provider: "google", model: "gemini-3.8-flash" }, mediaStatus = extra.perception ?? {};
+		const probe = async () => {
+			checkingMedia = true; render();
+			try { window.checkedResult(await api.perception.qualify()); setStatus("The five synthetic media checks passed. Broader speech quality and live video still need testing."); }
+			catch (err) { setStatus(String(err.message ?? err), true); }
+			finally { checkingMedia = false; extra.perception = await api.perception.status().catch(() => ({})); render(); }
 		};
-		if (st.voice && voice.model === undefined) poll();
+		const poll = pollVoice;
+		if (st.voice && !voiceLoaded && !voicePolling) poll();
 		const mb = (n) => Math.round((n ?? 0) / 1e6);
 		return sec(
 			"voice",
 			"VOICE INPUT",
 			field("Dictate into Ask", "Microphone button and Ctrl+Shift+Space. Whisper runs on this computer; audio is never uploaded.", toggle(!!st.voice, () => save({ voice: !st.voice }), "Dictate into Ask")),
+			st.voice ? field("Spoken language", "Select your usual language or let Whisper detect it.", dropdown({ label: "Spoken language", value: st.voiceLanguage ?? "en", groups: [{ items: [["en", "English"], ["auto", "Auto detect"], ["ms", "Malay"], ["zh", "Chinese"], ["ta", "Tamil"], ["hi", "Hindi"]].map(([value, label]) => ({ value, label })) }], onPick: value => save({ voiceLanguage: value }) })) : null,
+			st.voice ? h("p", { class: "hint" }, "Hold-to-speak edits for the selected paragraph or chart are under Help with the selection.") : null,
+			field("Use native cloud hearing", "Preview for the held shortcut. Sends up to 30 seconds of raw audio to the media API instead of local Whisper. Requires cloud privacy and a separate API key. Your text model and local Gemma embeddings keep their own settings.", toggle(media.enabled, () => save({ perception: { ...media, enabled: !media.enabled } }), "Use native cloud hearing")),
+			media.enabled ? field("Media provider", "Used only for bounded native media. Connect its API key under Models.", dropdown({ label: "Media provider", value: media.provider, groups: [{ items: [{ value: "google", label: "Google Gemini", hint: "Audio, images and native video API" }, { value: "openai", label: "OpenAI Realtime", hint: "Audio and images" }] }], onPick: provider => save({ perception: { ...media, provider, model: provider === "openai" ? "gpt-realtime-2.1" : "gemini-3.8-flash" } }) })) : null,
+			media.enabled ? h("p", { class: "hint" }, `When you hold to speak, the utterance goes to this provider after its synthetic checks pass; no document goes to that provider. Your text model receives the instruction and selection. ${media.model} · ${mediaStatus.qualification === "fixtures-passed" ? "Synthetic fixtures passed" : "Awaiting synthetic checks"}. ${mediaStatus.reason ?? "Checking API connection…"} Native video capture and continuous listening are not enabled by this preview.`) : null,
+			media.enabled ? h("div", { class: "row" }, h("button", { id: "checkNativeMedia", class: "sb", disabled: checkingMedia || mediaStatus.busy || !mediaStatus.available || st.privacy !== "cloud", onclick: probe }, checkingMedia ? "Checking synthetic media…" : "Run synthetic media checks"), h("small", { class: "hint" }, "Five small API requests using bundled speech, silence and images. Uses your API quota; no microphone or document is read.")) : null,
 			st.voice
 				? voice.available
-					? h("p", { class: "hint" }, "Ready. Dictation is in English.")
+					? h("p", { class: "hint" }, "Whisper is ready on this computer.")
 					: h("div", { class: "row" },
 						h("button", { class: "sb pri", disabled: !!voice.setup, onclick: attempt(async () => { const r = await api.voice.setup(); setTimeout(poll, 500); return r; }) }, voice.setup ? `Installing… ${mb(voice.progress?.done)} / ${mb(voice.progress?.total ?? voice.bytes)} MB` : `Install Whisper (${mb(voice.bytes ?? 81e6)} MB)`),
 						voice.error ? h("small", { class: "hint warn" }, voice.error) : h("small", { class: "hint" }, "Needed once before the microphone button appears."))
@@ -683,16 +751,57 @@
 		return b;
 	}
 
+	function changesSection() {
+		const prompt = h("textarea", { id: "changePrompt", class: "sinp", rows: "3", maxlength: "4000", placeholder: "Improve or repair Midnight's charts…", "aria-label": "Describe a Midnight improvement", oninput: event => { changeText = event.target.value; } }); prompt.value = changeText;
+		const placeholder = () => prompt.placeholder = changeComponent === "midnight.core" ? "Describe the app bug, how to reproduce it, and the expected behavior…" : changeComponent === "midnight.theme" ? "Make Midnight's launcher accent colors teal…" : "Improve or repair Midnight's charts…"; placeholder();
+		const components = extra.components?.length ? extra.components : [{ id: "midnight.chart", label: "Charts" }];
+		const component = segmented(changeComponent, components.map(item => ({ value: item.id, label: item.label })), value => { changeComponent = value; if (value === "midnight.core") changeScope = "official"; render(); }, "Midnight component to improve");
+		const selectedComponent = components.find(item => item.id === changeComponent), core = changeComponent === "midnight.core";
+		const scope = segmented(changeScope, core ? [{ value: "official", label: "Official proposal" }] : [{ value: "user", label: "My Midnight" }, { value: "official", label: "Official proposal" }], value => { changeScope = value; }, "Where the improvement belongs");
+		const build = h("button", { id: "requestChange", class: "sb pri", onclick: async () => {
+			if (!changeText.trim()) return setStatus("Describe the improvement first.", true);
+			build.disabled = true;
+			try { const job = await api.builder.request({ scope: changeScope, text: changeText, pluginId: changeComponent }); changeText = ""; await loadExtra(); setStatus(`Change job ${job.status}. You can review its preview when ready.`); }
+			catch (error) { setStatus(error.message, true); }
+		} }, "Build candidate");
+		if (selectedComponent?.available === false) build.disabled = true;
+		const jobs = (extra.changes ?? []).slice(0, 10).map(job => {
+			const card = h("div", { class: "change-card" }, h("strong", {}, job.request), h("p", { class: "hint" }, `${job.component ?? "Charts"} · ${job.scope === "user" ? "My Midnight" : "Official proposal"} · ${job.status}`));
+			if (job.waitingReason) card.append(h("p", { class: "hint" }, job.waitingReason));
+			if (job.error) card.append(h("p", { class: "hint" }, job.error));
+			if (job.kind === "core") {
+				if (job.changed?.length) card.append(h("p", { class: "hint" }, `${job.changed.length} source files changed${job.kernelChanges?.length ? ` · ${job.kernelChanges.length} kernel files require review` : ""}`));
+				if (job.sourceDiff) card.append(h("pre", { class: "source-diff" }, job.sourceDiff), ...(job.diffTruncated ? [h("p", { class: "hint" }, "The complete patch is in the candidate folder.")] : []));
+				if (job.validation?.counts) card.append(h("p", { class: "hint" }, `Source checks: ${job.validation.counts.passed ?? 0} passed · ${job.validation.counts.skipped ?? 0} platform skips`));
+				if (job.windowsBuild === "pending" || job.appPreview === "pending") card.append(h("p", { class: "hint" }, "Source proposal prepared. Windows build and app preview are pending."));
+			}
+			if (job.previewSvg) card.append(h("img", { class: "change-preview", alt: "Candidate chart preview", src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(job.previewSvg)}` }));
+			if (job.previewTokens && ["accent", "accent-hover", "accent-soft", "accent-line", "highlight", "on-accent"].every(key => /^#[0-9a-f]{6}$/i.test(job.previewTokens[key] ?? ""))) {
+				const colors = job.previewTokens, preview = h("div", { class: "change-theme-preview", "aria-label": "Candidate accent color preview" }, h("span", {}, "Selected text color"), h("span", { class: "sample-button" }, "Button color"));
+				preview.style.backgroundColor = colors["accent-soft"]; preview.style.color = colors.highlight; preview.style.borderColor = colors["accent-line"];
+				preview.lastChild.style.backgroundColor = colors.accent; preview.lastChild.style.color = colors["on-accent"]; card.append(preview);
+			}
+			const actions = h("div", { class: "row2" });
+			if (job.status === "preview-ready" && job.scope === "user") actions.append(h("button", { class: "sb pri", onclick: attempt(() => api.builder.activate({ jobId: job.id, digest: job.candidate.digest, expectedGeneration: job.baseGeneration }), "This private version is active.") }, "Use this version"));
+			if (["requested", "waiting", "preparing", "patching", "validating"].includes(job.status)) actions.append(h("button", { class: "sb", onclick: attempt(() => api.builder.cancel({ jobId: job.id }), "Change job cancelled.") }, "Cancel"));
+			if (["interrupted", "failed", "cancelled"].includes(job.status)) actions.append(h("button", { class: "sb", onclick: attempt(() => api.builder.resume({ jobId: job.id }), "Resuming the same candidate.") }, "Resume"));
+			if (job.officialPath) actions.append(h("button", { class: "sb", onclick: attempt(() => api.clipboard.write(job.officialPath), "Official candidate folder copied.") }, "Copy candidate location"));
+			card.append(actions); return card;
+		});
+		return sec("changes", "IMPROVE MIDNIGHT", h("p", { class: "hint" }, "Choose a component and describe its improvement. A separate builder prepares a preview and checks. My Midnight creates a private version; an official proposal produces source files for review."), component, scope, ...(selectedComponent?.available === false ? [h("p", { class: "hint" }, selectedComponent.reason ?? "Matching source files are required for app repairs.")] : []), prompt,
+			h("div", { class: "row2" }, build, h("button", { class: "sb", onclick: attempt(async () => { await loadExtra(); }, "Change jobs refreshed.") }, "Refresh")), h("p", { class: "hint" }, "Restore the last good plugins from the tray if a customization breaks."), ...jobs);
+	}
 	// ---------- tabs ----------
 	const TABS = [
-		{ id: "general", label: "General", sections: () => [autonomySection(), answersSection(), launcherSection(), voiceSection(), webSection()] },
+		{ id: "general", label: "General", sections: () => [assistSection(), autonomySection(), answersSection(), launcherSection(), voiceSection(), webSection()] },
 		{ id: "models", label: "Models", sections: () => [modelSection(), accountsSection(), privacySection(), usageSection()] },
 		{ id: "files", label: "Files & memory", sections: () => [sourcesSection(), fileSearchSection(), memorySection()] },
 		{ id: "automation", label: "Automation", sections: () => [rulesSection(), watchesSection(), routinesSection(), connectorsSection(), shareSection()] },
 		{ id: "display", label: "Display", sections: () => [displaySection()] },
+		{ id: "changes", label: "Changes", sections: () => [changesSection()] },
 		{ id: "data", label: "Data", sections: () => [dataSection(), aboutSection()] },
 	];
-	const SECTION_TAB = { autonomy: "general", answers: "general", launcher: "general", voice: "general", web: "general", accounts: "models", model: "models", privacy: "models", usage: "models", sources: "files", "file-search": "files", memory: "files", rules: "automation", watches: "automation", routines: "automation", connectors: "automation", share: "automation", display: "display", data: "data", about: "data" };
+	const SECTION_TAB = { assist: "general", autonomy: "general", answers: "general", launcher: "general", voice: "general", web: "general", accounts: "models", model: "models", privacy: "models", usage: "models", sources: "files", "file-search": "files", memory: "files", rules: "automation", watches: "automation", routines: "automation", connectors: "automation", share: "automation", display: "display", changes: "changes", data: "data", about: "data" };
 	let tab = "general";
 	function tabBar() {
 		const pick = (id) => {
@@ -811,6 +920,7 @@
 		showAll = false;
 		Object.keys(adding).forEach((k) => delete adding[k]);
 		status = { text: "", err: false };
+		assist = undefined;
 		try { await refresh(); } catch (err) { setStatus(String(err.message ?? err), true); }
 	};
 })();

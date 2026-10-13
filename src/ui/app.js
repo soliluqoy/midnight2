@@ -3,6 +3,17 @@
 const $ = (id) => document.getElementById(id);
 const cap = $("cap");
 const api = window.midnight;
+const COLOR_KEYS = ["accent", "accent-hover", "accent-soft", "accent-line", "highlight", "on-accent"];
+let themeRequest = 0;
+async function refreshTheme() {
+	const request = ++themeRequest;
+	try {
+		const result = await api.theme?.current(); if (request !== themeRequest) return;
+		const tokens = result?.tokens;
+		if (!tokens || Object.keys(tokens).length !== COLOR_KEYS.length || COLOR_KEYS.some(key => !/^#[0-9a-f]{6}$/i.test(tokens[key] ?? ""))) throw new Error("Invalid color preset");
+		for (const key of COLOR_KEYS) document.documentElement.style.setProperty(`--${key}`, tokens[key]);
+	} catch { if (request === themeRequest) for (const key of COLOR_KEYS) document.documentElement.style.removeProperty(`--${key}`); }
+}
 
 let cur = "idle"; // idle | chat | mission | read | settings | stack | search
 let prev = "chat";
@@ -299,6 +310,10 @@ api.on((m) => {
 			engine = "ready";
 			acceptSnapshot(m.snapshot);
 			refreshShellState();
+			void refreshTheme();
+			break;
+		case "builder":
+			if (["accepted", "rolled-back"].includes(m.job?.status)) void refreshTheme();
 			break;
 		case "update":
 			applyUpdate(m);
@@ -314,6 +329,11 @@ api.on((m) => {
 
 function onShell(m) {
 	switch (m.type) {
+		case "plugins-restored":
+			++themeRequest; // Shell recovery fences old replies even when the engine cannot answer.
+			for (const key of COLOR_KEYS) document.documentElement.style.removeProperty(`--${key}`);
+			if (engine === "ready") void refreshTheme();
+			break;
 		case "apps":
 			renderPinnedApps(m.apps);
 			break;
@@ -323,14 +343,19 @@ function onShell(m) {
 			else summon();
 			break;
 		case "hidden":
+			cancelDictation();
 			parked = true;
+			break;
+		case "session-state":
+			voiceBlocked = !!m.blocked;
+			if (voiceBlocked) cancelDictation();
 			break;
 		case "shortcut-error":
 			showErr(m.error);
 			break;
 		case "open-settings":
 			parked = false;
-			openSettings();
+			openSettings(m.section);
 			break;
 		case "open-mission":
 			if (m.missionId) openMission(m.missionId);
@@ -361,6 +386,7 @@ function onShell(m) {
 			break;
 		}
 		case "emergency":
+			cancelDictation();
 			announce("Emergency stop: nothing new will run until you resume it from the tray.");
 			resnapshot();
 			break;
@@ -1200,10 +1226,11 @@ $("sendTask").onclick = submitTask;
 // ---------- dictation: record in the launcher, transcribe with local Whisper, insert at the cursor ----------
 let voiceReady = false;
 let recording; // { recorder, stream, chunks, started, timer, cancelled }
+let voiceEpoch = 0, voiceBlocked = false;
 const MAX_DICTATION_S = 120;
 async function refreshVoice() {
 	const s = prefs.voice ? await api.voice.status().catch(() => ({})) : {};
-	voiceReady = !!(prefs.voice && s.available);
+	voiceReady = !!(prefs.voice && s?.available);
 	$("micTask").hidden = !voiceReady || cur === "search";
 }
 function micState(state, label = "") {
@@ -1215,17 +1242,19 @@ function micState(state, label = "") {
 	$("micTime").textContent = label;
 }
 async function startDictation() {
-	if (recording || !voiceReady) return;
+	if (recording || !voiceReady || voiceBlocked) return;
+	const epoch = voiceEpoch;
 	let stream;
 	try {
 		stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
 	} catch (err) {
 		return showErr(new Error("midnight could not use the microphone. Check Windows Settings → Privacy → Microphone."));
 	}
+	if (epoch !== voiceEpoch || voiceBlocked) { for (const track of stream.getTracks()) track.stop(); return; }
 	const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm"].find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
 	const recorder = new MediaRecorder(stream, { mimeType: type, audioBitsPerSecond: 32000 });
-	const r = (recording = { recorder, stream, chunks: [], started: Date.now(), type: recorder.mimeType || type || "audio/webm" });
-	recorder.ondataavailable = (e) => e.data.size && r.chunks.push(e.data);
+	const r = (recording = { recorder, stream, chunks: [], epoch, started: Date.now(), type: recorder.mimeType || type || "audio/webm" });
+	recorder.ondataavailable = (e) => !r.cancelled && r.epoch === voiceEpoch && e.data.size && r.chunks.push(e.data);
 	recorder.onstop = () => finishDictation(r);
 	recorder.start(1000);
 	micState("recording", "0:00");
@@ -1240,17 +1269,20 @@ function stopDictation({ cancel = false } = {}) {
 	const r = recording;
 	if (!r) return;
 	r.cancelled = cancel;
+	if (cancel) r.chunks.length = 0;
 	clearInterval(r.timer);
 	if (r.recorder.state !== "inactive") r.recorder.stop();
 	for (const t of r.stream.getTracks()) t.stop();
 }
+function cancelDictation() { voiceEpoch++; stopDictation({ cancel: true }); micState("idle"); }
 async function finishDictation(r) {
-	recording = undefined;
+	if (recording === r) recording = undefined;
 	if (r.cancelled || !r.chunks.length) return micState("idle");
 	micState("working", "…");
 	try {
 		const bytes = new Uint8Array(await new Blob(r.chunks, { type: r.type }).arrayBuffer());
 		const { text } = await api.voice.transcribe(bytes, r.type.replace(/\s+/g, ""));
+		if (r.epoch !== voiceEpoch || voiceBlocked) return;
 		const box = $("box");
 		if (text) {
 			const at = box.selectionStart ?? box.value.length;
@@ -1263,9 +1295,10 @@ async function finishDictation(r) {
 		} else announce("No speech was heard.");
 		box.focus({ preventScroll: true });
 	} catch (err) {
-		showErr(err);
+		if (r.epoch === voiceEpoch) showErr(err);
 	} finally {
-		micState("idle");
+		r.chunks.length = 0;
+		if (r.epoch === voiceEpoch) micState("idle");
 	}
 }
 $("micTask").onclick = () => (recording ? stopDictation() : startDictation());

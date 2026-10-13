@@ -181,7 +181,7 @@ export function createWatches(d) {
 		attention.notify({ dedupKey: `watch:${w.id}:${obs.fingerprint}`, group: `watch:${w.id}`, title: `${w.label} changed`, reason: dd.summary, watchId: w.id, cooldownMs: w.cooldownS * 1000, suggested: w.onChange === "prepare" ? "prepare" : "open" });
 		const mode = settings().mode;
 		if (w.onChange === "prepare" && mode !== "ask" && !stop.proactivePaused()) {
-			counters.modelCalls++;
+			try {
 			coord().createMission({
 				text: `${w.prompt ?? `Something changed in ${w.label}. Prepare a short update for the user.`}\n\nWhat changed (from Midnight's deterministic check): ${dd.summary}`,
 				requestId: `watch:${w.id}:${obs.fingerprint}`,
@@ -190,6 +190,11 @@ export function createWatches(d) {
 				priority: PRIORITY.routine,
 				title: `${w.label}: update`,
 			});
+			counters.modelCalls++;
+			} catch (error) {
+				if (error.code !== "QUEUE_FULL") throw error;
+				return { changed: true, material: true, notified: true, modelQueued: false, reason: error.message };
+			}
 		}
 		return { changed: true, material: true, notified: true };
 	}

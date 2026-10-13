@@ -6,6 +6,9 @@ import path from "node:path";
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { pruneImages } from "../harness-utils.mjs";
 import { corePaths } from "./paths.mjs";
+import { isLocal } from "./models.mjs";
+import { admittedStream } from "../inference/stream.mjs";
+import { boundedStream } from "../inference/request-limits.mjs";
 // The standalone MCP client ships with the Pi packages; connectors reach it through this single seam.
 export { McpClient, StdioTransport, StreamableHttpTransport, toLlmContent } from "@earendil-works/pi-mcp";
 
@@ -22,6 +25,23 @@ export const RUNTIME_VERSION = `pi-coding-agent@${coreVersion()}`;
 
 export async function createModelRuntime({ core = corePaths(), credentials, allowModelNetwork = false } = {}) {
 	return ModelRuntime.create({ authPath: core.authPath, modelsStorePath: core.modelsStorePath, modelsPath: core.modelsPath, credentials, allowModelNetwork });
+}
+
+/** Native media uses the provider's API-key lane, never a subscription OAuth token or a proxy credential. */
+export async function resolveMediaApiKey(modelRuntime, provider, { signal } = {}) {
+	if (!["openai", "google"].includes(provider)) throw new Error("Unsupported native media provider.");
+	const configured = modelRuntime.getRegisteredProviderConfig?.(provider);
+	const expected = provider === "openai" ? "https://api.openai.com" : "https://generativelanguage.googleapis.com";
+	const direct = value => { if (!value) return true; try { const url = new URL(value); return url.origin === expected && !url.username && !url.password && !url.search && !url.hash && /^\/(?:v1(?:beta)?)?\/?$/.test(url.pathname); } catch { return false; } };
+	if (!direct(configured?.baseUrl)) throw new Error("Native media requires the provider's direct API credential.");
+	let check, result;
+	try { check = await modelRuntime.checkAuth(provider, { signal }); } catch { signal?.throwIfAborted(); throw new Error("The media provider credential could not be checked."); }
+	if (check?.type !== "api_key") throw new Error("Connect an API key for this media provider in Settings → Models. Text-model OAuth does not configure native media.");
+	try { result = await modelRuntime.getAuth(provider, { signal }); } catch { signal?.throwIfAborted(); throw new Error("The media provider credential could not be resolved."); }
+	signal?.throwIfAborted();
+	if (!direct(result?.auth?.baseUrl)) throw new Error("Native media requires the provider's direct API credential.");
+	if (typeof result?.auth?.apiKey !== "string" || !result.auth.apiKey || /[\r\n]/.test(result.auth.apiKey)) throw new Error("The media provider has no usable API key.");
+	return result.auth.apiKey;
 }
 
 /** The inline extension that routes every tool call through the broker (direct, deferred, nested, Codemode, MCP). */
@@ -44,7 +64,7 @@ const textOf = (msg) =>
 /**
  * @param {{ modelRuntime: ModelRuntime, sessionsDir: string, cwd?: string, core?: object, onLive?: (missionId: string, e: object) => void, quiet?: () => boolean, extraExtensions?: () => any[] }} o
  */
-export function createPiRuntime({ modelRuntime, sessionsDir, cwd = sessionsDir, core = corePaths(), onLive = () => {}, quiet = () => false, extraExtensions = () => [] }) {
+export function createPiRuntime({ modelRuntime, sessionsDir, cwd = sessionsDir, core = corePaths(), onLive = () => {}, quiet = () => false, extraExtensions = () => [], arbiter }) {
 	const live = new Map(); // missionId -> { session, runId }
 
 	return {
@@ -54,8 +74,12 @@ export function createPiRuntime({ modelRuntime, sessionsDir, cwd = sessionsDir, 
 		 * Run one input to settlement. Resolves with { answer, stopReason, error, usage, sessionFile, aborted }.
 		 * A finished run is only a runtime fact; the coordinator decides whether the mission succeeded.
 		 */
-		async run(missionId, { runId, input, images, model, thinking = "low", systemPrompt, tools, gate, sessionFile, onSession }) {
+		async run(missionId, { runId, input, images, model, thinking = "low", systemPrompt, tools, gate, sessionFile, onSession, signal: callerSignal, priority = 1, requestLimits }) {
 			if (live.has(missionId)) throw new Error("this mission already has a run in progress");
+			const isolated = !!requestLimits;
+			const deadline = isolated ? AbortSignal.timeout(Math.max(1, requestLimits.deadline - Date.now())) : undefined;
+			const signal = deadline ? (callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline) : callerSignal;
+			if (isolated) { sessionFile = undefined; images = []; tools = []; }
 			const dir = path.join(sessionsDir, missionId);
 			fs.mkdirSync(dir, { recursive: true });
 			const sm = sessionFile && fs.existsSync(sessionFile) ? SessionManager.open(sessionFile, dir) : SessionManager.create(cwd, dir);
@@ -68,7 +92,7 @@ export function createPiRuntime({ modelRuntime, sessionsDir, cwd = sessionsDir, 
 				noThemes: true,
 				noContextFiles: true,
 				systemPrompt,
-				extensionFactories: [gateExtension(gate), ...extraExtensions(missionId)],
+				extensionFactories: [gateExtension(gate), ...(isolated ? [] : extraExtensions(missionId))],
 			});
 			await loader.reload();
 			const usage = { input: 0, output: 0, tokens: 0, costUsd: 0, unknownCost: 0, modelCalls: 0 };
@@ -82,8 +106,10 @@ export function createPiRuntime({ modelRuntime, sessionsDir, cwd = sessionsDir, 
 				tools: tools.map((t) => t.name),
 				customTools: tools,
 				sessionManager: sm,
-				settingsManager: SettingsManager.inMemory({ compaction: { enabled: true }, retry: { enabled: true, maxRetries: 2 }, cacheWarming: quiet() ? "off" : "streaming" }),
+				settingsManager: SettingsManager.inMemory({ compaction: { enabled: !isolated }, retry: { enabled: !isolated, maxRetries: isolated ? 0 : 2 }, cacheWarming: "off" }),
 			});
+			if (isolated) session.agent.streamFunction = boundedStream(session.agent.streamFunction.bind(session.agent), { signal, maxCalls: 1, maxTokens: requestLimits.maxTokens });
+			if (arbiter && isLocal(model)) session.agent.streamFunction = admittedStream(session.agent.streamFunction.bind(session.agent), arbiter, { signal, priority, preemptible: priority >= 2 });
 			await session.bindExtensions({});
 			onSession?.(sm.getSessionFile?.());
 			const transform = session.agent.transformContext;
@@ -124,16 +150,21 @@ export function createPiRuntime({ modelRuntime, sessionsDir, cwd = sessionsDir, 
 			});
 			let error;
 			let aborted = false;
+			const cancel = () => session.abort().catch(() => {});
+			signal?.addEventListener("abort", cancel, { once: true });
 			try {
+				signal?.throwIfAborted();
 				await session.prompt(input, images?.length ? { images } : undefined);
 			} catch (err) {
 				error = String(err?.message ?? err);
+				aborted = signal?.aborted || err?.name === "AbortError";
 			}
 			const last = [...session.messages].reverse().find((m) => m.role === "assistant");
 			if (last?.stopReason === "aborted") aborted = true;
 			if (!error && last?.stopReason === "error") error = last.errorMessage ?? "the model returned an error";
 			const file = sm.getSessionFile?.();
 			unsub();
+			signal?.removeEventListener("abort", cancel);
 			live.delete(missionId);
 			session.dispose();
 			return { answer: textOf(last), stopReason: last?.stopReason, error, aborted, usage, settled, sessionFile: file };

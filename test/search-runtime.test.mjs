@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { createEmbeddingRuntime, EMBEDDING_DTYPE, EMBEDDING_MODEL, EMBEDDING_REVISION, onnxDevice } from "../src/search/runtime.mjs";
 import { downloadModel, MODEL_FILES, modelDir } from "../src/search/model-files.mjs";
 import { embeddingSettings } from "../src/search/config.mjs";
+import { createNativeEmbeddingAssets } from "../src/search/native-assets.mjs";
 
 const unit = (dimensions) => Array.from({ length: dimensions }, (_, index) => index === 0 ? 1 : 0);
 
@@ -85,6 +86,49 @@ test("setup surfaces download and verification errors and stays not installed", 
 	f = fixture(t, { prepared: false, loadError: { code: "SEARCH_SETUP_REQUIRED", message: "Protobuf parsing failed." } });
 	await assert.rejects(f.runtime.setup(), /Protobuf parsing failed/);
 	assert.equal(f.runtime.status().available, false);
+});
+
+test("cached GGUF setup preserves the legacy marker, avoids downloads and records a separate qualified fingerprint", async t => {
+	const directory = mkdtempSync(path.join(os.tmpdir(), "midnight-native-reuse-")), runtimeDir = path.join(directory, "search-runtime"); mkdirSync(runtimeDir);
+	const legacy = JSON.stringify({ model: "google/embeddinggemma-2", revision: "legacy-fixture", dtype: "float32", snapshot: "retained previous snapshot" }); writeFileSync(path.join(runtimeDir, "prepared.json"), legacy);
+	const identity = createNativeEmbeddingAssets().identity; let downloads = 0, workers = 0, live = false, terminated = false;
+	const factory = () => {
+		workers++; const worker = new EventEmitter();
+		worker.postMessage = message => queueMicrotask(() => {
+			if (terminated) return;
+			const result = message.op === "load" ? { ...identity, dimensions: message.dimensions, device: "cpu", modalities: ["text", "image", "pdf", "audio", "video"] } : message.texts.map(() => unit(128));
+			worker.emit("message", { id: message.id, ok: true, result });
+		});
+		worker.terminate = async () => { live = true; await new Promise(resolve => setTimeout(resolve, 15)); live = false; terminated = true; }; return worker;
+	};
+	const options = { paths: { dataDir: directory }, settings: { embedding: { dimensions: 128 } }, nativeAssets: { identity, present: () => true }, nativeWorkerFactory: factory, download: async () => { downloads++; throw new Error("must not download"); } };
+	const runtime = createEmbeddingRuntime(options); t.after(async () => { await runtime.close(); rmSync(directory, { recursive: true, force: true }); });
+	assert.equal(runtime.status().available, false); assert.equal(runtime.status().legacyCache, true); assert.equal(runtime.status().cacheReuseAvailable, true); assert.equal(workers, 0);
+	await assert.rejects(runtime.embedText(["no implicit setup"]), { code: "SEARCH_SETUP_REQUIRED" }); assert.equal(workers, 0);
+	const status = await runtime.setup(); assert.equal(downloads, 0); assert.equal(status.available, true); assert.equal(status.backend, "gguf"); assert.equal(live, false, "setup waits for native verification process exit");
+	const saved = JSON.parse(readFileSync(path.join(runtimeDir, "prepared.json"), "utf8")); assert.equal(saved.modelHash, identity.modelHash); assert.equal(saved.qualified, true);
+	const backups = readdirSync(runtimeDir).filter(name => name.startsWith("prepared.previous-")); assert.equal(backups.length, 1); assert.equal(readFileSync(path.join(runtimeDir, backups[0]), "utf8"), legacy);
+	assert.ok(runtime.fingerprint().includes(identity.transport)); assert.notEqual(runtime.fingerprint(), JSON.stringify({ model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION, dtype: EMBEDDING_DTYPE, dimensions: 128, pipeline: saved.pipeline }));
+	const reopened = createEmbeddingRuntime(options); assert.equal(reopened.status().available, true); await reopened.close();
+});
+
+test("a prepared ONNX cache is retained even when native assets are present", async t => {
+	const directory = mkdtempSync(path.join(os.tmpdir(), "midnight-retain-onnx-")); mkdirSync(path.join(directory, "search-runtime", "models"), { recursive: true });
+	writeFileSync(path.join(directory, "search-runtime", "prepared.json"), JSON.stringify({ model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION, dtype: EMBEDDING_DTYPE }));
+	const runtime = createEmbeddingRuntime({ paths: { dataDir: directory }, nativeAssets: { identity: createNativeEmbeddingAssets().identity, present: () => true }, nativeWorkerFactory: () => { throw new Error("must retain selected backend"); } });
+	t.after(async () => { await runtime.close(); rmSync(directory, { recursive: true, force: true }); });
+	assert.equal(runtime.status().available, true); assert.equal(runtime.status().model, EMBEDDING_MODEL); assert.equal(runtime.status().dtype, EMBEDDING_DTYPE);
+});
+
+test("failed native qualification cannot overwrite a legacy marker or silently download another backend", async t => {
+	const directory = mkdtempSync(path.join(os.tmpdir(), "midnight-reuse-failure-")), runtimeDir = path.join(directory, "search-runtime"); mkdirSync(runtimeDir);
+	const legacy = JSON.stringify({ model: "google/embeddinggemma-2", dtype: "float32" }); writeFileSync(path.join(runtimeDir, "prepared.json"), legacy);
+	let downloads = 0, stops = 0; const identity = createNativeEmbeddingAssets().identity;
+	const runtime = createEmbeddingRuntime({ paths: { dataDir: directory }, nativeAssets: { identity, present: () => true }, nativeWorkerFactory: () => {
+		const worker = new EventEmitter(); worker.postMessage = message => queueMicrotask(() => worker.emit("message", { id: message.id, ok: false, error: { message: "cached model hash mismatch", code: "COMPONENT_INVALID" } })); worker.terminate = async () => { stops++; }; return worker;
+	}, download: async () => { downloads++; } });
+	t.after(async () => { await runtime.close(); rmSync(directory, { recursive: true, force: true }); });
+	await assert.rejects(runtime.setup(), /hash mismatch/); assert.equal(downloads, 0); assert.ok(stops > 0); assert.equal(runtime.status().available, false); assert.equal(readFileSync(path.join(runtimeDir, "prepared.json"), "utf8"), legacy);
 });
 
 test("model downloads keep only files whose pinned size and hash match, and reuse verified files", async t => {

@@ -45,7 +45,7 @@ export function createContextService({ store, journal, memory, skills, recipes, 
 		if (seen.has(id)) return true;
 		seen.add(id);
 		const r = store.get("SELECT archived,goal,scope,model_policy FROM missions WHERE id = ?", id);
-		if (!r || r.archived || r.goal === "[deleted]" || json(r.scope, {}).pageAssistant ||
+		if (!r || r.archived || r.goal === "[deleted]" || json(r.scope, {}).pageAssistant || ["selectedTarget", "targetAction"].includes(json(r.scope, {}).contextProfile) ||
 			(mission?.privacy === "cloud" && (json(r.model_policy, {}).privacy ?? "cloud") !== "cloud")) return false;
 		for (const e of store.all("SELECT kind,source FROM evidence WHERE mission_id = ? AND kind IN ('file','history','memory')", id)) {
 			if (e.kind === "file" && !roots.list().some(root => roots.covers(root, e.source))) return false;
@@ -159,7 +159,7 @@ export function createContextService({ store, journal, memory, skills, recipes, 
 				.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)) };
 	}
 	async function recall(query, mission, { signal, limit = 6 } = {}) {
-		if (!enabled() || mission?.scope?.pageAssistant) return { memories: [], tasks: [], workflows: [], mode: "disabled" };
+		if (!enabled() || mission?.scope?.pageAssistant || ["selectedTarget", "targetAction"].includes(mission?.scope?.contextProfile)) return { memories: [], tasks: [], workflows: [], mode: "disabled" };
 		let vector;
 		try { vector = await bounded(s => queryVector(query, s), deadlineMs, signal); }
 		catch (e) { if (signal?.aborted) throw e; }

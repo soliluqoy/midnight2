@@ -12,7 +12,7 @@ async function load() {
 	tf.env.localModelPath = `${cacheDir}/.no-local-models/`;
 	tf.env.allowRemoteModels = false;
 	tf.env.useBrowserCache = false;
-	asr = await tf.pipeline("automatic-speech-recognition", MODEL, { dtype: DTYPE, device: "cpu", local_files_only: true });
+	asr = await tf.pipeline("automatic-speech-recognition", MODEL, { dtype: DTYPE, device: "cpu", local_files_only: true, session_options: { intraOpNumThreads: 2, interOpNumThreads: 1 } });
 	return { model: MODEL, dtype: DTYPE };
 }
 
@@ -28,5 +28,5 @@ parentPort.on("message", async (m) => {
 		parentPort.postMessage({ id: m.id, ok: true, result: await result });
 	} catch (err) {
 		parentPort.postMessage({ id: m.id, ok: false, error: String(err?.message ?? err).slice(0, 800) });
-	}
+	} finally { m.samples?.fill(0); }
 });

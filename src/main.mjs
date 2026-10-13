@@ -12,10 +12,17 @@ import { createAttachments } from "./desktop/attachments.mjs";
 import { createOcr } from "./desktop/ocr.mjs";
 import { openMcpApp } from "./desktop/mcp-app.mjs";
 import { startMcpServer } from "./desktop/mcp-server.mjs";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHotkey } from "./desktop/hotkey.mjs";
 import { MARGIN, windowBounds, windowDims } from "./desktop/window-layout.mjs";
 import { createPlatform } from "./desktop/platform.mjs";
+import { createWordBroker } from "./desktop/word-broker.mjs";
+import { createQuickAssist, QUICK_HOTKEY } from "./desktop/quick-assist.mjs";
+import { createQuickWindow } from "./desktop/quick-window.mjs";
+import { createPluginExecutor } from "./desktop/plugin-executor.mjs";
+import { createBuilderRunner } from "./desktop/builder-runner.mjs";
+import { createPluginStore } from "./plugins/store.mjs";
+import { RECOVERY_HELPER, registerRecoveryProfile } from "./desktop/recovery.mjs";
 import { previewFile, closeFilePreviews } from "./desktop/file-preview.mjs";
 import { createSupervisor } from "./desktop/supervisor.mjs";
 import { createUpdater } from "./desktop/updater.mjs";
@@ -24,6 +31,11 @@ import { armHelper, disarmHelper, noteForeground, stopComputer } from "./tools/c
 import { userContext } from "./tools/userbrowser.mjs";
 import { createWeb } from "./tools/web.mjs";
 import { createScreenLease } from "./windows/lease.mjs";
+import { createCaptureEpoch } from "./voice/capture-epoch.mjs";
+import { createPushToTalk } from "./voice/ptt.mjs";
+import { createPttRecorder } from "./desktop/ptt-recorder.mjs";
+import { createPttHotkey, PTT_HOTKEY } from "./desktop/ptt-hotkey.mjs";
+import { perceptionSettings } from "./perception/config.mjs";
 
 // Isolated profiles for QA and smoke tests (never needed in normal use).
 if (process.env.MIDNIGHT_USER_DATA) app.setPath("userData", path.resolve(process.env.MIDNIGHT_USER_DATA));
@@ -50,6 +62,12 @@ function startMissionShell() {
 	let mediaDecoder;
 	let attachments;
 	let mcpServer;
+	const voiceFence = createCaptureEpoch();
+	const wordBroker = createWordBroker();
+	const pluginExecutor = createPluginExecutor();
+	let quick, quickWindow;
+	let ptt, pttRecorder, pttHotkey;
+	let builderRunner;
 	const mcpTokenFile = () => path.join(app.getPath("userData"), "mcp-token");
 	const mcpManifest = () => dir("./desktop/native/manifest.json").replace(/app\.asar([\\/])/, "app.asar.unpacked$1");
 	/** midnight's own MCP connector: on only while the setting is on; turning it off revokes every client. */
@@ -80,6 +98,7 @@ function startMissionShell() {
 	const active = new Set(); // missions that are running (Esc only belongs to midnight while something runs)
 	const logFile = path.join(app.getPath("userData"), "logs", "shell.log");
 	const dataDir = path.join(app.getPath("userData"), "missions");
+	let recoveryPlugins;
 
 	const log = (...a) => {
 		try {
@@ -92,6 +111,19 @@ function startMissionShell() {
 
 	if (!app.requestSingleInstanceLock()) {
 		app.quit();
+		return;
+	}
+	try {
+		registerRecoveryProfile(app.getPath("userData"));
+		recoveryPlugins = createPluginStore({ root: path.join(dataDir, "plugins"), recover: false });
+	} catch {
+		if (process.env.MIDNIGHT_SMOKE) { console.log("[smoke] startup components need independent recovery"); app.exit(2); }
+		else app.whenReady().then(() => {
+			if (process.platform === "win32" && fs.existsSync(RECOVERY_HELPER)) {
+				const repair = spawn(RECOVERY_HELPER, ["--profile", app.getPath("userData")], { detached: true, stdio: "ignore", windowsHide: false }); repair.on("error", () => {}); repair.unref();
+			} else dialog.showErrorBox("Midnight needs recovery", "Midnight could not load its components. Open the recovery helper or use a verified installer.");
+			app.exit(1);
+		});
 		return;
 	}
 	app.on("second-instance", () => summon());
@@ -131,6 +163,10 @@ function startMissionShell() {
 		overlay?.webContents.send("overlay", { type: "off" });
 	}
 	async function emergencyStop() {
+		voiceFence.setReason("emergency", "The emergency stop is on.");
+		pttHotkey?.reset();
+		quick?.invalidate();
+		toCapsule({ kind: "shell", type: "session-state", blocked: true });
 		await lease.revokeAll("emergency");
 		overlay?.webContents.send("overlay", { type: "off" });
 		const r = await supervisor.request("stop.emergency", {}, 5000).catch((err) => ({ error: err.message }));
@@ -152,18 +188,21 @@ function startMissionShell() {
 		toCapsule({ kind: "shell", type: "summon", restore });
 	}
 	function hideCapsule() {
+		voiceFence.invalidate();
+		pttHotkey?.reset();
+		supervisor?.signal({ type: "voice-cancel" });
 		if (capsule && !capsule.isDestroyed()) {
 			capsule.hide();
 			toCapsule({ kind: "shell", type: "hidden" });
 		}
 	}
-	function openSettings() {
+	function openSettings(section) {
 		place("settings", { centre: true });
 		if (capsule.isMinimized()) capsule.restore();
 		capsule.show();
 		capsule.focus();
 		toCapsule({ kind: "shell", type: "relayout" });
-		toCapsule({ kind: "shell", type: "open-settings" });
+		toCapsule({ kind: "shell", type: "open-settings", ...(typeof section === "string" ? { section } : {}) });
 	}
 
 	// The four-square mark, drawn for every display scale by scripts/build-icons.mjs; Electron picks tray@Nx.png for
@@ -178,12 +217,22 @@ function startMissionShell() {
 	}
 	let proactivePaused = false;
 	let trayStopped = false;
-	function rebuildTray(stopped = trayStopped) {
+	function rebuildTray(stopped = trayStopped, { syncFence = true } = {}) {
 		if (!tray) return;
 		trayStopped = stopped;
+		if (syncFence) {
+			voiceFence.setReason("emergency", stopped ? "The emergency stop is on." : undefined);
+			if (stopped) pttHotkey?.reset();
+			toCapsule({ kind: "shell", type: "session-state", blocked: voiceFence.blocked() });
+		}
 		tray.setContextMenu(
 			Menu.buildFromTemplate([
 				{ label: "Ask midnight", click: summon },
+				{ label: "Quick edit selection · Ctrl+Alt+Space", enabled: false },
+				{ label: "Set up selection help…", click: () => openSettings("assist") },
+				{ label: `Hold to speak · ${PTT_HOTKEY}`, enabled: false },
+				{ label: "Recent quick edit", enabled: !!quick?.hasRecent(), click: () => quick.recent() },
+				{ label: "Restore last good plugins", click: () => { try { recoveryPlugins.rollback("user restored from tray"); toCapsule({ kind: "shell", type: "plugins-restored" }); } catch (err) { log("plugin recovery", err.message); } } },
 				{ label: "Settings…", click: openSettings },
 				{ label: "Show background browser", click: () => browsers.peek() },
 				{ type: "separator" },
@@ -301,12 +350,13 @@ function startMissionShell() {
 	// ---------- engine ----------
 	let engineHook; // the headless self-test listens here
 	function onEngineMessage(m) {
+		quick?.onEngine(m).catch(err => log("quick edit", err.message));
 		engineHook?.(m);
 		appWorkspace?.onEngine(m);
 		if (m.kind === "update") {
 			const s = m.mission?.status;
 			if (m.missionId) {
-				if (["running", "verifying", "planning", "recovering"].includes(s)) active.add(m.missionId);
+				if (!m.mission?.targetAssist && ["running", "verifying", "planning", "recovering"].includes(s)) active.add(m.missionId);
 				else active.delete(m.missionId);
 				if (["succeeded", "partially-succeeded", "failed", "cancelled"].includes(s)) browsers?.close(m.missionId);
 				syncEsc();
@@ -332,11 +382,19 @@ function startMissionShell() {
 		}
 		const result = await supervisor.request(method, params);
 		if (method === "data.delete" && ["history", "all"].includes(params.scope)) appWorkspace?.forgetHistory();
+		if (method === "data.delete" && ["history", "all"].includes(params.scope)) { quick?.forget(); wordBroker.reset(); }
 		return result;
 	}
 
 	// ---------- shell-local IPC methods ----------
 	const shellMethods = {
+		"quick.state": () => quick.state(),
+		"quick.submit": p => quick.submit(p),
+		"quick.expand": p => quick.expand(p),
+		"quick.apply": p => quick.apply(p),
+		"quick.undo": p => quick.undo(p),
+		"quick.reconcile": p => quick.reconcile(p),
+		"quick.dismiss": p => { if (p.panelId !== quick.state().panelId) throw new Error("This quick-edit panel is no longer current."); if (ptt?.isWorking()) return ptt.cancel(); return quick.cancel(p); },
 		"ui.size": ({ state }) => place(state),
 		"ui.dims": () => dims(),
 		"ui.focus": () => capsule.isVisible() && capsule.focus(),
@@ -369,6 +427,11 @@ function startMissionShell() {
 			const [accounts, models, current] = await Promise.all([supervisor.auth("accounts").catch(() => []), supervisor.auth("models").catch(() => []), supervisor.auth("current").catch(() => ({ provider: "", model: "" }))]);
 			return { settings: settings.get(), accounts, models, current, version: app.getVersion(), dataDir: app.getPath("userData"), engine: supervisor.state(), mcpServer: { running: !!mcpServer, manifest: mcpManifest(), bridge: mcpManifest().replace(/manifest\.json$/, "midnight-mcp.exe") } };
 		},
+		// Setup readiness for selection help: what the shell actually registered, not what settings intend.
+		"assist.status": async () => {
+			const office = await Promise.race([wordBroker.status().catch(err => ({ error: String(err.message ?? err) })), new Promise(resolve => setTimeout(() => resolve({ error: "Word/WPS did not answer in time." }), 5000))]);
+			return { platform: process.platform, shortcut: QUICK_HOTKEY, shortcutRegistered: globalShortcut.isRegistered(QUICK_HOTKEY), holdShortcut: PTT_HOTKEY, holdListening: !!pttHotkey?.ready(), office: { installed: !!office.installed, provider: office.provider ?? "unknown", chartsQualified: office.provider === "wps" && !!office.chartQualification, error: office.error ?? "" } };
+		},
 		"settings.set": async ({ patch }) => {
 			const before = settings.get();
 			let error = "";
@@ -377,6 +440,7 @@ function startMissionShell() {
 				if (error) delete patch.hotkey;
 			}
 			const after = settings.set(patch);
+			if (["voice", "pushToTalk", "voiceLanguage", "privacy"].some(key => before[key] !== after[key]) || JSON.stringify(before.perception) !== JSON.stringify(after.perception)) { ptt?.cancel(); pttHotkey?.reset(); const pttError = await pttHotkey?.set(after.voice && after.pushToTalk); if (pttError) error = pttError; }
 			if (after.launchAtLogin !== before.launchAtLogin && app.isPackaged && process.platform !== "linux") app.setLoginItemSettings({ openAtLogin: after.launchAtLogin });
 			if (after.mcpServer !== before.mcpServer) await syncMcpServer();
 			if (after.textSize !== before.textSize) {
@@ -391,6 +455,7 @@ function startMissionShell() {
 			return { settings: after, current, error };
 		},
 		"auth.login": async ({ provider, type, key }) => {
+			ptt?.cancel();
 			try {
 				await supervisor.auth("login", { provider, type, key: key?.trim() || undefined });
 				const current = await supervisor.auth("current");
@@ -402,6 +467,7 @@ function startMissionShell() {
 		},
 		"auth.cancel": () => supervisor.auth("cancel"),
 		"auth.logout": async ({ provider }) => {
+			ptt?.cancel();
 			await supervisor.auth("logout", { provider });
 			toCapsule({ kind: "shell", type: "model", ...(await supervisor.auth("current")) });
 		},
@@ -439,11 +505,15 @@ function startMissionShell() {
 		},
 		// Dictation: the launcher records, the hidden decoder turns it into 16 kHz samples, local Whisper transcribes.
 		"voice.transcribe": async ({ audio, type }) => {
+			const captureEpoch = voiceFence.begin();
 			if (!settings.get().voice) throw new Error("Voice input is off. Turn it on in Settings → General → Voice input.");
 			const media = await mediaDecoder.fromBytes(audio, "audio", type);
 			try {
 				const { samples } = await media.audio({ start: 0, seconds: 300 });
-				return supervisor.request("voice.transcribe", { samples }, 180000);
+				voiceFence.assert(captureEpoch);
+				const result = await supervisor.request("voice.transcribe", { samples, language: settings.get().voiceLanguage === "auto" ? null : settings.get().voiceLanguage }, 180000);
+				voiceFence.assert(captureEpoch);
+				return result;
 			} finally {
 				await media.close();
 			}
@@ -489,9 +559,9 @@ function startMissionShell() {
 	app.whenReady().then(async () => {
 		app.setAppUserModelId("midnight.app"); // lets notifications show while the capsule is tucked away
 		// The microphone: only the launcher, only audio, and only while voice input is on. Everything else is refused.
-		const micAllowed = (wc, permission, mediaTypes = []) => permission === "media" && wc === capsule?.webContents && settings.get().voice && mediaTypes.length > 0 && mediaTypes.every((t) => t === "audio");
+		const micAllowed = (wc, permission, mediaTypes = []) => permission === "media" && wc === capsule?.webContents && capsule.isVisible() && !voiceFence.blocked() && settings.get().voice && mediaTypes.length > 0 && mediaTypes.every((t) => t === "audio");
 		session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => cb(micAllowed(wc, permission, details?.mediaTypes)));
-		session.defaultSession.setPermissionCheckHandler((wc, permission, _origin, details) => permission === "media" && wc === capsule?.webContents && settings.get().voice && details?.mediaType === "audio");
+		session.defaultSession.setPermissionCheckHandler((wc, permission, _origin, details) => permission === "media" && wc === capsule?.webContents && capsule.isVisible() && !voiceFence.blocked() && settings.get().voice && details?.mediaType === "audio");
 		if (process.platform === "darwin") app.dock?.hide();
 		web = createWeb(settings); // windows are created lazily on first use (plan ch. 09: no eager warmup)
 		browsers = createBrowsers();
@@ -521,6 +591,23 @@ function startMissionShell() {
 			},
 		});
 		await createWindows();
+		quickWindow = createQuickWindow({ getState: () => quick.state(), isBlocked: () => voiceFence.blocked(), onDismiss: () => { ptt?.cancel(); quick.cancel(); }, onReset: id => router?.reset(id), zoom: () => settings.get().textSize });
+		quick = createQuickAssist({ word: wordBroker, request: (method, params) => supervisor.request(method, params), settings: () => settings.get(), blocked: () => voiceFence.blocked(),
+			publish: state => { quickWindow.publish(state); if (["applied", "unknown", "undone", "closed"].includes(state.phase)) rebuildTray(trayStopped, { syncFence: false }); },
+			present: options => quickWindow.present(options).catch(err => log("quick view", err.message)), hide: () => quickWindow.hide() });
+		pttRecorder = createPttRecorder({ allowed: id => ptt?.currentId() === id && ptt.canRecord(), onError: (id, error) => { if (ptt?.currentId() === id) ptt.cancel(error.message); } });
+		ptt = createPushToTalk({ quick, recorder: pttRecorder, fence: voiceFence, settings: () => settings.get(), prepareSpeech: (params, { signal }) => {
+			const cancel = () => supervisor.request("voice.quickCancel", { captureId: params.captureId }).catch(() => {}); signal.addEventListener("abort", cancel, { once: true });
+			if (signal.aborted) { cancel(); return Promise.reject(new Error("Voice preparation was cancelled.")); }
+			return supervisor.request("voice.quickPrepare", params, 35_000).finally(() => signal.removeEventListener("abort", cancel));
+		}, transcribe: (params, { signal }) => {
+			const native = perceptionSettings(settings.get().perception).enabled;
+			const cancel = () => supervisor.request(native ? "perception.cancel" : "voice.quickCancel", native ? { requestId: params.captureId } : { captureId: params.captureId }).catch(() => {}); signal.addEventListener("abort", cancel, { once: true });
+			const capturedAt = params.capturedAt;
+			const request = native ? supervisor.request("perception.observe", { requestId: params.captureId, purpose: "audio.intent", instruction: "Identify this spoken request, preserving names, numbers and negation.", capturedAt, expiresAt: params.deadline, media: [{ id: "utterance", kind: "audio", samples: params.samples, startMs: 0 }] }, 40_000).then(result => ({ text: result.instruction })) : supervisor.request("voice.quickTranscribe", params, 40_000);
+			return request.finally(() => signal.removeEventListener("abort", cancel));
+		}, cancelTranscription: captureId => Promise.allSettled([supervisor.request("voice.quickCancel", { captureId }), supervisor.request("perception.cancel", { requestId: captureId })]), publish: state => { tray?.setToolTip(state.phase === "idle" ? "midnight" : `midnight · ${state.phase === "listening" ? "Listening while the chord is held" : state.phase === "transcribing" ? state.cloudMedia ? "Understanding the utterance in the cloud" : "Transcribing locally" : "Preparing voice request"}`); } });
+		pttHotkey = createPttHotkey({ onDown: foreground => ptt.down(foreground), onUp: () => ptt.up(), onCancel: () => ptt.cancel(), onError: error => { log("push to talk", error); toCapsule({ kind: "shell", type: "shortcut-error", error }); } });
 		appWorkspace = createAppWorkspace({
 			registry: createAppRegistry(path.join(app.getPath("userData"), "apps.json")), settings: () => settings.get(),
 			request: (method, params) => supervisor.request(method, params),
@@ -530,28 +617,31 @@ function startMissionShell() {
 		});
 		router = createIpcRouter({
 			ipcMain,
-			isTrusted: (event) => (event.sender === capsule?.webContents && event.senderFrame === capsule.webContents.mainFrame && (event.senderFrame?.url ?? "").split("#")[0] === UI_URL) || appWorkspace.isTrusted(event),
-			canCall: (event, method) => event.sender === capsule?.webContents || method.startsWith("apps."),
+			isTrusted: (event) => (event.sender === capsule?.webContents && event.senderFrame === capsule.webContents.mainFrame && (event.senderFrame?.url ?? "").split("#")[0] === UI_URL) || quickWindow.isTrusted(event) || appWorkspace.isTrusted(event),
+			canCall: (event, method) => quickWindow.isTrusted(event) ? method.startsWith("quick.") : !method.startsWith("quick.") && (event.sender === capsule?.webContents || method.startsWith("apps.")),
 			shell: shellMethods,
 			host: hostCall,
 			log,
 		});
 		supervisor = createSupervisor({
 			dataDir,
+			recoveryProfile: app.getPath("userData"),
 			settings: () => hostSettings(settings.get()),
-			platform: createPlatform({ web, browsers, lease, onAct, allowedOpen, previewFile, mediaDecoder, ocr: createOcr({ tempDir: app.getPath("temp") }) }),
+			platform: createPlatform({ web, browsers, lease, onAct, allowedOpen, previewFile, mediaDecoder, wordBroker, pluginExecutor, builderRunner: { run: (job, options) => builderRunner.run(job, options) }, appEditAllowed: () => !voiceFence.blocked(), ocr: createOcr({ tempDir: app.getPath("temp") }) }),
 			onMessage: onEngineMessage,
 			onState: (s) => {
 				log("engine", s.state, s.error ?? "");
+				if (s.state !== "ready") { pttHotkey.reset(); quick.invalidate(); }
 				toCapsule({ kind: "shell", type: "engine", ...s });
 			},
 			log,
 		});
+		builderRunner = createBuilderRunner({ maintenance: params => supervisor.request("builder.maintenance", params) });
 		supervisor.start();
 		supervisor.ready().then(syncMcpServer).catch((err) => log("mcp server", err.message));
 		updater = createUpdater({
 			version: app.getVersion(),
-			isBusy: async () => active.size > 0 || !!lease.current(),
+			isBusy: async () => active.size > 0 || !!lease.current() || !!quick.isWorking() || !!ptt.isWorking() || !!builderRunner?.isBusy() || pluginExecutor.isBusy(),
 			backup: () => supervisor.request("data.backup", {}),
 			launch: (file) => {
 				shell.openPath(file);
@@ -565,8 +655,13 @@ function startMissionShell() {
 		// Power, lock and session signals: stop starting actions, give the screen back, catch up after waking.
 		for (const ev of ["suspend", "resume", "on-ac", "on-battery", "lock-screen", "unlock-screen"]) {
 			powerMonitor.on(ev, async () => {
-				if (ev === "suspend" || ev === "lock-screen") await lease.revokeAll(ev);
+				if (ev === "lock-screen" || ev === "unlock-screen") voiceFence.setReason("lock", ev === "lock-screen" ? "The computer is locked." : undefined);
+				if (ev === "suspend" || ev === "resume") voiceFence.setReason("suspend", ev === "suspend" ? "The computer is suspended." : undefined);
+				if (["suspend", "lock-screen", "resume", "unlock-screen"].includes(ev)) pttHotkey.reset();
+				if (ev === "suspend" || ev === "lock-screen") quick.invalidate();
 				supervisor.signal({ type: ev });
+				toCapsule({ kind: "shell", type: "session-state", blocked: voiceFence.blocked() });
+				if (ev === "suspend" || ev === "lock-screen") await lease.revokeAll(ev);
 			});
 		}
 		if (powerMonitor.isOnBatteryPower?.()) supervisor.signal({ type: "on-battery" });
@@ -581,6 +676,8 @@ function startMissionShell() {
 		tray.on("click", summon);
 		rebuildTray();
 		const shortcutError = await hotkeys.set(settings.get().hotkey);
+		const pttError = await pttHotkey.set(settings.get().voice && settings.get().pushToTalk); if (pttError) log("push to talk", pttError);
+		if (!globalShortcut.register(QUICK_HOTKEY, () => { if (!process.env.MIDNIGHT_SMOKE) quick.open().catch(err => log("quick shortcut", err.message)); })) log("quick shortcut", "Ctrl+Alt+Space is unavailable.");
 		if (shortcutError) { log("shortcut", shortcutError); toCapsule({ kind: "shell", type: "shortcut-error", error: shortcutError }); }
 		screen.on("display-metrics-changed", (_e, d) => {
 			if (d.id === launcherDisplay?.id) launcherDisplay = d;
@@ -716,6 +813,19 @@ function startMissionShell() {
 		if (process.platform === "win32") check("on-device OCR helper is present", createOcr().available());
 		const mic = await capsule.webContents.executeJavaScript("navigator.permissions.query({ name: 'microphone' }).then((p) => p.state)").catch((err) => String(err));
 		check(`the microphone is refused while voice input is off (${mic})`, settings.get().voice || mic === "denied");
+		check("quick-edit shortcut registered", globalShortcut.isRegistered(QUICK_HOTKEY));
+		await quickWindow.present({ mode: "notice", focus: false }); // closed state creates only a hidden fixture window
+		const quickContents = BrowserWindow.getAllWindows().find(w => w.webContents.getURL() === new URL("./quick/index.html", import.meta.url).href);
+		const quickState = await quickContents.webContents.executeJavaScript("(async()=>({phase:(await quick.state()).phase,methods:Object.keys(quick).sort(),node:typeof require}))()");
+		check("quick view stays hidden without a captured selection", !quickContents.isVisible() && quickState.phase === "closed");
+		check("quick preload exposes its limited bridge without Node", quickState.node === "undefined" && JSON.stringify(quickState.methods) === JSON.stringify(["apply", "dismiss", "expand", "on", "reconcile", "state", "submit", "undo"]));
+		if (process.env.MIDNIGHT_SMOKE_BUILDER === "1") {
+			try {
+				const { qualifyBuilder } = await import("./desktop/builder-qualification.mjs");
+				const result = await qualifyBuilder({ request: (method, params) => supervisor.request(method, params, 30_000), settings: settings.get(), emit: text => console.log(`[builder-check] ${text}`) });
+				console.log(`[builder-check] RESULT ${JSON.stringify(result)}`);
+			} catch (error) { console.log(`[builder-check] FAIL ${error.message}`); check("real cloud builder qualification", false); }
+		}
 		console.log(`[smoke] engine ready in ${ms} ms · seq ${snap.seq} · missions ${Object.keys(snap.missions).length} · weather "${res.weather?.text}" · ui ${JSON.stringify(ui)} · renderer errors ${errors.length}`);
 		for (const c of checks) console.log(`[smoke] ${c.ok ? "PASS" : "FAIL"} ${c.name}`);
 		for (const e of errors) console.log(`[smoke] renderer error: ${e}`);
@@ -754,12 +864,19 @@ function startMissionShell() {
 		app.isQuitting = true;
 		appWorkspace?.dispose();
 		closeFilePreviews();
+		quick?.close(); quickWindow?.dispose();
+		ptt?.close(); pttRecorder?.close();
+		pluginExecutor.close();
+		builderRunner?.close();
+		wordBroker.close();
 	});
 	app.on("will-quit", async (e) => {
 		hotkeys?.stop();
+		const pttStopped = pttHotkey?.close();
 		globalShortcut.unregisterAll();
 		if (supervisor && supervisor.state() !== "stopped") {
 			e.preventDefault();
+			await pttStopped;
 			await supervisor.stop();
 			stopComputer();
 			web?.dispose();

@@ -9,7 +9,7 @@ import { EFFECTS, isExternal, MODES } from "../contracts/domain.mjs";
 import { intentHash, sha256, stableStringify } from "./canonical.mjs";
 import { resolvePaths } from "./roots.mjs";
 
-const MUTATING = (effect) => !["read.local", "read.web", "read.connector", "compute", "artifact.stage", "browser.navigate", "desktop.observe", "open.user"].includes(effect);
+const MUTATING = (effect) => !["read.local", "read.app", "read.web", "read.connector", "compute", "artifact.stage", "browser.navigate", "desktop.observe", "open.user"].includes(effect);
 const UNCERTAIN_CODES = new Set(["ETIMEDOUT", "ECONNRESET", "EPIPE", "UND_ERR_SOCKET", "UND_ERR_HEADERS_TIMEOUT", "TIMEOUT"]);
 
 export class BrokerDenied extends Error {
@@ -25,7 +25,7 @@ export class BrokerDenied extends Error {
  * @param {(type: string, fields: object) => object} deps.emit journal event inside commit
  */
 export function createBroker(deps) {
-	const { commit, emit, ledger, grants, approvals, budgets, locks, stop, missions, roots, tools, platform, journal, hooks = {} } = deps;
+	const { commit, emit, ledger, grants, approvals, budgets, locks, stop, missions, roots, tools, platform, journal, hooks = {}, reconciliationHandlers } = deps;
 	const pending = new Map(); // toolCallId -> { intentId, spec, cls, args, missionId, runId }
 
 	const block = (reason) => ({ block: true, reason: `Midnight did not run this: ${reason}` });
@@ -50,6 +50,7 @@ export function createBroker(deps) {
 
 	function authorityFor(mission, cls) {
 		const effect = cls.effect;
+		if (effect === "read.app") return { kind: "mode", reason: "own app state" };
 		if (!EFFECTS[effect]) return { kind: "deny", reason: `unknown effect ${effect}` };
 		const req = { effect, missionId: mission.id, account: cls.account, paths: cls.paths, destinations: cls.destinations, spendUsd: cls.spendUsd };
 		// Anything that drives the screen needs desktop control from an approved plan, whatever else it needs.
@@ -114,6 +115,7 @@ export function createBroker(deps) {
 		const spec = tools.get(toolName) ?? foreignSpec(toolName);
 		const mission = missions.get(missionId);
 		if (!mission) return block("there is no active mission for this call");
+		if (["selectedTarget", "targetAction"].includes(mission.scope?.contextProfile)) return block("a selected-target model can only propose an edit; native changes require the exact edit broker");
 		if (mission.scope?.pageAssistant) return block("this app conversation can only answer or draft from shared text; it cannot use tools or change a website");
 		const stopped = stop.blocked(missionId);
 		if (stopped) return block(stopped);
@@ -137,7 +139,7 @@ export function createBroker(deps) {
 		}
 		const intent = commit(() => {
 			const argsRef = journal.putPayload(missionId, "intent-args", { tool: spec.name, args: input ?? {} });
-			const i = ledger.prepare({ missionId, runId, tool: spec.name, toolVersion: spec.version ?? "1", effect: cls.effect, target: cls.target ?? "", argsHash, argsRef, display: displayFor(spec, cls) });
+			const i = ledger.prepare({ missionId, runId, tool: spec.name, toolVersion: cls.toolVersion ?? spec.version ?? "1", effect: cls.effect, target: cls.target ?? "", argsHash, argsRef, display: displayFor(spec, cls) });
 			emit("action.prepared", { missionId, runId, correlationId: i.id, payload: { intentId: i.id, tool: spec.name, effect: cls.effect, target: cls.target ?? "", label: cls.feed ?? spec.label, icon: cls.icon } });
 			return i;
 		});
@@ -349,12 +351,15 @@ export function createBroker(deps) {
 			if (!spec) throw new Error(`tool ${intent.tool} is not available`);
 			const { args } = JSON.parse(journal.getPayload(intent.argsRef) ?? "{}");
 			const cls = resolvePaths(await spec.classify(args ?? {}, { mission: missions.get(intent.missionId), roots }));
+			if (String(cls.toolVersion ?? spec.version ?? "1") !== intent.toolVersion) throw new Error("The stored action's exact implementation is no longer available.");
 			if (intentHash(spec.name, cls.canonical ?? args) !== intent.argsHash) throw new Error("the stored action no longer matches what was approved");
 			return dispatch(intentId, spec, cls, args, { signal, missionId: intent.missionId, runId: intent.runId });
 		},
 		/** Ask the tool whether an uncertain effect happened (startup recovery, user "check again"). */
 		async reconcile(intentId) {
 			const intent = ledger.get(intentId);
+			// Kernel-owned protocols can retain their own richer receipt/compensation state machine.
+			if (reconciliationHandlers?.has(intent.tool)) return reconciliationHandlers.get(intent.tool)(intentId);
 			const spec = tools.get(intent.tool);
 			let rec = { state: "unknown" };
 			if (spec?.reconcile) {

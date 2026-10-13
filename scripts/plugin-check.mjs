@@ -1,0 +1,70 @@
+// Actual Chromium sandbox qualification. Generated test code sees synthetic data only.
+import assert from "node:assert/strict";
+import { app } from "electron";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import http from "node:http";
+import { createPluginExecutor } from "../src/desktop/plugin-executor.mjs";
+import { createPluginStore } from "../src/plugins/store.mjs";
+import { createPluginRuntime, CHART_FIXTURES } from "../src/plugins/runtime.mjs";
+import { createBuilderRunner } from "../src/desktop/builder-runner.mjs";
+import { createBuilderService } from "../src/builder/service.mjs";
+import { createStopControl } from "../src/policy/stop.mjs";
+import { createInferenceArbiter } from "../src/inference/arbiter.mjs";
+import { fileURLToPath } from "node:url";
+
+app.setPath("userData", fs.mkdtempSync(path.join(os.tmpdir(), "midnight-plugin-check-")));
+app.on("window-all-closed", () => {});
+app.whenReady().then(async () => {
+	const store = createPluginStore({ root: path.join(app.getPath("userData"), "plugins") }), executor = createPluginExecutor({ timeoutMs: 1500 });
+	const runtime = createPluginRuntime({ store, execute: (args, options) => executor.execute(args, options) });
+	const base = store.get(store.base.digest), source = base.source.replace("#8068e8", "#1177aa"), pin = store.install({ ...base.manifest, version: "1.0.1" }, source);
+	const report = await runtime.validate(pin); assert.equal(report.checked, 4); console.log("PASS real sandbox renders and validates private executable plugin");
+	const denied = source + '\nif(typeof process!=="undefined" || typeof require!=="undefined" || typeof midnight!=="undefined")throw Error("Privileged globals leaked");';
+	assert.match(await executor.execute({ source: denied, input: CHART_FIXTURES[0] }), /#1177aa/); console.log("PASS generated renderer has no Node or application preload");
+	let requests = 0; const server = http.createServer((_request, response) => { requests++; response.end("unexpected"); }); await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+	const network = source.replace("export function render(", "function baseRender(") + `\nexport async function render(input){try{await fetch('http://127.0.0.1:${server.address().port}/private-data')}catch{}return baseRender(input)}`;
+	await executor.execute({ source: network, input: CHART_FIXTURES[0] }); await new Promise(resolve => server.close(resolve)); assert.equal(requests, 0); console.log("PASS attempted plugin egress never reaches the local server");
+	await assert.rejects(executor.execute({ source: "export function render(){while(true){}}", input: {} }), /deadline|stopped/); console.log("PASS hung candidate renderer is terminated independently");
+	assert.match(await executor.execute({ source, input: CHART_FIXTURES[0] }), /#1177aa/); console.log("PASS execution continues after a candidate hang");
+	let builder;
+	const runner = createBuilderRunner({ entry: fileURLToPath(new URL("../test/builder-worker-fixture.mjs", import.meta.url)), maintenance: params => builder.maintenance(params) });
+	builder = createBuilderService({ root: path.join(app.getPath("userData"), "changes"), sessions: path.join(app.getPath("userData"), "sessions"), plugins: store, pluginRuntime: runtime, stop: createStopControl(), arbiter: createInferenceArbiter(), settings: () => ({ provider: "faux", model: "m1", privacy: "cloud" }), run: (job, options) => runner.run(job, options) });
+	const wait = async id => { const end = Date.now() + 20_000; for (;;) { const job = builder.get(id); if (["preview-ready", "proposed"].includes(job.status)) return job; if (job.status === "failed") throw new Error(job.error); if (Date.now() > end) throw new Error("Builder qualification timed out."); await new Promise(resolve => setTimeout(resolve, 50)); } };
+	const privateJob = await wait(builder.request({ scope: "user", text: "Use my blue chart palette" }).id);
+	await builder.activate({ jobId: privateJob.id, digest: privateJob.candidate.digest, expectedGeneration: privateJob.baseGeneration });
+	console.log("PASS actual separate Pi builder produces, previews and activates a private executable plugin");
+	const officialJob = await wait(builder.request({ scope: "official", text: "Improve the official chart margin" }).id);
+	assert.ok(fs.existsSync(path.join(officialJob.officialPath, "source.patch"))); assert.equal(store.bindings().bindings["chart.bar"].digest, privateJob.candidate.digest);
+	console.log("PASS same separate builder produces an official checked source candidate without changing the private activation");
+	const privateTheme = await wait(builder.request({ scope: "user", text: "Make my launcher accent colors teal", pluginId: "midnight.theme" }).id);
+	assert.equal(privateTheme.previewTokens.accent, "#176b65");
+	await builder.activate({ jobId: privateTheme.id, digest: privateTheme.candidate.digest, expectedGeneration: privateTheme.baseGeneration });
+	const preset = runtime.themePreset(privateTheme.candidate);
+	assert.equal(preset.tokens.accent, "#176b65"); assert.equal(executor.isBusy(), false);
+	assert.equal(store.bindings().bindings["chart.bar"].digest, privateJob.candidate.digest);
+	console.log("PASS separate Pi builder and real sandbox validate, preview and activate a frozen UI color preset");
+	const officialTheme = await wait(builder.request({ scope: "official", text: "Improve official launcher accent colors", pluginId: "midnight.theme" }).id);
+	assert.equal(officialTheme.base.digest, store.bases["ui.colors"].digest);
+	assert.equal(JSON.parse(fs.readFileSync(path.join(officialTheme.officialPath, "candidate.json"), "utf8")).target, "src/plugins/builtin/theme");
+	assert.equal(store.bindings().bindings["ui.colors"].digest, privateTheme.candidate.digest);
+	const restarted = createPluginStore({ root: store.root }), other = createPluginStore({ root: path.join(app.getPath("userData"), "other-profile") });
+	assert.equal(restarted.bindings().bindings["ui.colors"].digest, privateTheme.candidate.digest);
+	assert.equal(other.bindings().bindings["ui.colors"].digest, other.bases["ui.colors"].digest);
+	console.log("PASS official UI proposal excludes the private overlay and private colors survive restart with profile isolation");
+	await builder.close(); runner.close();
+	let release;
+	const cancelRunner = createBuilderRunner({ entry: fileURLToPath(new URL("../test/builder-worker-fixture.mjs", import.meta.url)), maintenance: () => new Promise(resolve => { release = resolve; }) });
+	const controller = new AbortController(), pending = cancelRunner.run({ jobId: "cancel-fixture", fixture: "wait-for-rpc" }, { signal: controller.signal });
+	const rejected = assert.rejects(pending, /cancelled fixture/);
+	const waitEnd = Date.now() + 5000; while (!release) { if (Date.now() > waitEnd) throw new Error("Cancellation fixture did not start."); await new Promise(resolve => setTimeout(resolve, 20)); }
+	controller.abort(new Error("cancelled fixture")); await rejected; assert.equal(cancelRunner.isBusy(), false);
+	release({}); await new Promise(resolve => setTimeout(resolve, 50)); cancelRunner.close();
+	console.log("PASS builder cancellation waits for child exit and ignores a late maintenance response");
+	if (process.env.MIDNIGHT_TEST_REPORT) {
+		const file = path.resolve(process.env.MIDNIGHT_TEST_REPORT); fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, JSON.stringify({ at: new Date().toISOString(), passed: true, components: ["midnight.chart", "midnight.theme"], privateChart: privateJob.candidate, privateTheme: privateTheme.candidate, preset: preset.tokens, frozenPresetNeedsExecution: false, officialThemeTarget: "src/plugins/builtin/theme", checks: ["actual Chromium sandbox validation", "no Node/application preload", "attempted egress reached zero requests", "hung renderer cleanup", "separate Pi utility builder", "private and official candidates", "private preset restart/profile isolation", "cancel waits for child exit"], limitations: ["Scripted coding provider, synthetic inputs and disposable profiles; not real-cloud builder quality or arbitrary-core repair.", "UI paint and high-contrast behavior have separate actual-renderer checks; this process test does not establish full accessibility or hostile-code security."] }, null, 2));
+	}
+	executor.close(); app.exit(0);
+}).catch(error => { console.error(error); app.exit(1); });

@@ -88,7 +88,9 @@ test("cache invalidation checks source hashes, deletion, selected-root revocatio
 	const p = f.write("note.txt", "the railway goes north");
 	f.search.index(); await finish(f.search);
 	const hit = (await f.search.search({ query: "railway" })).results[0];
+	assert.equal(f.search.status().needsReindex, false);
 	f.fingerprint("test-model-v2");
+	assert.equal(f.search.status().needsReindex, true);
 	const out = await f.search.search({ query: "railway" });
 	assert.equal(out.mode, "words");
 	assert.match(out.warning, /this model/);
@@ -98,6 +100,7 @@ test("cache invalidation checks source hashes, deletion, selected-root revocatio
 	assert.equal((await f.search.search({ query: "railway" })).results.length, 0);
 	await assert.rejects(f.search.resolve(hit.id), /no longer available|changed/);
 	f.write("note.txt", "the railway goes south"); f.search.index(); await finish(f.search);
+	assert.equal(f.search.status().needsReindex, false);
 	fs.unlinkSync(p);
 	assert.equal((await f.search.search({ query: "railway" })).results.length, 0);
 	f.write("again.txt", "railway station"); f.search.index(); await finish(f.search);

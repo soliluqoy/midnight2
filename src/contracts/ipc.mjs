@@ -49,7 +49,25 @@ export const WatchDraft = Obj({
 });
 
 /** method -> { route: "shell" | "host", params } */
+export const QUICK_METHODS = {
+	"quick.state": { route: "shell", params: None },
+	"quick.submit": { route: "shell", params: Obj({ panelId: Id, text: Text(1000) }) },
+	"quick.expand": { route: "shell", params: Obj({ panelId: Id }) },
+	"quick.apply": { route: "shell", params: Obj({ panelId: Id, proposalId: Id }) },
+	"quick.undo": { route: "shell", params: Obj({ panelId: Id }) },
+	"quick.reconcile": { route: "shell", params: Obj({ panelId: Id }) },
+	"quick.dismiss": { route: "shell", params: Obj({ panelId: Id }) },
+};
 export const METHODS = {
+	...QUICK_METHODS,
+	"builder.request": { route: "host", params: Obj({ scope: Type.Union([Type.Literal("user"), Type.Literal("official")]), text: Text(4000), pluginId: Type.Optional(Type.Union([Type.Literal("midnight.chart"), Type.Literal("midnight.theme"), Type.Literal("midnight.core")])) }) },
+	"builder.components": { route: "host", params: None },
+	"theme.current": { route: "host", params: None },
+	"builder.list": { route: "host", params: None },
+	"builder.get": { route: "host", params: Obj({ jobId: Id }) },
+	"builder.cancel": { route: "host", params: Obj({ jobId: Id }) },
+	"builder.resume": { route: "host", params: Obj({ jobId: Id }) },
+	"builder.activate": { route: "host", params: Obj({ jobId: Id, digest: Type.String({ pattern: "^sha256:[a-f0-9]{64}$" }), expectedGeneration: Type.Integer({ minimum: 0 }) }) },
 	// shell-local: window, clipboard, settings, sign-in
 	"ui.size": { route: "shell", params: Obj({ state: SizeState }) },
 	"ui.dims": { route: "shell", params: None },
@@ -75,6 +93,7 @@ export const METHODS = {
 	"apps.stop": { route: "shell", params: Obj({ missionId: Id }) },
 	"apps.viewTask": { route: "shell", params: Obj({ missionId: Id }) },
 	"settings.get": { route: "shell", params: None },
+	"assist.status": { route: "shell", params: None },
 	"settings.set": { route: "shell", params: Obj({ patch: Type.Record(Type.String({ maxLength: 40 }), Type.Unknown()) }) },
 	"auth.login": { route: "shell", params: Obj({ provider: Id, type: Type.Union([Type.Literal("oauth"), Type.Literal("api_key")]), key: Type.Optional(Text(4000)) }) },
 	"auth.cancel": { route: "shell", params: None },
@@ -89,6 +108,8 @@ export const METHODS = {
 	"mcpapp.open": { route: "shell", params: Obj({ artifactId: Id }) },
 	"mcpserver.register": { route: "shell", params: None },
 	"voice.transcribe": { route: "shell", maxBytes: 8 * 1024 * 1024, check: (p) => (p.audio instanceof Uint8Array && p.audio.byteLength > 0 && p.audio.byteLength <= 8 * 1024 * 1024 ? undefined : "audio must be 1 byte to 8 MB of recorded sound"), params: Obj({ audio: Type.Unknown(), type: Type.String({ maxLength: 60, pattern: "^audio/[a-z0-9.+-]+(;\\s*codecs=[a-z0-9.,]+)?$" }) }) },
+	"perception.status": { route: "host", params: None },
+	"perception.qualify": { route: "host", params: None },
 	"recipe.import": { route: "shell", params: None },
 	"engine.restart": { route: "shell", params: None },
 	"update.check": { route: "shell", params: None },

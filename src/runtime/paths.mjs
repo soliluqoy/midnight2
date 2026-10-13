@@ -22,4 +22,6 @@ export const dataPaths = (dataDir) => ({
 	backups: path.join(dataDir, "backups"),
 	logs: path.join(dataDir, "logs"),
 	exports: path.join(dataDir, "exports"),
+	plugins: path.join(dataDir, "plugins"),
+	changes: path.join(dataDir, "changes"),
 });

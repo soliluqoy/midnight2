@@ -19,11 +19,12 @@ import { createEmbeddingRuntime } from "../search/runtime.mjs";
 import { platformMedia } from "../search/media-preview.mjs";
 import { createContextService } from "../context/service.mjs";
 import { contextTools } from "./context.mjs";
+import { builderTools } from "./builder.mjs";
 import { createMcpConnectors, discoverWindowsConnectors } from "../connectors/mcp.mjs";
 
 // Tools every mission gets; shell tools are left out for offline missions (the broker would block them anyway).
 const MISSION = ["plan", "step", "ask_user", "remember"];
-const LOCAL = ["recall_context", "files_find", "files_search", "files_view", "files_read", "file_publish", "files_move", "files_undo_moves", "sheet_read", "calculate", "chart_create", "report_create", "slide_create", "crm_query", "mail_draft", "mail_send", "open_draft"];
+const LOCAL = ["recall_context", "files_find", "files_search", "files_view", "files_read", "file_publish", "files_move", "files_undo_moves", "sheet_read", "calculate", "chart_create", "report_create", "slide_create", "crm_query", "mail_draft", "mail_send", "open_draft", "builder_request", "builder_status"];
 const WEB = ["search", "read_pages", "browser", "user_browser"];
 
 export function buildTools(s) {
@@ -42,11 +43,11 @@ export function buildTools(s) {
 		askUser: (...a) => s.coord().askUser(...a),
 	};
 	const decodeMedia = s.decodeMedia ?? platformMedia(s.platform);
-	const embeddingRuntime = s.searchRuntime ?? createEmbeddingRuntime({ settings: s.settings, paths: s.paths, decodeMedia });
+	const embeddingRuntime = s.searchRuntime ?? createEmbeddingRuntime({ settings: s.settings, paths: s.paths, decodeMedia, arbiter: s.arbiter, residencyBudget: s.residencyBudget });
 	let context;
 	const shell = shellTools({ platform: s.platform, evidence: s.evidence, commit: s.commit, selectPassages: (...args) => context.focusPages(...args) });
 	const fileSearch = createFileSearch({ ...s, runtime: embeddingRuntime });
-	const groups = [missionTools(coordProxy), fileTools({ ...s, decodeMedia }).all, fileSearchTools({ ...s, search: fileSearch, decodeMedia }).all, workTools(s).all, connectorTools({ connectors, evidence: s.evidence, commit: s.commit, platform: s.platform }).all, shell.all];
+	const groups = [missionTools(coordProxy), fileTools({ ...s, decodeMedia }).all, fileSearchTools({ ...s, search: fileSearch, decodeMedia }).all, workTools(s).all, ...(s.builder ? [builderTools(s)] : []), connectorTools({ connectors, evidence: s.evidence, commit: s.commit, platform: s.platform }).all, shell.all];
 	const all = groups.flat();
 	const names = new Set(all.map((t) => t.name));
 	names.add("recall_context");
@@ -61,6 +62,7 @@ export function buildTools(s) {
 	return {
 		all,
 		fileSearch,
+		embeddingRuntime,
 		context,
 		connectors,
 		memory,
@@ -75,7 +77,7 @@ export function buildTools(s) {
 		resources: undefined, // set by the host once the queue exists
 		/** Tool names offered to a mission's model. */
 		forMission(mission, settings) {
-			if (mission.scope?.pageAssistant) return [];
+			if (mission.scope?.pageAssistant || ["selectedTarget", "targetAction"].includes(mission.scope?.contextProfile)) return [];
 			const out = [...MISSION, ...LOCAL];
 			if (mission.privacy !== "offline") out.push(...WEB);
 			if (settings.computerUse !== "never" && mission.privacy !== "offline") out.push("computer");
