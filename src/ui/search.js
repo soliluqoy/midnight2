@@ -24,7 +24,10 @@
 		const loc = row?.locator ?? {};
 		if (loc.page != null) return `Page ${loc.page}`;
 		if (loc.slide != null) return `Slide ${loc.slide}`;
-		if (loc.seconds != null) return `${loc.modality === "audio" && row.kind === "video" ? "Audio at " : "At "}${clock(loc.seconds)}${loc.endSeconds != null ? `–${clock(loc.endSeconds)}` : ""}`;
+		if (loc.seconds != null) {
+			const time = `${clock(loc.seconds)}${loc.endSeconds != null ? `–${clock(loc.endSeconds)}` : ""}`;
+			return loc.modality === "audio" && row.kind === "video" ? `Audio at ${time}` : `At ${time}`;
+		}
 		if (loc.line != null) return `Line ${loc.line}`;
 		return "";
 	}
@@ -57,7 +60,7 @@
 		byId("fileClear").disabled = !!busy || !(metadata.counts?.segments || metadata.counts?.files);
 		byId("fileStop").hidden = !metadata.busy;
 		byId("fileSetup").textContent = installed ? "Repair local search" : "Install local search";
-		byId("fileSetupNote").textContent = installed ? "EmbeddingGemma 2 is installed on this computer. Choose folders, then index them to search their contents by meaning." : "First, install EmbeddingGemma 2 (requires Python 3.10–3.13). Then choose folders and index them. Downloads happen during setup; indexing and search run on this computer.";
+		byId("fileSetupNote").textContent = installed ? "EmbeddingGemma 2 is installed on this computer. Choose folders, then index them to search their contents by meaning." : "First, install EmbeddingGemma 2 (a one-time download of about 850 MB; nothing else to install). Then choose folders and index them. Indexing and search run on this computer.";
 		const progress = byId("fileProgress");
 		progress.hidden = !metadata.busy;
 		if (details.bytesTotal > 0 && metadata.operation === "setup") {
@@ -81,7 +84,7 @@
 		activity.hidden = !extra.length;
 		if (actionError || metadata.error) return statusMessage(actionError || metadata.error, true);
 		if (metadata.busy) {
-			const phases = { python: "Checking Python", installing: "Installing local search libraries", checking: "Checking local model libraries", downloading: "Downloading EmbeddingGemma 2", loading: "Loading EmbeddingGemma 2", verifying: "Checking the local model", discovering: "Finding files in your selected folders", embedding: "Reading files for meaning search", cancelled: "Stopping local search" };
+			const phases = { downloading: "Downloading EmbeddingGemma 2", loading: "Loading EmbeddingGemma 2", verifying: "Checking the local model", discovering: "Finding files in your selected folders", embedding: "Reading files for meaning search", cancelled: "Stopping local search" };
 			let part = details.total > 0 ? ` · ${details.done ?? 0} of ${details.total} files finished` : "";
 			if (details.bytesTotal > 0 && metadata.operation === "setup") {
 				const mb = value => (value / 1_000_000).toFixed(1);
@@ -185,7 +188,7 @@
 			}
 		}
 		select(selected);
-		byId("fileSummary").textContent = searching ? "Searching…" : !query.value.trim() ? "Describe what you remember." : `${rows.length} ${rows.length === 1 ? "result" : "results"} · ${mode === "hybrid" ? "Words + local meaning" : "Word matches"}${warning ? ` · ${warning}` : ""}`;
+		byId("fileSummary").textContent = searching ? "Searching…" : !query.value.trim() ? "Describe what you remember." : `${rows.length} result${rows.length === 1 ? "" : "s"} · ${mode === "hybrid" ? "Words + local meaning" : "Word matches"}${warning ? ` · ${warning}` : ""}`;
 		byId("fileSummary").title = byId("fileSummary").textContent;
 	}
 	function schedule(immediate = false) {

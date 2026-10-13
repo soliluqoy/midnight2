@@ -46,7 +46,7 @@ try {
 	if (cloud) {
 		const appSettings = JSON.parse(fs.readFileSync(path.join(appDir, "settings.json"), "utf8"));
 		const models = await createModelRuntime();
-		const route = await routeModel(models, appSettings, "cloud", "quick");
+		const route = await routeModel(models, appSettings, "cloud");
 		const runtime = createPiRuntime({ modelRuntime: models, sessionsDir: path.join(dir, "sessions") });
 		for (const [label, material] of [["whole-corpus", full], ["retrieved", selected]]) {
 			const began = Date.now();

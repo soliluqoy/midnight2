@@ -11,7 +11,9 @@ const escape = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;"
 const error = (e) => { $("appErrorText").textContent = e.message ?? String(e); $("appError").hidden = false; scheduleLayout(); };
 const requestId = () => `req_${crypto.randomUUID()}`;
 
-async function bounds(cover = $("appDialog").open) {
+// While the dialog is opening, a layout from another frame must not show the website over it.
+let dialogOpening = false;
+async function bounds(cover = $("appDialog").open || dialogOpening) {
 	const rect = $("siteViewport").getBoundingClientRect();
 	return api.layout({ x: Math.max(0, rect.x), y: Math.max(0, rect.y), width: rect.width, height: rect.height, covered: cover || (panelOpen && innerWidth <= 1050) });
 }
@@ -32,7 +34,7 @@ function sharingNote() {
 	const destination = (currentJob()?.privacy || state.privacy) === "cloud" ? (state.model || "your configured AI model") : "your local model";
 	$("sharingNote").textContent = scope === "none"
 		? `Your message goes to ${destination}. Earlier shared text stays in this conversation.`
-		: `${scope === "selection" ? "Selected" : "Page"} text goes to ${destination} when you send and is saved in task history. Input fields are excluded.`;
+		: (scope === "selection" ? `Selected text goes to ${destination} when you send and is saved in task history. Input fields are excluded.` : `Page text goes to ${destination} when you send and is saved in task history. Input fields are excluded.`);
 }
 function accept(next) {
 	if (next.revision < lastRevision) return;
@@ -80,8 +82,8 @@ function renderConversation() {
 	const working = m && !end.has(m.status);
 	const answer = working ? stream || "" : m?.answer || stream || "";
 	const html = m
-		? `<div class="message-question">${escape(m.lastInput || m.goal)}</div><div class="message-answer">${answer ? window.md.render(answer) : '<p class="message-status">' + (working ? "Working…" : escape(m.outcome?.summary || "No answer was saved.")) + "</p>"}</div>`
-		: '<div class="assistant-empty"><h2>A little help, right here.</h2><p>Ask about the page or prepare something to copy back into the website.</p><button data-prompt="Summarize this page.">Summarize this page</button><button data-prompt="Help me draft a response to this page.">Help me draft a response</button></div>';
+		? `<div class="message-question">${escape(m.lastInput || m.goal)}</div><div class="message-answer">${answer ? window.md.render(answer) : '<p class="message-status">' + (working ? escape("Working…") : escape(m.outcome?.summary || "No answer was saved.")) + "</p>"}</div>`
+		: `<div class="assistant-empty"><h2>${escape("A little help, right here.")}</h2><p>${escape("Ask about the page or prepare something to copy back into the website.")}</p><button data-prompt="${escape("Summarize this page.")}">${escape("Summarize this page")}</button><button data-prompt="${escape("Help me draft a response to this page.")}">${escape("Help me draft a response")}</button></div>`;
 	const box = $("conversation"), nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
 	if (box.innerHTML !== html) { box.innerHTML = html; if (nearBottom) box.scrollTop = box.scrollHeight; }
 	$("taskActions").hidden = !m;
@@ -105,8 +107,13 @@ async function openDialog(item) {
 	$("pinApp").textContent = item?.pinned ? "Unpin" : "Pin to launcher";
 	$("saveApp").textContent = item ? "Save changes" : "Add website";
 	for (const id of ["dialogError", "confirmNote", "confirmDestructive"]) $(id).hidden = true;
-	await bounds(true);
-	$("appDialog").showModal();
+	dialogOpening = true;
+	try {
+		await bounds(true);
+		$("appDialog").showModal();
+	} finally {
+		dialogOpening = false;
+	}
 	(item ? $("websiteName") : $("websiteUrl")).focus();
 }
 function closeDialog() { $("appDialog").close(); scheduleLayout(); }
@@ -167,6 +174,8 @@ $("appPrompt").onkeydown = (event) => { if (event.key === "Enter" && !event.shif
 $("newConversation").onclick = () => { selected.set(state.activeId, ""); renderConversation(); $("appPrompt").focus(); };
 $("conversationSelect").onchange = () => { selected.set(state.activeId, $("conversationSelect").value); renderConversation(); };
 $("conversation").onclick = (event) => {
+	const copy = event.target.closest(".code-copy");
+	if (copy) return window.copyCode(copy, (text) => api.command({ action: "copy", text: text.slice(0, 40000) }));
 	const prompt = event.target.closest("[data-prompt]");
 	if (prompt) { $("appPrompt").value = prompt.dataset.prompt; $("appPrompt").focus(); }
 	const link = event.target.closest("a");

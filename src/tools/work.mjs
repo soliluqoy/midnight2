@@ -9,6 +9,7 @@ import { parseCsv, parseNumber, toCsv } from "./documents/csv.mjs";
 import { validateDocx, writeDocx } from "./documents/docx.mjs";
 import { colLetters, readXlsx, sheetRange } from "./documents/xlsx.mjs";
 import { assertInside } from "./files.mjs";
+import { validatePptx, writePptx } from "./documents/pptx.mjs";
 
 // ---------------- safe arithmetic ----------------
 const FUNCS = {
@@ -311,5 +312,35 @@ export function workTools({ roots, evidence, commit }) {
 		},
 	};
 
-	return { all: [sheetRead, calculate, chart, report] };
+	const slides = {
+		name: "slide_create",
+		label: "Create slides",
+		description: "Write a PowerPoint deck (.pptx, 16:9) in the mission workspace: a title slide, then slides with a title, bullets (level 0 or 1), an optional table (first row is the header) and short speaker notes. Keep about 3–6 bullets per slide. The deck is read back and validated; publish it with file_publish.",
+		parameters: Type.Object({
+			title: Type.String({ minLength: 1, maxLength: 200 }),
+			subtitle: Type.Optional(Type.String({ maxLength: 300 })),
+			slides: Type.Array(
+				Type.Object({
+					title: Type.String({ minLength: 1, maxLength: 200 }),
+					bullets: Type.Optional(Type.Array(Type.Union([Type.String({ maxLength: 400 }), Type.Object({ text: Type.String({ maxLength: 400 }), level: Type.Optional(Type.Integer({ minimum: 0, maximum: 1 })) })]), { maxItems: 12 })),
+					table: Type.Optional(Type.Array(Type.Array(Type.String({ maxLength: 200 }), { maxItems: 8 }), { maxItems: 15 })),
+					notes: Type.Optional(Type.String({ maxLength: 1000 })),
+				}),
+				{ minItems: 1, maxItems: 40 },
+			),
+			filename: Type.Optional(Type.String()),
+			sources: Type.Optional(Type.Array(Type.String())),
+		}),
+		classify: (a) => ({ effect: "artifact.stage", target: a.title, canonical: a, feed: `slides › ${a.title} (${a.slides.length})` }),
+		async execute(a, ctx) {
+			const deck = { title: a.title, subtitle: a.subtitle, footer: `midnight · ${new Date().toISOString().slice(0, 10)}`, slides: a.slides };
+			const data = writePptx(deck);
+			const validation = validatePptx(data, deck);
+			const base = (a.filename ?? `${a.title.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "slides"}`).replace(/\.pptx$/i, "");
+			const art = commit(() => evidence.stage(ctx.missionId, ctx.runId, { name: `${base}.pptx`, type: "slides", data, sources: a.sources ?? [], validation }));
+			return { content: [{ type: "text", text: `Slides ${art.name} r${art.revision} (${art.id}), ${a.slides.length + 1} slides, ${validation.ok ? "validated" : `FAILED validation: ${validation.issues.join("; ")}`}.` }], details: { artifactId: art.id } };
+		},
+	};
+
+	return { all: [sheetRead, calculate, chart, report, slides] };
 }

@@ -22,7 +22,7 @@ const passageSummary = (hit) => {
 	return "Embedding match at this source location.";
 };
 
-export function fileSearchTools({ search, evidence, commit, roots, runtime, render = renderMedia }) {
+export function fileSearchTools({ search, evidence, commit, roots, decodeMedia, render = (hit, o) => renderMedia(decodeMedia, hit, o) }) {
 	const filesSearch = {
 		name: "files_search",
 		label: "Search selected files",
@@ -64,7 +64,7 @@ export function fileSearchTools({ search, evidence, commit, roots, runtime, rend
 		},
 		async execute(a, ctx) {
 			const hit = await search.resolve(a.id);
-			const image = await render(runtime, hit, { signal: ctx.signal });
+			const image = await render(hit, { signal: ctx.signal });
 			if (ctx.signal?.aborted) throw Object.assign(new Error("Cancelled"), { name: "AbortError" });
 			const current = await search.resolve(a.id);
 			if (current.hash !== hit.hash || current.sourceVersion !== hit.sourceVersion) throw new Error("This source changed during preview. Search again.");

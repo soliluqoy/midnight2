@@ -3,7 +3,7 @@
 //   npx electron scripts/visual.mjs            compare with test/visual/baseline
 //   UPDATE=1 npx electron scripts/visual.mjs   (re)write baselines after an intended design change
 //   VISUAL_ERRORS_ONLY=1 ...                   render every state and fail only on renderer errors (other machines' fonts)
-import { app, BrowserWindow, ipcMain, nativeImage } from "electron";
+import { BrowserWindow, app, ipcMain, nativeImage } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -24,6 +24,8 @@ const STATES = [
 	["chat-file-context", `fileSearchTask(${JSON.stringify({ name: "Q3 budget.pdf", text: "File: C:/Documents/Q3 budget.pdf\nMatching location: Page 3" })})`],
 	["mission-running", `__fixture.variant("running"); missionApi.openMission("m1")`],
 	["mission-approval", `__fixture.variant("approval")`],
+	["mission-approval-diff", `__fixture.variant("approval-diff")`],
+	["mission-approval-submit", `__fixture.variant("approval-submit")`],
 	["mission-question", `__fixture.variant("question")`],
 	["mission-reconcile", `__fixture.variant("reconcile")`],
 	["mission-done", `__fixture.variant("done")`],

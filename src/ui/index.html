@@ -27,10 +27,11 @@
     <div class="ask-bar">
       <label class="sr" id="boxLabel" for="box">Ask or give a task</label>
       <textarea id="box" class="inp" rows="2" aria-labelledby="boxLabel" placeholder="Ask a question or give midnight a task…"></textarea>
+      <div id="attachList" class="attach-list" role="list" aria-label="Attached files" hidden></div>
       <div id="taskFile" class="task-file" hidden><span id="taskFileName"></span><small>Shared with your model on Send</small><button id="removeTaskFile" aria-label="Remove file from task" title="Remove file from task">×</button></div>
       <div class="ask-meta">
         <div class="seg home-mode" role="group" aria-label="Input mode"><button id="homeAsk" class="on" aria-pressed="true" title="Ask or give a task">Ask</button><button id="homeFiles" aria-pressed="false" title="Search files on this computer (Ctrl+K)">Files</button></div>
-        <button class="chip" id="chipModel" title="Change model">model</button><span class="chip ctx" id="chipCtx" title="Where this mission's data goes">cloud</span><button class="chip clip" id="chipClip" title="Prepare a summary of copied content" hidden>Summarize</button><span class="sr" id="hint">Ctrl+Win · Esc hides</span><button class="pb pri" id="sendTask" title="Start task (Enter)">Send ↵</button>
+        <button class="chip" id="chipModel" title="Change model">model</button><span class="chip ctx" id="chipCtx" title="Where this mission's data goes">cloud</span><button class="chip clip" id="chipClip" title="Prepare a summary of copied content" hidden>Summarize</button><span class="sr" id="hint">Ctrl+Win · Esc hides</span><button class="pb mic" id="micTask" title="Dictate (Ctrl+Shift+Space)" aria-label="Dictate" aria-pressed="false" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span id="micTime" class="mono"></span></button><button class="pb pri" id="sendTask" title="Start task (Enter)">Send ↵</button>
       </div>
     </div>
     <div class="start-body" id="homeBrowse">
@@ -59,11 +60,12 @@
     <div class="mh">
       <i class="dot" aria-hidden="true"></i>
       <div class="t"><small>MIDNIGHT</small><b>Missions</b></div>
-      <span class="mono" id="weather"></span>
+      <span class="mono" id="weather"></span><span class="mono" id="spend" title="Model cost of missions started this month"></span>
       <button class="ib" id="gearStack" title="Settings" aria-label="Settings"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 3h4l.6 2.5 1.4.7 2.4-.7 2.1 3.6-1.8 1.8v2.2l1.8 1.8-2.1 3.6-2.4-.7-1.4.7L14 21h-4l-.6-2.5-1.4-.7-2.4.7-2.1-3.6 1.8-1.8v-2.2L3.5 9.1l2.1-3.6 2.4.7 1.4-.7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
       <button class="ib" id="bNew" title="New task (Ctrl+L)" aria-label="New task"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></button>
       <button class="ib" id="bMinStack" title="Minimize to tray" aria-label="Minimize to tray"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></button>
     </div>
+    <div class="stack-search"><input id="historySearch" class="inp" type="search" placeholder="Search all missions and answers…" aria-label="Search missions" autocomplete="off"></div>
     <div class="stack" id="stack" role="list"></div>
   </div>
 
@@ -72,6 +74,7 @@
     <div class="mh">
       <i class="dot" aria-hidden="true"></i>
       <div class="t"><small id="mLabel">MISSION</small><b id="mTitle">New mission</b></div>
+      <span class="mono cost" id="mCost" title="Tokens and cost so far"></span>
       <span class="time" id="mTime">0:00</span>
       <button class="ib" id="bStack" title="All missions" aria-label="All missions"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"/></svg></button>
       <button class="ib" id="bLog" title="Show the activity log" aria-label="Show the activity log"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 5h16M4 10h16M4 15h10M4 20h10"/></svg></button>
@@ -95,15 +98,16 @@
         <button class="pb" id="pause">Pause</button>
         <button class="pb warm" id="stop">Take over</button>
       </div>
-      <div class="f-ask" id="fAsk" role="dialog" aria-labelledby="askTitle">
+      <div class="f-ask" id="fAsk" tabindex="-1" role="dialog" aria-labelledby="askTitle" aria-describedby="askConsequence">
         <h5><i>!</i><span id="askTitle"></span></h5>
         <dl class="facts" id="askFacts"></dl>
         <details id="askPreviewBox"><summary>Preview</summary><pre id="askPreview"></pre></details>
+        <div id="askSends" class="sends" hidden></div>
         <p id="askConsequence" class="cons"></p>
         <div class="row"><span class="mono" id="askWhy"></span>
           <button class="pb" id="askNo">Decline</button><button class="pb" id="askEdit" hidden>Edit</button><button class="pb" id="askRoutine" hidden>Allow this routine</button><button class="pb pri" id="askYes">Approve</button></div>
       </div>
-      <div class="f-q" id="fQ" role="dialog" aria-labelledby="qText">
+      <div class="f-q" id="fQ" tabindex="-1" role="dialog" aria-labelledby="qText">
         <h5><i>?</i><span id="qText"></span></h5>
         <div class="opts" id="qOpts"></div>
       </div>
@@ -134,7 +138,7 @@
   <div class="lay l-settings" id="l-settings"></div>
   <div class="ui-error" id="uiError" role="alert" hidden><span id="errorText"></span><button class="ib" id="errorDismiss" aria-label="Dismiss error"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
 </div>
-<script src="md.js"></script>
+<script src="focus.js"></script><script src="md.js"></script>
 <script src="app.js"></script>
 <script src="settings.js"></script>
 <script src="search.js"></script>

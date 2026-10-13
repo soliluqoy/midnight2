@@ -28,9 +28,11 @@ Open Midnight with **Ctrl+Win** on Windows (press both keys, then release), **Cm
 - **Files:** search selected folders by words or meaning, then open a result or attach it to a task. Ask drafts and file queries are saved separately.
 - **Apps:** pin websites with separate saved sign-ins. Ask Midnight beside a page to summarize or draft from text you choose to share.
 - **Context:** retrieve related confirmed memories, previous answers, and selected files for your model. Images, PDF pages, and video frames can be inspected with a vision-capable model.
+- **Voice:** turn on **Settings → General → Voice input** and install Whisper (about 80 MB, once) to dictate into Ask with the microphone button or Ctrl+Shift+Space. Speech is transcribed on this computer.
+- **Connectors:** add MCP servers (a program on this computer or a remote service) in **Settings → Automation → Connectors**; their tools ask before each use unless you review a read-only tool. Turn on **Let other apps use midnight** to let Windows agents, Claude Desktop and other MCP clients search your chosen folders and start tasks that still wait for your approval; **Register with Windows** adds midnight to the Windows on-device agent registry (preview, `odr.exe`).
 - **Tray:** drag the title bar to move Midnight; closing it hides it while work continues. The summon shortcut restores it. Use the tray menu to quit.
 
-For local meaning search, install Python 3.10–3.13, open **Files → Manage search**, install local search, and index your selected folders. EmbeddingGemma 2 and its index run locally; chat providers receive retrieved excerpts used in tasks. Turn automatic retrieval off in **Settings → Local file search → Relevant context for AI**. See the [local search setup and technical notes](docs/digup-integration.md).
+For local meaning search, open **Files → Manage search**, install local search (a one-time download of about 850 MB; nothing else to install), and index your selected folders. EmbeddingGemma 2 and its index run locally; chat providers receive retrieved excerpts used in tasks. Turn automatic retrieval off in **Settings → Files & memory → Give the model relevant context**. See the [local search setup and technical notes](docs/digup-integration.md).
 
 ## Develop
 

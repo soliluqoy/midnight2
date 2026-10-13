@@ -1,7 +1,7 @@
 {
 	"name": "midnight-app",
 	"productName": "midnight",
-	"version": "0.4.0",
+	"version": "0.5.0",
 	"description": "midnight: a tray-first desktop launcher that plans, does and verifies work on your computer, in plain view",
 	"author": "soliluqoy",
 	"license": "MIT",
@@ -11,16 +11,21 @@
 	"type": "module",
 	"main": "src/main.mjs",
 	"scripts": {
+		"prestart": "node scripts/build-native.mjs",
 		"start": "electron .",
 		"test": "node --test --test-timeout=60000 \"test/**/*.test.mjs\"",
 		"vendor": "node scripts/vendor-core.mjs",
+		"predist": "node scripts/build-native.mjs",
 		"dist": "electron-builder --publish never",
 		"vendor:upstream": "node scripts/vendor-core.mjs --upstream 1.0.1",
 		"sbom": "node scripts/sbom.mjs",
 		"test:visual": "electron scripts/visual.mjs",
 		"test:ui": "electron scripts/ui-check.mjs",
 		"test:apps": "electron scripts/apps-check.mjs",
-		"test:smoke": "node scripts/smoke.mjs"
+		"test:smoke": "node scripts/smoke.mjs",
+		"test:search-model": "electron scripts/search-model.mjs",
+		"build:native": "node scripts/build-native.mjs",
+		"test:voice-model": "electron scripts/voice-model.mjs"
 	},
 	"dependencies": {
 		"@earendil-works/chord": "file:vendor/earendil-works-chord-1.0.1.tgz",
@@ -31,9 +36,13 @@
 		"@earendil-works/pi-mcp": "file:vendor/earendil-works-pi-mcp-1.0.1.tgz",
 		"@earendil-works/pi-telemetry": "file:vendor/earendil-works-pi-telemetry-1.0.1.tgz",
 		"@earendil-works/pi-tui": "file:vendor/earendil-works-pi-tui-1.0.1.tgz",
+		"@huggingface/transformers": "^4.3.1",
+		"pdfjs-dist": "^6.4.299",
+		"sqlite-vec": "^0.1.9",
 		"typebox": "1.3.27"
 	},
 	"devDependencies": {
+		"@electron/fuses": "^2.1.3",
 		"electron": "44.4.5",
 		"electron-builder": "26.15.3"
 	},
@@ -50,12 +59,17 @@
 	"build": {
 		"appId": "app.midnight.capsule",
 		"productName": "midnight",
-		"asar": false,
+		"asar": true,
 		"files": [
 			"src/**/*",
 			"package.json",
 			"!src/**/*.test.*",
-			"!src/**/__pycache__/**"
+			"!src/**/__pycache__/**",
+			"!src/desktop/native/*.cs",
+			"!node_modules/onnxruntime-web/**",
+			"!node_modules/@napi-rs/**",
+			"!node_modules/@earendil-works/pi-tui/native/**",
+			"!test/**"
 		],
 		"directories": {
 			"output": "release"
@@ -77,7 +91,14 @@
 				}
 			],
 			"signAndEditExecutable": true,
-			"verifyUpdateCodeSignature": true
+			"verifyUpdateCodeSignature": true,
+			"files": [
+				"!node_modules/onnxruntime-node/bin/napi-v6/{darwin,linux}/**",
+				"!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**"
+			],
+			"signExts": [
+				".exe"
+			]
 		},
 		"mac": {
 			"target": [
@@ -89,7 +110,11 @@
 				}
 			],
 			"category": "public.app-category.productivity",
-			"identity": null
+			"identity": null,
+			"files": [
+				"!node_modules/onnxruntime-node/bin/napi-v6/{win32,linux}/**",
+				"!node_modules/onnxruntime-node/bin/napi-v6/darwin/x64/**"
+			]
 		},
 		"linux": {
 			"target": [
@@ -100,7 +125,11 @@
 					]
 				}
 			],
-			"category": "Utility"
+			"category": "Utility",
+			"files": [
+				"!node_modules/onnxruntime-node/bin/napi-v6/{win32,darwin}/**",
+				"!node_modules/onnxruntime-node/bin/napi-v6/linux/arm64/**"
+			]
 		},
 		"nsis": {
 			"oneClick": true,
@@ -119,7 +148,19 @@
 				"repo": "midnight2",
 				"releaseType": "release"
 			}
-		]
+		],
+		"asarUnpack": [
+			"**/*.node",
+			"**/*.dll",
+			"**/*.exe",
+			"**/*.ps1",
+			"src/desktop/native/**",
+			"node_modules/sqlite-vec*/**",
+			"node_modules/onnxruntime-node/bin/**",
+			"node_modules/@img/**",
+			"node_modules/sharp/**"
+		],
+		"afterPack": "scripts/after-pack.cjs"
 	},
 	"allowScripts": {
 		"esbuild@0.28.2": true,

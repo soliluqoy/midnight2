@@ -75,7 +75,20 @@ export function createBrowsers() {
 				const form = el.closest('form');
 				const label = (btn.innerText || btn.value || btn.getAttribute('aria-label') || btn.title || '').trim().slice(0, 80);
 				const submit = !!(btn.matches && btn.matches('button[type=submit], input[type=submit], form button:not([type])'));
-				return { label, submit, inForm: !!form, form: form ? (form.getAttribute('aria-label') || form.name || form.action || '').toString().slice(0, 120) : '' };
+				// What this form would send: visible fields with their label and value (passwords masked).
+				const fields = [];
+				let hidden = 0;
+				if (form) for (const f of form.elements) {
+					if (!f.name || f.disabled || ['submit', 'button', 'reset', 'image'].includes(f.type)) continue;
+					if (f.type === 'hidden') { hidden++; continue; }
+					if ((f.type === 'checkbox' || f.type === 'radio') && !f.checked) continue;
+					const named = (f.labels && f.labels[0] && f.labels[0].innerText) || f.getAttribute('aria-label') || f.placeholder || f.name;
+					const value = f.type === 'password' ? (f.value ? '•'.repeat(8) : '') : f.type === 'file' ? [...(f.files || [])].map((x) => x.name).join(', ') : f.tagName === 'SELECT' ? [...f.selectedOptions].map((o) => o.text).join(', ') : (f.value || '');
+					if (fields.length < 25) fields.push({ label: String(named).trim().slice(0, 60), value: String(value).slice(0, 160) });
+				}
+				let to = '';
+				try { to = form ? new URL(form.action || location.href).host + ' · ' + (form.method || 'get').toUpperCase() : ''; } catch {}
+				return { label, submit, inForm: !!form, form: form ? (form.getAttribute('aria-label') || form.name || form.action || '').toString().slice(0, 120) : '', fields, hidden, to };
 			})()`;
 			const r = await wc.executeJavaScript(probe, true).catch(() => ({}));
 			const commit = !!(r.submit || COMMIT_WORDS.test(r.label ?? "")) || (action === "key" && /^enter$/i.test(key ?? "") && r.inForm);

@@ -7,7 +7,8 @@ import { Value } from "typebox/value";
 export const IPC_VERSION = 1;
 export const IPC_CHANNEL = "midnight:v1";
 export const EVENT_CHANNEL = "midnight:ev";
-export const MAX_REQUEST_BYTES = 64 * 1024;
+// Large enough for the largest allowed text (clipboard.write: 200,000 characters) with the envelope.
+export const MAX_REQUEST_BYTES = 256 * 1024;
 
 const Id = Type.String({ minLength: 1, maxLength: 80, pattern: "^[A-Za-z0-9_.:-]+$" });
 const Text = (max = 20000) => Type.String({ maxLength: max });
@@ -58,6 +59,9 @@ export const METHODS = {
 	"ui.textSize": { route: "shell", params: Obj({ z: Type.Number({ minimum: 0.5, maximum: 2 }) }) },
 	"clipboard.read": { route: "shell", params: None },
 	"clipboard.write": { route: "shell", params: Obj({ text: Text(200000) }) },
+	"attachments.add": { route: "shell", params: Obj({ path: Text(2000) }) },
+	"attachments.paste": { route: "shell", params: None },
+	"attachments.remove": { route: "shell", params: Obj({ id: Id }) },
 	"open.external": { route: "shell", params: Obj({ url: Text(4000) }) },
 	"browser.peek": { route: "shell", params: None },
 	"apps.state": { route: "shell", params: None },
@@ -80,13 +84,19 @@ export const METHODS = {
 	"data.openFolder": { route: "shell", params: None },
 	"sources.pick": { route: "shell", params: Obj({ purpose: Type.Union([Type.Literal("source"), Type.Literal("output")]) }) },
 	"diagnostics.save": { route: "shell", params: None },
+	"recipe.export": { route: "shell", params: Obj({ recipeId: Id }) },
+	"connector.mcpAdd": { route: "shell", params: Obj({ name: Text(60), kind: Type.Union([Type.Literal("stdio"), Type.Literal("http")]), command: Type.Optional(Text(1000)), args: Type.Optional(Type.Array(Text(1000), { maxItems: 30 })), url: Type.Optional(Text(2000)), token: Type.Optional(Text(4000)) }) },
+	"mcpapp.open": { route: "shell", params: Obj({ artifactId: Id }) },
+	"mcpserver.register": { route: "shell", params: None },
+	"voice.transcribe": { route: "shell", maxBytes: 8 * 1024 * 1024, check: (p) => (p.audio instanceof Uint8Array && p.audio.byteLength > 0 && p.audio.byteLength <= 8 * 1024 * 1024 ? undefined : "audio must be 1 byte to 8 MB of recorded sound"), params: Obj({ audio: Type.Unknown(), type: Type.String({ maxLength: 60, pattern: "^audio/[a-z0-9.+-]+(;\\s*codecs=[a-z0-9.,]+)?$" }) }) },
+	"recipe.import": { route: "shell", params: None },
 	"engine.restart": { route: "shell", params: None },
 	"update.check": { route: "shell", params: None },
 	"update.install": { route: "shell", params: None },
 
 	// host: missions, decisions, rules, memory, history
-	"mission.create": { route: "host", params: Obj({ text: Text(), requestId: Id, mode: Type.Optional(Type.Union(["ask", "prepare", "rules"].map((m) => Type.Literal(m)))), skill: Type.Optional(Id), privacy: Type.Optional(Type.Union(["cloud", "local", "offline"].map((m) => Type.Literal(m)))) }) },
-	"mission.followUp": { route: "host", params: Obj({ missionId: Id, text: Text(), requestId: Id }) },
+	"mission.create": { route: "host", params: Obj({ text: Text(), requestId: Id, attachments: Type.Optional(Type.Array(Id, { maxItems: 8 })), mode: Type.Optional(Type.Union(["ask", "prepare", "rules"].map((m) => Type.Literal(m)))), skill: Type.Optional(Id), privacy: Type.Optional(Type.Union(["cloud", "local", "offline"].map((m) => Type.Literal(m)))) }) },
+	"mission.followUp": { route: "host", params: Obj({ missionId: Id, text: Text(), requestId: Id, attachments: Type.Optional(Type.Array(Id, { maxItems: 8 })) }) },
 	"mission.steer": { route: "host", params: Obj({ missionId: Id, text: Text() }) },
 	"mission.pause": { route: "host", params: Obj({ missionId: Id }) },
 	"mission.resume": { route: "host", params: Obj({ missionId: Id }) },
@@ -103,6 +113,12 @@ export const METHODS = {
 	"recipe.run": { route: "host", params: Obj({ recipeId: Id, requestId: Id }) },
 	"skill.list": { route: "host", params: None },
 	"connector.list": { route: "host", params: None },
+	"mcp.list": { route: "host", params: None },
+	"mcp.remove": { route: "host", params: Obj({ id: Id }) },
+	"mcp.setEnabled": { route: "host", params: Obj({ id: Id, enabled: Type.Boolean() }) },
+	"mcp.inspect": { route: "host", params: Obj({ id: Id }) },
+	"mcp.windows": { route: "host", params: None },
+	"mcp.review": { route: "host", params: Obj({ id: Id, tool: Text(200), digest: Type.String({ pattern: "^sha256:[0-9a-f]{64}$" }), readOnly: Type.Boolean() }) },
 	"memory.confirm": { route: "host", params: Obj({ memoryId: Id }) },
 	"stop.emergency": { route: "host", params: None },
 	"stop.clear": { route: "host", params: None },
@@ -135,11 +151,13 @@ export const METHODS = {
 	"query.snapshot": { route: "host", params: None },
 	"query.events": { route: "host", params: Obj({ afterSeq: Type.Integer({ minimum: 0 }) }) },
 	"query.mission": { route: "host", params: Obj({ missionId: Id }) },
-	"query.history": { route: "host", params: Obj({ limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })), before: Type.Optional(Type.String({ maxLength: 40 })) }) },
+	"query.history": { route: "host", params: Obj({ limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })), before: Type.Optional(Type.String({ maxLength: 40 })), query: Type.Optional(Text(200)) }) },
 	"data.export": { route: "host", params: None },
 	"data.delete": { route: "host", params: Obj({ scope: Type.Union(["history", "memory", "all"].map((s) => Type.Literal(s))) }) },
 	"diagnostics.preview": { route: "host", params: None },
 	"resources.status": { route: "host", params: None },
+	"voice.status": { route: "host", params: None },
+	"voice.setup": { route: "host", params: None },
 };
 
 /**
@@ -151,11 +169,13 @@ export function validateRequest(envelope, { lastSeq = 0 } = {}) {
 	if (envelope.v !== IPC_VERSION) return { ok: false, error: `unsupported IPC version ${envelope.v}` };
 	let size = 0;
 	try {
-		size = JSON.stringify(envelope).length;
+		// Typed arrays (recorded audio) count as their byte length, not as their JSON spelling.
+		size = JSON.stringify(envelope, (_k, v) => (ArrayBuffer.isView(v) ? ((size += v.byteLength), `[${v.byteLength} bytes]`) : v)).length + size;
 	} catch {
 		return { ok: false, error: "request is not serializable" };
 	}
-	if (size > MAX_REQUEST_BYTES) return { ok: false, error: `request too large (${size} bytes)` };
+	const max = (Object.hasOwn(METHODS, envelope.method) && METHODS[envelope.method].maxBytes) || MAX_REQUEST_BYTES;
+	if (size > max) return { ok: false, error: `request too large (${size} bytes)` };
 	if (!Number.isInteger(envelope.seq) || envelope.seq <= lastSeq) return { ok: false, error: "out-of-order or replayed request" };
 	const spec = Object.hasOwn(METHODS, envelope.method) ? METHODS[envelope.method] : undefined;
 	if (!spec) return { ok: false, error: `unknown method ${String(envelope.method).slice(0, 40)}` };
@@ -164,5 +184,7 @@ export function validateRequest(envelope, { lastSeq = 0 } = {}) {
 		const first = [...Value.Errors(spec.params, params)][0];
 		return { ok: false, error: `invalid params for ${envelope.method}: ${first?.instancePath ?? ""} ${first?.message ?? ""}`.trim() };
 	}
+	const problem = spec.check?.(params);
+	if (problem) return { ok: false, error: `invalid params for ${envelope.method}: ${problem}` };
 	return { ok: true, method: envelope.method, params, route: spec.route };
 }

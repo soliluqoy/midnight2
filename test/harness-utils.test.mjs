@@ -19,12 +19,13 @@ test("pruneImages keeps the newest screenshots and preserves surrounding tool te
 	assert.equal(messages[0].content[1].data.length, 100, "input is not mutated");
 });
 
-test("model routing prefers the configured fast vision model, then safe vision fallbacks", () => {
+test("the default model is Sol, then Luna, then safe vision fallbacks", () => {
 	const catalog = [
 		{ provider: "anthropic", id: "claude", input: ["text", "image"], reasoning: true },
 		{ provider: "openai-codex", id: "gpt-5.5", input: ["text", "image"], reasoning: true },
 		{ provider: "openai", id: "gpt-6-luna", input: ["text", "image"], reasoning: false },
 	];
+	assert.equal(chooseDefaultModel([...catalog, { provider: "openai-codex", id: "gpt-6.1-sol", input: ["text", "image"], reasoning: true }]).id, "gpt-6.1-sol");
 	assert.equal(chooseDefaultModel(catalog).id, "gpt-6-luna");
 	assert.equal(chooseDefaultModel(catalog.filter((m) => m.id !== "gpt-6-luna")).id, "gpt-5.5");
 	assert.equal(chooseDefaultModel([{ provider: "x", id: "text", input: ["text"] }, { provider: "x", id: "vision", input: ["text", "image"] }]).id, "vision");

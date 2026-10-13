@@ -22,7 +22,7 @@ architecture/provenance guards) · `npm run test:smoke` (real Electron, engine i
 | G01–G03 budgets, lazy/idle, power profiles | ✓ | `src/resources` |
 | C01–C03, B01, W01 queue, screen lease + helper fencing, locks, per-mission browser, MTA helper | ✓ | `src/windows/lease.mjs`, `src/tools/input-helper.ps1`, `src/desktop/browsers.mjs` |
 | S01–S04 recurrence (DST), watches, rules editor, attention/quiet hours | ✓ | `src/scheduler` |
-| M01 model routing (task model: plans/computer/research on a stronger model, `?` on the chosen one), local endpoint, no cloud fallback | ✓ | `src/runtime/models.mjs` |
+| M01 model routing (one chosen model for every mission; default Sol, then Luna), local endpoint, no cloud fallback | ✓ | `src/runtime/models.mjs` |
 | K01–K02 memory, skill packs, recipes | ✓ | `src/memory`, `src/skills` |
 | Q01 adversarial corpus · Q02 holdout (51 scenarios, runner, headless web) · Q03 idle trace | ✓ / runner not yet run / partial | `test/adversarial.test.mjs`, `evals/`, `src/tools/web-headless.mjs` |
 | D01–D03 NSIS + updater (verify sha512 + signature), export/delete, diagnostics | ✓ code; signing needs a certificate | `src/desktop/updater.mjs`, `src/storage/data.mjs` |
@@ -47,7 +47,7 @@ architecture/provenance guards) · `npm run test:smoke` (real Electron, engine i
 7. **Measurements still missing:** model task, browser task, desktop task, 24 h watch soak, battery drain, 100-mission
    leak slope (extend `MIDNIGHT_PERF`).
 8. **Accessibility audit:** screen reader pass, 100–200% DPI, multi-monitor, high contrast on the new cards.
-9. **Release engineering:** code-signing certificate in CI secrets, staged rollout, runbooks in `docs/runbooks/`
+9. **Release engineering:** signing is wired for Azure Artifact Signing (see `docs/signing.md`; needs the Azure account and repository variables), fuses and ASAR integrity are on, releases are drafts with build provenance; still to do: staged rollout, runbooks in `docs/runbooks/`
    (stop all input, disable writes, revoke, restore backup, support bundle, uninstall with data choice).
 10. ~~Retire legacy~~ done: `src/legacy/` deleted.
 11. **P2/P3** (morning runway, promise board, show-me, voice, night gardener) only after the beta gates pass.
@@ -55,6 +55,6 @@ architecture/provenance guards) · `npm run test:smoke` (real Electron, engine i
 ## Known limits (be honest about these)
 
 - Demo CRM/mail are fixtures; no real account is connected yet. Real sends need step 5.
-- OCR and PDF text extraction are not implemented; PPTX output is not implemented.
+- OCR uses Windows' built-in engine (`midnight-ocr.exe`) and is Windows-only; macOS and Linux read PDF text layers but not scans or pictures.
 - Pixel baselines are machine-specific; CI only checks that every state renders without errors.
 - Updates install only signed builds; current CI builds are unsigned, so the updater opens the release page instead.

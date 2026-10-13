@@ -24,6 +24,7 @@ let clipboardRevision = 0;
 const homeDrafts = { chat: "", search: "" };
 let hasSearchDraft = false;
 let taskFileContext;
+let attached = []; // files and pictures for the next task: { id, name, kind, size, thumbnail, truncated }
 let continueKey = "";
 let readEvidence = false;
 let viewRevision = 0;
@@ -43,6 +44,10 @@ function checked(result) {
 window.checkedResult = checked;
 
 function syncLayers() {
+	// The open decision card (approval or question) contains keyboard focus whenever the mission is on screen.
+	const decision = (cur === "mission" || cur === "read") && { ask: $("fAsk"), q: $("fQ") }[cap.dataset.f];
+	if (decision) focusTrap.contain(decision, { focus: false });
+	else focusTrap.release();
 	for (const layer of document.querySelectorAll(".lay")) {
 		const active = layer.classList.contains(`l-${cur === "read" ? "mission" : cur === "search" ? "chat" : cur}`);
 		layer.inert = !active;
@@ -161,13 +166,13 @@ async function applyDims() {
 }
 function applyPrefs(s) {
 	prefs = { ...prefs, ...s };
+	if ("voice" in s) refreshVoice();
 	document.body.dataset.contrast = prefs.highContrast ? "high" : "";
 	document.body.dataset.motion = prefs.reducedMotion ? "reduced" : "";
 	const chip = $("chipCtx");
 	chip.dataset.p = prefs.privacy;
 	chip.textContent = prefs.privacy === "offline" ? "offline" : prefs.privacy === "local" ? "local" : "cloud";
-	chip.title =
-		prefs.privacy === "cloud"
+	chip.title = prefs.privacy === "cloud"
 			? "Your request and the files you let midnight read go to the AI provider you chose. Missions, rules and files stay on this computer."
 			: prefs.privacy === "local"
 				? "Only your local model runs. Web tools may still fetch public pages."
@@ -259,7 +264,7 @@ function onMissionChange(before, m, type) {
 function finishView(m) {
 	if (m.trigger?.kind && m.trigger.kind !== "user") return; // proactive work stays quiet: it waits in the queue
 	if ((cur === "idle" || parked) && m.id === current) {
-		notify(m.status === "succeeded" ? "Done" : m.outcome?.status === "cancelled" ? "Cancelled" : "Needs a look", m.answer || m.outcome?.summary || "");
+		notify(m.status === "succeeded" ? "Done" : m.outcome?.status === "cancelled" ? "Cancelled" : "Needs a look", m.answer || (m.outcome?.summary || ""));
 	} else if (m.id === current && cur === "mission" && prefs.autoExpand && m.status === "succeeded" && (m.answer ?? "").length > 1200) {
 		setState("read");
 	}
@@ -275,6 +280,9 @@ function onLive(e) {
 	} else if (e.type === "text") {
 		l.text += e.delta;
 		l.streaming = true;
+	} else if (e.type === "usage") {
+		l.usage = e.usage;
+		if (e.missionId === current) renderCost(snap.missions[e.missionId]);
 	} else if (e.type === "tool_start") {
 		const set = (lit[e.missionId] ??= new Set());
 		set.add(e.name === "computer" ? "cDesk" : e.name === "user_browser" ? "cYours" : /^(files_|sheet_|file_)/.test(e.name) ? "cFiles" : ["search", "read_pages", "browser"].includes(e.name) ? "cBrowser" : "");
@@ -357,7 +365,7 @@ function onShell(m) {
 			resnapshot();
 			break;
 		case "update":
-			if (m.available) announce(`midnight ${m.latest} is available. Install it from Settings → Data → Updates.`);
+			if (m.available) announce(`midnight ${m.latest} is available. Install it from Settings → Data → About.`);
 			break;
 		case "engine":
 			engine = m.state;
@@ -395,12 +403,34 @@ const elapsed = (ms) => {
 	const s = Math.max(0, Math.floor(ms / 1000));
 	return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
+// ---------- cost: live while a mission runs, recorded once it settles ----------
+const money = (usd) => (usd >= 0.1 ? `$${usd.toFixed(2)}` : `$${usd.toFixed(3)}`);
+/** What a mission has cost: the engine's settled budget, plus the live run's usage while it is still running. */
+function spendOf(m) {
+	const spent = m?.budget?.spent ?? {};
+	const run = RUNNING.has(m?.status) ? live[m.id]?.usage : undefined;
+	return { usd: (spent.costUsd ?? 0) + (run?.costUsd ?? 0), tokens: (spent.tokens ?? 0) + (run?.tokens ?? 0), unknown: !!(spent.unknownCostCalls || run?.unknownCost) };
+}
+function costText(m) {
+	const s = spendOf(m);
+	if (!s.tokens && !s.usd) return "";
+	const tokens = s.tokens >= 1000 ? `${(s.tokens / 1000).toFixed(s.tokens >= 10000 ? 0 : 1)}k` : String(s.tokens);
+	const usd = s.unknown && !s.usd ? "cost unknown" : `${money(s.usd)}${s.unknown ? "+" : ""}`;
+	const cap = m?.budget?.limits?.costUsd;
+	return `${cap ? `${usd} of ${money(cap)}` : usd} · ${tokens} tokens`;
+}
+function renderCost(m) {
+	if (!m) return;
+	$("mCost").textContent = costText(m);
+}
+
 function tick() {
 	const m = mission();
 	if (!m) return;
 	const t0 = runStart[m.id] ?? Date.parse(m.createdAt);
 	const end = TERMINAL.has(m.status) || NEEDS.has(m.status) ? Date.parse(m.updatedAt) : Date.now();
 	$("mTime").textContent = elapsed(end - t0);
+	renderCost(m);
 }
 
 function renderLights() {
@@ -464,7 +494,8 @@ function renderArtifacts(m) {
 			{ class: a.ok ? "" : "bad", title: `${a.type} · revision ${a.revision}${a.ok ? " · validated" : ` · did not validate: ${a.issues.join("; ")}`}${a.publishedPath ? `\nSaved: ${a.publishedPath}` : ""}\nClick to open · Alt+click to show in folder` },
 			`${a.ok ? "✓" : "!"} ${clip40(a.name, 28)} r${a.revision}`,
 		);
-		b.onclick = (e) => api.artifacts.open(a.id, e.altKey).catch((err) => announce(err.message));
+		// A connector's interactive view opens in midnight's sandboxed viewer, never in the browser.
+		b.onclick = (e) => (a.type === "mcp-app" ? api.connectors.openApp(a.id) : api.artifacts.open(a.id, e.altKey)).catch((err) => announce(err.message));
 		box.append(b);
 	}
 }
@@ -497,6 +528,11 @@ function drawAnswer() {
 	});
 }
 $("ans").addEventListener("click", (e) => {
+	const copy = e.target.closest(".code-copy");
+	if (copy) {
+		copyCode(copy, (text) => api.clipboard.write(text));
+		return;
+	}
 	const a = e.target.closest("a[href]");
 	if (!a) return;
 	e.preventDefault();
@@ -543,7 +579,13 @@ function renderMission() {
 }
 
 function foot(f) {
+	const appeared = cap.dataset.f !== f;
 	cap.dataset.f = f;
+	// A decision (approval, question, confirmation) holds keyboard focus until it is answered or the view changes.
+	const card = f === "ask" ? $("fAsk") : f === "q" ? $("fQ") : null;
+	// Approvals take focus on the card itself (never on Approve); questions keep focus in their answer input.
+	if (card && (cur === "mission" || cur === "read")) focusTrap.contain(card, { focus: f === "ask" && (appeared || focusTrap.active !== card) && !card.contains(document.activeElement) });
+	else focusTrap.release();
 }
 
 const displayedApprovals = new Map();
@@ -610,21 +652,40 @@ function renderFooter(m) {
 	foot("none");
 }
 
+/** A plain preview, or a diff with added and removed lines marked for the eye and for screen readers. */
+function renderPreview(node, d) {
+	node.classList.toggle("diff", d.previewKind === "diff");
+	if (d.previewKind !== "diff") return (node.textContent = d.preview ?? "");
+	node.replaceChildren(...String(d.preview ?? "").split("\n").map((line) => {
+		const kind = /^\+(?!\+\+ )/.test(line) ? "add" : /^-(?!-- )/.test(line) ? "del" : "";
+		const span = el("span", { class: kind ? `diff-${kind}` : "" }, document.createTextNode(`${line}\n`));
+		if (kind) span.setAttribute("aria-label", `${kind === "add" ? "added" : "removed"}: ${line.slice(1)}`);
+		return span;
+	}));
+}
+
 function renderApproval(m, a) {
 	visibleApproval = a;
 	const d = a.display ?? {};
 	$("askTitle").textContent = d.title ?? "Midnight needs your OK";
 	const facts = $("askFacts");
 	facts.textContent = "";
-	const row = (k, v) => v && facts.append(el("dt", {}, k), el("dd", {}, v));
+	const row = (k, v) => v && facts.append(el("dt", {}, k), el("dd", {}, document.createTextNode(v)));
 	row("WHAT", d.effectLabel);
 	row("ACCOUNT", d.account);
 	if (d.recipients?.length) row(`TO (${d.recipients.length})`, d.recipients.join(", "));
 	if (d.attachments?.length) row("FILES", d.attachments.map((x) => `${x.name} r${x.revision} · ${String(x.hash ?? "").slice(7, 15)}`).join("\n"));
 	if (!d.recipients?.length && d.target && !d.plan) row("TARGET", d.target);
 	$("askPreviewBox").hidden = !d.preview;
-	$("askPreview").textContent = d.preview ?? "";
-	$("askPreviewBox").open = !!d.plan;
+	renderPreview($("askPreview"), d);
+	$("askPreviewBox").open = !!d.plan || d.previewKind === "diff";
+	const sends = $("askSends");
+	sends.hidden = !(d.sends?.length || d.sendsHidden || d.sendsTo);
+	sends.replaceChildren(
+		el("h6", {}, d.sendsTo ? `What will be sent to ${d.sendsTo}` : "What will be sent"),
+		...(d.sends?.length ? [el("dl", { class: "facts" }, ...d.sends.flatMap((f) => [el("dt", {}, document.createTextNode(f.label)), el("dd", {}, document.createTextNode(f.value || "—"))]))] : [el("p", { class: "hint" }, "No filled-in fields were found; the page or app decides what it sends.")]),
+		d.sendsHidden ? el("p", { class: "hint" }, `Plus ${d.sendsHidden} hidden fields the page adds.`) : null,
+	);
 	$("askConsequence").textContent = d.consequence ?? "";
 	$("askWhy").textContent = d.why && d.why !== "needs your OK" ? d.why : "";
 	$("askYes").textContent = d.verb ?? "Approve";
@@ -753,7 +814,8 @@ function renderDone(m) {
 
 function focusFooter() {
 	const f = cap.dataset.f;
-	const target = { ask: "askYes", q: "qOpts", rec: "recItems", wait: "waitMain", done: "reply", run: "stop" }[f];
+	if (f === "ask") return $("fAsk").focus({ preventScroll: true }); // read the request first; Enter never approves by default
+	const target = { q: "qOpts", rec: "recItems", wait: "waitMain", done: "reply", run: "stop" }[f];
 	const node = target && $(target);
 	(node?.querySelector?.("button, textarea") ?? node)?.focus?.({ preventScroll: true });
 }
@@ -784,10 +846,10 @@ function openMission(id) {
 	renderMission();
 	setState("mission");
 }
-async function startMission(text) {
+async function startMission(text, attachments = []) {
 	remember(text);
 	try {
-		const r = await api.missions.create({ text, requestId: reqId() });
+		const r = await api.missions.create(attachments.length ? { text, requestId: reqId(), attachments } : { text, requestId: reqId() });
 		current = r.missionId;
 		live[current] = { text: "", streaming: false };
 		lit[current] = new Set();
@@ -824,9 +886,10 @@ function copyAnswer() {
 	const l = live[current];
 	const t = l?.streaming ? l.text : mission()?.answer || l?.text;
 	if (!t) return;
-	api.clipboard.write(t);
-	$("copy").textContent = "Copied ✓";
-	setTimeout(() => ($("copy").textContent = "Copy"), 1400);
+	api.clipboard.write(t).then(
+		() => ($("copy").textContent = "Copied ✓"),
+		(err) => { $("copy").textContent = "Copy failed"; showErr(err); },
+	).finally(() => setTimeout(() => ($("copy").textContent = "Copy"), 1400));
 }
 
 function notify(title, body) {
@@ -865,14 +928,45 @@ function renderContinue() {
 
 // ---------- the mission stack ----------
 function card(m, kind, sub) {
+	const cost = spendOf(m);
+	const when = new Date(m.updatedAt);
+	const today = when.toDateString() === new Date().toDateString();
 	return el(
 		"button",
 		{ class: "card", role: "listitem", "data-k": kind, "data-mission": m.id, onclick: () => openMission(m.id), "aria-label": `${m.title}, ${sub}` },
 		el("i", { "aria-hidden": "true" }),
 		el("div", {}, el("b", {}, m.title), el("span", {}, sub)),
-		el("em", {}, new Date(m.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })),
+		el("em", {}, `${cost.usd || cost.tokens ? `${money(cost.usd)} · ` : ""}${today ? when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : when.toLocaleDateString([], { month: "short", day: "numeric" })}`),
 	);
 }
+/** Model cost of missions started this calendar month, from the snapshot the launcher already has. */
+function renderSpend() {
+	const start = new Date();
+	start.setDate(1);
+	start.setHours(0, 0, 0, 0);
+	const month = Object.values(snap.missions).filter((m) => Date.parse(m.createdAt) >= start.getTime());
+	const usd = month.reduce((sum, m) => sum + spendOf(m).usd, 0);
+	$("spend").textContent = month.length ? `This month ${money(usd)} · ${month.length} missions` : "";
+}
+let historyQuery = "";
+let historyResults;
+let historyTimer;
+$("historySearch").addEventListener("input", (e) => {
+	clearTimeout(historyTimer);
+	historyQuery = e.target.value.trim();
+	historyTimer = setTimeout(async () => {
+		const q = historyQuery;
+		historyResults = q ? await api.query.history({ query: q, limit: 50 }).catch((err) => (showErr(err), [])) : undefined;
+		if (q === historyQuery) renderStack();
+	}, 200);
+});
+$("historySearch").addEventListener("keydown", (e) => {
+	if (e.key === "Escape" && e.target.value) {
+		e.stopPropagation();
+		e.target.value = "";
+		e.target.dispatchEvent(new Event("input"));
+	}
+});
 async function renderStack() {
 	const revision = ++stackRevision;
 	const list = Object.values(snap.missions).filter((m) => !m.archived);
@@ -880,6 +974,16 @@ async function renderStack() {
 	const [watches, resources] = await Promise.all([api.watches.list().catch(() => []), api.resources.status().catch(() => ({}))]);
 	if (revision !== stackRevision || cur !== "stack") return;
 	const box = document.createDocumentFragment();
+	renderSpend();
+	if (historyQuery && historyResults) {
+		box.append(el("h6", {}, `${historyResults.length} missions match “${historyQuery}”`));
+		if (!historyResults.length) box.append(el("div", { class: "empty" }, "No missions match. Try fewer or different words."));
+		for (const m of historyResults) snap.missions[m.id] ??= m; // older or archived results open like any mission
+		for (const m of historyResults) box.append(card(m, m.status === "succeeded" ? "ok" : NEEDS.has(m.status) ? "needs" : RUNNING.has(m.status) ? "active" : "warn", `${(HOME_STATUS[m.status] ?? m.status).toLowerCase()}${m.archived ? ` · ${"archived"}` : ""}${m.outcome?.summary ? ` · ${m.outcome.summary}` : ""}`));
+		const target = $("stack");
+		target.replaceChildren(box);
+		return;
+	}
 	const by = (a, b) => (a.updatedAt < b.updatedAt ? 1 : -1);
 	const needs = list.filter((m) => NEEDS.has(m.status)).sort(by);
 	const act = list.filter((m) => RUNNING.has(m.status) || ["paused", "waiting-resource", "waiting-time"].includes(m.status)).sort(by);
@@ -890,10 +994,10 @@ async function renderStack() {
 		if (!items.length) box.append(el("div", { class: "empty" }, title === "NEEDS YOU" ? "Nothing needs you." : "None."));
 		else box.append(...items);
 	};
-	section("NEEDS YOU", needs.map((m) => card(m, "needs", m.status === "waiting-approval" ? `needs your OK · ${m.approvals?.[0]?.display?.title ?? ""}` : m.status === "needs-reconciliation" ? "an action's outcome is unknown" : m.waiting?.reason || "needs an answer")));
+	section("NEEDS YOU", needs.map((m) => card(m, "needs", m.status === "waiting-approval" ? `${"needs your OK"} · ${m.approvals?.[0]?.display?.title ?? ""}` : m.status === "needs-reconciliation" ? "an action's outcome is unknown" : m.waiting?.reason || "needs an answer")));
 	section("ACTIVE", act.map((m) => card(m, "active", m.status === "paused" ? "paused" : m.queued ?? m.waiting?.reason ?? (m.status === "running" ? "working" : m.status))));
 	box.append(el("h6", {}, "WATCHING"));
-	if (!watches.length && !notes.length) box.append(el("div", { class: "empty" }, "No watches. Add one in Settings → Watches."));
+	if (!watches.length && !notes.length) box.append(el("div", { class: "empty" }, "No watches. Add one in Settings → Automation."));
 	for (const n of notes) {
 		box.append(
 			el(
@@ -987,7 +1091,7 @@ async function checkClipboard() {
 }
 $("chipClip").onclick = () => {
 	if (cur !== "chat" || !clip) return;
-	const t = clip.kind === "url" ? `Summarize this page: ${clip.value}` : `Summarize this text I copied (key points, then anything I should act on):\n\n${clip.value}`;
+	const t = clip.kind === "url" ? `Summarize this page: ${clip.value}` : `${"Summarize this text I copied (key points, then anything I should act on):"}\n\n${clip.value}`;
 	const box = $("box");
 	if (!box.value.includes(t)) box.value = box.value.trim() ? `${box.value}\n\n${t}` : t;
 	box.focus();
@@ -1005,6 +1109,9 @@ function renderHomeMode() {
 	for (const id of ["chipModel", "chipCtx", "sendTask"]) $(id).hidden = files;
 	$("chipClip").hidden = files || !clip;
 	$("taskFile").hidden = files || !taskFileContext;
+	renderAttachments();
+	if (prefs.voice) refreshVoice();
+	else $("micTask").hidden = true;
 	$("taskFileName").textContent = taskFileContext?.name ?? "";
 	$("taskFileName").title = taskFileContext?.text ?? "";
 	$("boxLabel").textContent = files ? "Search files on this computer" : "Ask or give a task";
@@ -1023,16 +1130,156 @@ async function submitTask() {
 	if (cur !== "chat") return;
 	const box = $("box");
 	let text = box.value.trim();
+	const sending = attached.map((a) => a.id);
+	if (!text && sending.length) text = "Look at the attached files.";
 	if (!text) return;
 	const context = taskFileContext;
 	if (context && !text.includes(context.text)) text += `\n\nFile context:\n${context.text}`;
 	box.value = "";
-	if (await startMission(text)) {
+	if (await startMission(text, sending)) {
 		if (taskFileContext === context) taskFileContext = undefined;
+		attached = attached.filter((a) => !sending.includes(a.id));
+		renderAttachments();
 	}
 	renderHomeMode();
 }
+
+// ---------- files and pictures dropped or pasted into Ask ----------
+const fileSize = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
+function renderAttachments() {
+	const list = $("attachList");
+	list.hidden = !attached.length || cur === "search";
+	list.replaceChildren(...attached.map((a) => el("div", { class: "attach-chip", role: "listitem", title: a.name },
+		a.thumbnail ? el("img", { src: a.thumbnail, alt: "" }) : el("span", { class: "attach-icon", "aria-hidden": "true" }, "▤"),
+		el("span", { class: "attach-name" }, a.name),
+		el("small", {}, a.truncated ? `${fileSize(a.size)} · first part` : fileSize(a.size)),
+		el("button", { class: "attach-remove", "aria-label": `Remove ${a.name}`, title: "Remove", onclick: () => removeAttachment(a.id) }, "×"),
+	)));
+}
+function removeAttachment(id) {
+	attached = attached.filter((a) => a.id !== id);
+	renderAttachments();
+	api.attachments.remove(id).catch(() => {});
+	$("box").focus({ preventScroll: true });
+}
+async function attach(promise) {
+	try {
+		const results = await promise;
+		for (const r of Array.isArray(results) ? results : [{ status: "fulfilled", value: results }]) {
+			if (r.status === "fulfilled" && r.value?.id) attached.push(r.value);
+			else if (r.status === "rejected") showErr(r.reason);
+		}
+	} catch (err) {
+		showErr(err);
+	}
+	renderAttachments();
+	if (cur === "chat") announce(`${attached.length} attached`);
+}
+$("box").addEventListener("paste", (e) => {
+	if (cur !== "chat") return;
+	const files = [...(e.clipboardData?.files ?? [])];
+	if (!files.length) return; // plain text pastes normally
+	e.preventDefault();
+	// A copied file from Explorer has a disk path; a screenshot or copied picture is read from the clipboard by the shell.
+	attach(api.attachments.fromFiles(files).then((r) => (r.some((x) => x.status === "fulfilled") || !files.some((f) => f.type.startsWith("image/")) ? r : api.attachments.paste())));
+});
+let dragDepth = 0;
+for (const [type, fn] of Object.entries({
+	dragenter: (e) => { if (cur === "chat" && e.dataTransfer?.types?.includes("Files")) { dragDepth++; cap.dataset.drop = "1"; } },
+	dragleave: () => { if (--dragDepth <= 0) { dragDepth = 0; delete cap.dataset.drop; } },
+	dragover: (e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = cur === "chat" ? "copy" : "none"; },
+	drop: (e) => {
+		e.preventDefault(); // never navigate to a dropped file
+		dragDepth = 0;
+		delete cap.dataset.drop;
+		if (cur === "chat" && e.dataTransfer?.files?.length) attach(api.attachments.fromFiles([...e.dataTransfer.files]));
+	},
+})) window.addEventListener(type, fn);
 $("sendTask").onclick = submitTask;
+
+// ---------- dictation: record in the launcher, transcribe with local Whisper, insert at the cursor ----------
+let voiceReady = false;
+let recording; // { recorder, stream, chunks, started, timer, cancelled }
+const MAX_DICTATION_S = 120;
+async function refreshVoice() {
+	const s = prefs.voice ? await api.voice.status().catch(() => ({})) : {};
+	voiceReady = !!(prefs.voice && s.available);
+	$("micTask").hidden = !voiceReady || cur === "search";
+}
+function micState(state, label = "") {
+	const b = $("micTask");
+	b.dataset.state = state;
+	b.setAttribute("aria-pressed", String(state === "recording"));
+	b.title = state === "recording" ? "Stop and transcribe (Ctrl+Shift+Space) · Esc cancels" : state === "working" ? "Transcribing…" : "Dictate (Ctrl+Shift+Space)";
+	b.disabled = state === "working";
+	$("micTime").textContent = label;
+}
+async function startDictation() {
+	if (recording || !voiceReady) return;
+	let stream;
+	try {
+		stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+	} catch (err) {
+		return showErr(new Error("midnight could not use the microphone. Check Windows Settings → Privacy → Microphone."));
+	}
+	const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm"].find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+	const recorder = new MediaRecorder(stream, { mimeType: type, audioBitsPerSecond: 32000 });
+	const r = (recording = { recorder, stream, chunks: [], started: Date.now(), type: recorder.mimeType || type || "audio/webm" });
+	recorder.ondataavailable = (e) => e.data.size && r.chunks.push(e.data);
+	recorder.onstop = () => finishDictation(r);
+	recorder.start(1000);
+	micState("recording", "0:00");
+	announce("Recording. Press again to stop.");
+	r.timer = setInterval(() => {
+		const s = Math.floor((Date.now() - r.started) / 1000);
+		micState("recording", `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`);
+		if (s >= MAX_DICTATION_S) stopDictation();
+	}, 500);
+}
+function stopDictation({ cancel = false } = {}) {
+	const r = recording;
+	if (!r) return;
+	r.cancelled = cancel;
+	clearInterval(r.timer);
+	if (r.recorder.state !== "inactive") r.recorder.stop();
+	for (const t of r.stream.getTracks()) t.stop();
+}
+async function finishDictation(r) {
+	recording = undefined;
+	if (r.cancelled || !r.chunks.length) return micState("idle");
+	micState("working", "…");
+	try {
+		const bytes = new Uint8Array(await new Blob(r.chunks, { type: r.type }).arrayBuffer());
+		const { text } = await api.voice.transcribe(bytes, r.type.replace(/\s+/g, ""));
+		const box = $("box");
+		if (text) {
+			const at = box.selectionStart ?? box.value.length;
+			const before = box.value.slice(0, at);
+			const glue = before && !/\s$/.test(before) ? " " : "";
+			box.value = `${before}${glue}${text}${box.value.slice(box.selectionEnd ?? at)}`;
+			box.selectionStart = box.selectionEnd = at + glue.length + text.length;
+			box.dispatchEvent(new Event("input", { bubbles: true }));
+			announce("Transcribed.");
+		} else announce("No speech was heard.");
+		box.focus({ preventScroll: true });
+	} catch (err) {
+		showErr(err);
+	} finally {
+		micState("idle");
+	}
+}
+$("micTask").onclick = () => (recording ? stopDictation() : startDictation());
+document.addEventListener("keydown", (e) => {
+	if (e.key === "Escape" && recording) {
+		e.preventDefault();
+		e.stopPropagation();
+		stopDictation({ cancel: true });
+		announce("Dictation cancelled.");
+	} else if (command(e) && e.shiftKey && e.code === "Space" && cur === "chat" && voiceReady) {
+		e.preventDefault();
+		recording ? stopDictation() : startDictation();
+	}
+}, true);
 $("box").onkeydown = (e) => {
 	const box = $("box");
 	if (e.isComposing) return;
@@ -1156,7 +1403,7 @@ $("saveRecipe").onclick = async () => {
 	const m = mission();
 	if (!m) return;
 	const r = await api.missions.saveRecipe({ missionId: m.id, label: m.title }).catch((err) => ({ ok: false, error: err.message }));
-	announce(r.ok ? "Saved as a routine. Review it in Settings → Routines before it runs." : r.error);
+	announce(r.ok ? "Saved as a routine. Review it in Settings → Automation → Routines before it runs." : r.error);
 	$("saveRecipe").textContent = r.ok ? "Saved ✓" : "Save routine";
 };
 $("login").onclick = () => openSettings("accounts");

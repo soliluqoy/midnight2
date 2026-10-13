@@ -10,6 +10,38 @@ import { within } from "../policy/grants.mjs";
 import { realTarget } from "../policy/roots.mjs";
 import { readDocx } from "./documents/docx.mjs";
 import { readXlsx } from "./documents/xlsx.mjs";
+import { readZip, xmlUnescape } from "./documents/zip.mjs";
+import { unifiedDiff } from "./diff.mjs";
+
+const TEXTUAL = /\.(md|markdown|txt|csv|tsv|json|jsonl|html?|xml|svg|ya?ml|ini|toml|log|css|js|mjs|ts|py|ps1|sh|sql)$/i;
+/** Readable text of a document for previews, or undefined when it has none (images, spreadsheets, binaries). */
+function previewText(file) {
+	try {
+		const st = fs.statSync(file);
+		if (!st.isFile() || st.size > 5 * 1024 * 1024) return undefined;
+		if (/\.docx$/i.test(file)) return readDocx(fs.readFileSync(file)).text;
+		if (!TEXTUAL.test(file)) return undefined;
+		const buf = fs.readFileSync(file);
+		return buf.includes(0) ? undefined : buf.toString("utf8");
+	} catch {
+		return undefined;
+	}
+}
+
+/** What an approval shows before a file is saved: a diff of the file it replaces, or the new file's opening. */
+const previewFields = (p) => (p ? { preview: p.text, previewKind: p.kind } : {});
+
+export function writePreview(source, dest, { overwrite }) {
+	const next = previewText(source);
+	if (next === undefined) return undefined;
+	const replacing = overwrite && fs.existsSync(dest);
+	if (replacing) {
+		const before = previewText(dest);
+		if (before !== undefined) return { kind: "diff", text: unifiedDiff(before, next, { labels: [`${path.basename(dest)} (now)`, `${path.basename(dest)} (after saving)`] }) ?? "No changes: the new version is identical." };
+	}
+	const lines = next.replace(/\r\n/g, "\n").split("\n");
+	return { kind: "text", text: `${lines.slice(0, 40).join("\n")}${lines.length > 40 ? `\n… ${lines.length - 40} more lines` : ""}`.slice(0, 4000) };
+}
 
 const SKIP_DIRS = /^(node_modules|\.git|\.svn|\$recycle\.bin|system volume information|appdata|\.cache|cache|temp|tmp|__pycache__|\.venv)$/i;
 const SECRET = /(^\.env(\..*)?$|\.pem$|\.key$|\.pfx$|\.p12$|^id_(rsa|ed25519|ecdsa)|\.kdbx$|credentials|secret|password|token)/i;
@@ -92,7 +124,9 @@ export function ambiguity(files) {
 	return [...groups.values()].filter((g) => g.length > 1).map((g) => g.map((f) => f.path));
 }
 
-export function fileTools({ roots, evidence, commit, settings, paths }) {
+const PICTURE = new Set([".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff", ".webp"]);
+
+export function fileTools({ roots, evidence, commit, settings, paths, platform, decodeMedia }) {
 	const allRoots = () => roots.list();
 	const backupDir = path.join(paths.backups, "files");
 
@@ -131,7 +165,7 @@ export function fileTools({ roots, evidence, commit, settings, paths }) {
 	const filesRead = {
 		name: "files_read",
 		label: "Read file",
-		description: "Read a text-like file inside a selected folder: txt, md, csv, json, docx (text, headings, tables). For spreadsheets use sheet_read. Macros are never run.",
+		description: "Read a file inside a selected folder as text: txt, md, csv, json, docx (text, headings, tables), pptx (slide text), pdf (page text; scanned pages are read with on-device OCR) and pictures (on-device OCR of the words in them). For spreadsheets use sheet_read. Macros are never run.",
 		parameters: Type.Object({ path: Type.String(), maxChars: Type.Optional(Type.Integer({ minimum: 500, maximum: 60000 })) }),
 		classify: (a) => ({ effect: "read.local", paths: [a.path], target: a.path, canonical: { path: path.resolve(a.path) }, feed: `files › read ${path.basename(a.path)}`, resources: [{ key: `file:${path.resolve(a.path).toLowerCase()}`, mode: "read" }] }),
 		async execute(a, ctx) {
@@ -148,8 +182,18 @@ export function fileTools({ roots, evidence, commit, settings, paths }) {
 			} else if ([".xlsx", ".xlsm"].includes(ext)) {
 				const b = readXlsx(buf);
 				text = `Workbook with sheets: ${b.sheets.map((s) => `${s.name}${s.hidden ? " (hidden)" : ""} ${s.maxRow}x${s.maxCol}`).join(", ")}. Use sheet_read for values.`;
-			} else if ([".pdf", ".png", ".jpg", ".jpeg", ".pptx", ".exe", ".dll", ".zip"].includes(ext)) {
-				throw new Error(`${ext} files are not read as text here`);
+			} else if (ext === ".pdf") {
+				text = await readPdf(real, a.maxChars ?? 20000, ctx.signal);
+			} else if (PICTURE.has(ext)) {
+				if (!platform) throw new Error("Text recognition is unavailable here.");
+				const r = await platform.call("ocr.file", { path: real }, { signal: ctx.signal });
+				text = r.text?.trim() ? `[Text recognized on this computer (OCR, ${r.language}); check names and numbers against the picture.]\n\n${r.text}` : "[No text was recognized in this picture. Use files_view to look at it.]";
+			} else if (ext === ".pptx") {
+				const zip = readZip(buf);
+				const slides = [...zip.entries.keys()].filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((x, y) => Number(/slide(\d+)/.exec(x)[1]) - Number(/slide(\d+)/.exec(y)[1]));
+				text = slides.map((n, i) => `## Slide ${i + 1}\n${[...zip.text(n).matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)].map((m) => xmlUnescape(m[1])).join("\n")}`).join("\n\n");
+			} else if ([".exe", ".dll", ".zip", ".msi"].includes(ext) || buf.includes(0)) {
+				throw new Error(`${ext || "this"} file is not readable as text`);
 			} else text = buf.toString("utf8");
 			const max = a.maxChars ?? 20000;
 			const hash = fileHash(buf);
@@ -158,11 +202,39 @@ export function fileTools({ roots, evidence, commit, settings, paths }) {
 		},
 	};
 
+	/** PDF text page by page; pages without a text layer (scans) are read with on-device OCR. */
+	async function readPdf(file, maxChars, signal) {
+		if (!decodeMedia) throw new Error("PDF reading is unavailable here.");
+		const pdf = await decodeMedia(file, "pdf", { signal });
+		try {
+			const out = [];
+			let chars = 0;
+			let scanned = 0;
+			const pages = pdf.info.pages ?? 0;
+			for (let page = 1; page <= pages && chars < maxChars; page++) {
+				let { text } = await pdf.text({ page });
+				if (text.trim().length < 20 && pdf.ocr) {
+					const r = await pdf.ocr({ page }).catch(() => null);
+					if (r?.text?.trim()) {
+						text = r.text;
+						scanned++;
+					}
+				}
+				out.push(`## Page ${page}\n${text}`);
+				chars += text.length;
+			}
+			const head = `[PDF, ${pages} page${pages === 1 ? "" : "s"}${scanned ? `; ${scanned} scanned page${scanned === 1 ? " was" : "s were"} read with OCR, so check names and numbers` : ""}${out.length < pages ? `; showing pages 1–${out.length}` : ""}]`;
+			return `${head}\n\n${out.join("\n\n")}`;
+		} finally {
+			await pdf.close();
+		}
+	}
+
 	const publish = {
 		name: "file_publish",
 		label: "Save to folder",
 		description:
-			"Save a staged artifact (from chart_create, report_create, mail_draft…) into a selected output folder. Never overwrites unless overwrite is true and the file is still the version you read (expectHash).",
+			"Save a staged artifact (from chart_create, report_create, slide_create, mail_draft…) into a selected output folder. Never overwrites unless overwrite is true and the file is still the version you read (expectHash).",
 		parameters: Type.Object({
 			artifactId: Type.String(),
 			folder: Type.String({ description: "a selected folder path" }),
@@ -180,7 +252,7 @@ export function fileTools({ roots, evidence, commit, settings, paths }) {
 				target: dest,
 				canonical: { artifactHash: art.hash, dest: dest.toLowerCase(), overwrite: !!a.overwrite, expectHash: a.expectHash ?? null },
 				resources: [{ key: `file:${dest.toLowerCase()}`, mode: "write" }],
-				display: { title: `Save ${path.basename(dest)} to ${path.dirname(dest)}`, verb: "Save", attachments: [{ name: art.name, revision: art.revision, hash: art.hash }], consequence: a.overwrite ? "This replaces the existing file (a backup is kept)." : "This adds a new file; nothing is overwritten." },
+				display: { title: `Save ${path.basename(dest)} to ${path.dirname(dest)}`, verb: "Save", attachments: [{ name: art.name, revision: art.revision, hash: art.hash }], consequence: a.overwrite ? "This replaces the existing file (a backup is kept)." : "This adds a new file; nothing is overwritten.", ...previewFields(writePreview(art.path, dest, { overwrite: !!a.overwrite })) },
 				feed: `files › save ${path.basename(dest)}`,
 			};
 		},

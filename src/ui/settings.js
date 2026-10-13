@@ -55,16 +55,17 @@
 
 	async function loadExtra() {
 		const safe = (p) => p.catch(() => []);
-		const [sources, grants, watches, memory, recipes, connectors, skills] = await Promise.all([
+		const [sources, grants, watches, memory, recipes, connectors, mcp, skills] = await Promise.all([
 			safe(api.sources.list()),
 			safe(api.grants.list()),
 			safe(api.watches.list()),
 			safe(api.memory.list({})),
 			safe(api.recipes.list()),
 			safe(api.connectors.list()),
+			safe(api.connectors.mcpList()),
 			safe(api.skills.list()),
 		]);
-		extra = { sources, grants, watches, memory, recipes, connectors, skills };
+		extra = { sources, grants, watches, memory, recipes, connectors, mcp, skills };
 	}
 	async function refresh() {
 		S = await api.settings.get();
@@ -137,7 +138,7 @@
 		const signedIn = !!S.current?.model;
 		return h(
 			"div",
-			{ class: "sbody" },
+			{ class: "sbody", "data-tab": "welcome" },
 			sec(
 				"welcome",
 				"WELCOME",
@@ -163,21 +164,88 @@
 		return h(
 			"div",
 			{},
-			segmented(
-				st.mode,
-				[
-					{ value: "ask", label: "Ask me", title: "Reads and drafts in its own workspace freely; asks before anything else." },
-					{ value: "prepare", label: "Prepare for me", title: "Also saves drafts into your draft folders; asks before anything leaves the computer." },
-					{ value: "rules", label: "Act within my rules", title: "Uses the rules you created for recurring actions and lets watches prepare work." },
-				],
-				(v) => save({ mode: v }),
-				"Autonomy",
-			),
-			h("p", { class: "hint" }, st.mode === "ask" ? "Ask me: approved reads run without prompts; anything that changes files or leaves the computer asks." : st.mode === "prepare" ? "Prepare for me: also saves drafts into your draft folders; sending or posting still asks unless a rule covers it." : "Act within my rules: actions covered by a rule run without asking; watches may prepare drafts. Everything else still asks."),
+			segmented(st.mode, [{ value: "ask", label: "Ask me" }, { value: "prepare", label: "Prepare for me" }, { value: "rules", label: "Act within my rules" }], (v) => save({ mode: v }), "Autonomy"),
+			h("p", { class: "hint" }, st.mode === "ask" ? "Reads run freely. Anything that changes files or leaves the computer asks first." : st.mode === "prepare" ? "Also saves drafts into your drafts folders. Sending or posting still asks unless a rule covers it." : "Actions a rule covers run without asking, and watches may prepare drafts. Everything else asks."),
 		);
 	}
 
-	// ---------- sections ----------
+	// A list's "Add…" button, or its form once opened. The form closes on Cancel or after a successful add.
+	const adding = {};
+	function adder(key, label, form) {
+		if (!adding[key]) return h("div", { class: "row" }, h("button", { class: "sb", onclick: () => { adding[key] = true; render(); } }, label));
+		return h("div", { class: "sform" }, ...form(), h("div", { class: "row2" }, h("button", { class: "sb", onclick: () => { adding[key] = false; render(); } }, "Cancel"), h("button", { class: "sb pri", "data-submit": key, onclick: attempt(async () => { const r = window.checkedResult(await form.submit()); adding[key] = false; return r; }, form.done) }, form.action)));
+	}
+
+	// ---------- General ----------
+	function autonomySection() {
+		const st = S.settings;
+		return sec(
+			"autonomy",
+			"AUTONOMY",
+			autonomyField(),
+			field("Desktop control", "Mouse and keyboard, only through a plan you approve. Esc takes over.", toggle(st.computerUse !== "never", () => save({ computerUse: st.computerUse === "never" ? "ask" : "never" }), "Desktop control")),
+		);
+	}
+
+	function answersSection() {
+		const st = S.settings;
+		const ta = h("textarea", { class: "sta", placeholder: "e.g. Reply in Spanish. Prefer official sources. Keep answers under 5 lines.", "aria-label": "Standing instructions", onchange: (e) => save({ instructions: e.target.value }) });
+		ta.value = st.instructions;
+		return sec(
+			"answers",
+			"ANSWERS",
+			field("Length", "", segmented(st.answerLength, [{ value: "brief", label: "Brief" }, { value: "normal", label: "Normal" }, { value: "detailed", label: "Detailed" }], (v) => save({ answerLength: v }), "Answer length")),
+			field("Standing instructions", "Added to every mission", null),
+			ta,
+		);
+	}
+
+	function launcherSection() {
+		const st = S.settings;
+		return sec(
+			"launcher",
+			"LAUNCHER",
+			field("Summon shortcut", "For Ctrl+Win, press both keys and release", hotkeyButton()),
+			field("Know where I was", "Share the window or page you were on when you opened midnight", toggle(st.shareContext, () => save({ shareContext: !st.shareContext }), "Know where I was")),
+			field("Start with Windows", "Installed app only", toggle(st.launchAtLogin, () => save({ launchAtLogin: !st.launchAtLogin }), "Start with Windows")),
+		);
+	}
+
+	let voice = {};
+	function voiceSection() {
+		const st = S.settings;
+		const poll = async () => {
+			voice = await api.voice.status().catch(() => ({}));
+			render();
+			if (voice.setup || voice.progress?.total && !voice.available && !voice.error) setTimeout(poll, 1000);
+		};
+		if (st.voice && voice.model === undefined) poll();
+		const mb = (n) => Math.round((n ?? 0) / 1e6);
+		return sec(
+			"voice",
+			"VOICE INPUT",
+			field("Dictate into Ask", "Microphone button and Ctrl+Shift+Space. Whisper runs on this computer; audio is never uploaded.", toggle(!!st.voice, () => save({ voice: !st.voice }), "Dictate into Ask")),
+			st.voice
+				? voice.available
+					? h("p", { class: "hint" }, "Ready. Dictation is in English.")
+					: h("div", { class: "row" },
+						h("button", { class: "sb pri", disabled: !!voice.setup, onclick: attempt(async () => { const r = await api.voice.setup(); setTimeout(poll, 500); return r; }) }, voice.setup ? `Installing… ${mb(voice.progress?.done)} / ${mb(voice.progress?.total ?? voice.bytes)} MB` : `Install Whisper (${mb(voice.bytes ?? 81e6)} MB)`),
+						voice.error ? h("small", { class: "hint warn" }, voice.error) : h("small", { class: "hint" }, "Needed once before the microphone button appears."))
+				: null,
+		);
+	}
+
+	function webSection() {
+		const st = S.settings;
+		return sec(
+			"web",
+			"WEB",
+			field("Search engine", "The others are tried if one blocks", dropdown({ label: "Search engine", value: st.searchEngine, groups: [{ items: [{ value: "google", label: "Google" }, { value: "bing", label: "Bing" }, { value: "duckduckgo", label: "DuckDuckGo" }] }], onPick: (v) => save({ searchEngine: v }) })),
+			field("Fast page reading", "Skip images, video, fonts and trackers", toggle(st.fastPages, () => save({ fastPages: !st.fastPages }), "Fast page reading")),
+		);
+	}
+
+	// ---------- Models ----------
 	function modelSection(compact = false) {
 		const groups = new Map();
 		for (const m of S.models) {
@@ -187,7 +255,7 @@
 		const sel = dropdown({
 			label: "Model",
 			value: `${S.current.provider}|${S.current.model}`,
-			empty: S.models.length ? "Choose a model" : "Sign in below to see models",
+			empty: S.models.length ? "Choose a model" : "Sign in to see models",
 			groups: [...groups].map(([name, list]) => ({ label: name, items: list.map((m) => ({ value: `${m.provider}|${m.id}`, label: m.name, hint: m.local ? "local" : m.vision ? "" : "no vision" })) })),
 			onPick: (v) => {
 				const [provider, ...id] = v.split("|");
@@ -197,47 +265,46 @@
 		const cur = S.models.find((m) => m.provider === S.current.provider && m.id === S.current.model);
 		if (compact) return h("div", {}, field("Model", "", sel));
 		const st = S.settings;
-		const local = st.local ?? {};
-		const url = h("input", { class: "sinp", value: local.baseUrl ?? "", placeholder: "http://localhost:11434/v1", "aria-label": "Local endpoint address", onchange: (e) => save({ local: { baseUrl: e.target.value.trim() } }) });
-		const lm = h("input", { class: "sinp", value: local.model ?? "", placeholder: "model name, e.g. qwen3:8b", "aria-label": "Local model name", onchange: (e) => save({ local: { model: e.target.value.trim() } }) });
 		return sec(
 			"model",
-			"MODELS AND PRIVACY",
-			field("Model", "Quick answers (start with ?) and the default for everything else", sel),
-			field(
-				"Task model",
-				"Plans, computer use and research",
-				dropdown({
-					label: "Task model",
-					value: st.taskModel ?? "",
-					groups: [{ items: [{ value: "", label: "Automatic", hint: "stronger model when available" }] }, ...[...groups].map(([name, list]) => ({ label: name, items: list.filter((m) => !m.local).map((m) => ({ value: `${m.provider}|${m.id}`, label: m.name, hint: m.vision ? "" : "no vision" })) }))],
-					onPick: (v) => save({ taskModel: v }),
-				}),
-			),
+			"MODELS",
+			field("Model", "Answers, tasks, research and computer use", sel),
 			cur && !cur.vision ? h("p", { class: "hint warn" }, "This model can't see images, so browser and screen screenshots won't work.") : null,
-			field(
-				"Thinking",
-				"More thinking is slower and costs more",
-				dropdown({ label: "Thinking", value: st.thinking, groups: [{ items: ["off", "low", "medium", "high"].map((v) => ({ value: v, label: v })) }], onPick: (v) => save({ thinking: v }) }),
-			),
+			field("Thinking", "More is slower and costs more", segmented(st.thinking, [{ value: "off", label: "Off" }, { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }], (v) => save({ thinking: v }), "Thinking")),
+		);
+	}
+
+	function privacySection() {
+		const st = S.settings;
+		const local = st.local ?? {};
+		return sec(
+			"privacy",
+			"PRIVACY",
 			field(
 				"Where missions run",
-				"Applies to new missions",
-				segmented(
-					st.privacy,
-					[
-						{ value: "cloud", label: "Cloud model", title: "Your request and the file text midnight reads go to your chosen provider." },
-						{ value: "local", label: "Local only", title: "Only the local model below; public web pages may still be fetched." },
-						{ value: "offline", label: "Offline", title: "Local model and local files only; no network." },
-					],
-					(v) => save({ privacy: v }),
-					"Privacy",
-				),
+				st.privacy === "cloud" ? "Your request and the file text midnight reads go to your model's provider" : st.privacy === "local" ? "Only the local model. Public web pages may still be fetched; never falls back to the cloud." : "Local model and local files only. No network.",
+				segmented(st.privacy, [{ value: "cloud", label: "Cloud" }, { value: "local", label: "Local only" }, { value: "offline", label: "Offline" }], (v) => save({ privacy: v }), "Where missions run"),
 			),
-			h("p", { class: "hint" }, "A local or offline mission never falls back to a cloud model. If the local model can't do it, midnight says so."),
 			field("Local model", "An Ollama or compatible server on this computer", toggle(!!local.enabled, () => save({ local: { enabled: !local.enabled } }), "Use a local model")),
-			local.enabled ? h("div", { class: "keyrow" }, url, lm) : null,
-			local.enabled ? h("p", { class: "hint" }, "Quiet mode asks the server to unload the model when idle. midnight does not change your server's other settings.") : null,
+			local.enabled
+				? h("div", { class: "keyrow" },
+					h("input", { class: "sinp", value: local.baseUrl ?? "", placeholder: "http://localhost:11434/v1", "aria-label": "Local endpoint address", onchange: (e) => save({ local: { baseUrl: e.target.value.trim() } }) }),
+					h("input", { class: "sinp", value: local.model ?? "", placeholder: "model name, e.g. qwen3:8b", "aria-label": "Local model name", onchange: (e) => save({ local: { model: e.target.value.trim() } }) }))
+				: null,
+		);
+	}
+
+	function usageSection() {
+		const st = S.settings;
+		return sec(
+			"usage",
+			"USAGE",
+			field("Budget per mission", "At the cap, midnight stops starting new work and keeps what's done", segmented(st.budget?.costUsd ?? 2, [{ value: 0.5, label: "$0.50" }, { value: 2, label: "$2" }, { value: 10, label: "$10" }], (v) => save({ budget: { costUsd: v } }), "Budget")),
+			field(
+				"Pace",
+				st.profile === "quiet" ? "Only your direct requests run; background work and local models rest" : st.profile === "focused" ? "Your active mission first; background work waits" : st.profile === "burst" ? "More at once, for 30 minutes" : "One model task and limited web work at a time",
+				segmented(st.profile, [{ value: "quiet", label: "Quiet" }, { value: "balanced", label: "Balanced" }, { value: "focused", label: "Focused" }, { value: "burst", label: "Burst" }], (v) => save({ profile: v }), "Pace"),
+			),
 		);
 	}
 
@@ -265,139 +332,83 @@
 		);
 	}
 
+	// Signed-in accounts are listed; every other provider waits behind "Add account…" so the tab isn't a wall of sign-ins.
+	let picking = false;
 	function accountsSection() {
 		const all = S.accounts;
-		const collapsed = !q && !showAll;
-		const list = all.filter((a) => (q ? `${a.name} ${a.id}`.toLowerCase().includes(q.toLowerCase()) : !collapsed || a.configured || POPULAR.includes(a.id)));
-		const rows = list.flatMap((a) => {
+		const mine = all.filter((a) => a.configured);
+		const open = picking || !mine.length || all.some((a) => !a.configured && (busy === a.id || keyFor === a.id));
+		const others = all.filter((a) => !a.configured);
+		const popular = (a) => POPULAR.includes(a.id);
+		const list = q ? others.filter((a) => `${a.name} ${a.id}`.toLowerCase().includes(q.toLowerCase())) : showAll ? others : others.filter(popular);
+		const hidden = others.filter((a) => !popular(a)).length;
+		const row = (a) => {
 			const isBusy = busy === a.id;
 			const canOut = a.configured && (a.source === "stored" || a.source === "runtime");
-			const row = h(
+			const r = h(
 				"div",
 				{ class: "acct" },
 				h("i", { class: `sdot${a.configured ? " on" : ""}`, "aria-hidden": "true" }),
-				h("div", { class: "n" }, a.name, a.configured && a.source === "environment" ? h("small", {}, `via ${a.label ?? "environment"}`) : null),
+				h("div", { class: "n" }, a.name, a.configured ? h("small", {}, a.source === "environment" ? `via ${a.label ?? "environment"}` : "signed in") : null),
 				isBusy
 					? h("span", { class: "mono" }, "signing in…")
 					: [
-							!a.configured && a.oauth ? h("button", { class: "sb pri", onclick: () => login(a.id, "oauth") }, "Sign in") : null,
+							!a.configured && a.oauth ? h("button", { class: "sb", onclick: () => login(a.id, "oauth") }, "Sign in") : null,
 							a.apiKey ? h("button", { class: `sb${keyFor === a.id ? " on" : ""}`, onclick: () => { keyFor = keyFor === a.id ? "" : a.id; render(); } }, a.configured ? "Use API key" : "API key") : null,
 							canOut ? h("button", { class: "sb danger", onclick: () => logout(a.id) }, "Sign out") : null,
 						],
 			);
-			return keyFor === a.id && !isBusy ? [row, keyRow(a)] : [row];
+			return keyFor === a.id && !isBusy ? [r, keyRow(a)] : [r];
+		};
+		const search = h("input", {
+			class: "sinp",
+			placeholder: "Search providers…",
+			"aria-label": "Search providers",
+			value: q,
+			oninput: (e) => {
+				q = e.target.value;
+				const pos = e.target.selectionStart;
+				render();
+				const i = root.querySelector("#sec-accounts .sinp");
+				i.focus();
+				i.setSelectionRange(pos, pos);
+			},
 		});
 		return sec(
 			"accounts",
 			"ACCOUNTS",
-			h("input", {
-				class: "sinp",
-				placeholder: "Search providers…",
-				"aria-label": "Search providers",
-				value: q,
-				oninput: (e) => {
-					q = e.target.value;
-					const pos = e.target.selectionStart;
-					render();
-					const i = root.querySelector("#sec-accounts .sinp");
-					i.focus();
-					i.setSelectionRange(pos, pos);
-				},
-			}),
-			h("div", {}, rows.length ? rows : h("p", { class: "hint" }, "No providers match.")),
-			!q ? h("button", { class: "sb", onclick: () => { showAll = !showAll; render(); } }, showAll ? "Show fewer" : `Show all ${all.length} providers`) : null,
-			h("p", { class: "hint" }, "Subscriptions sign in in your browser. API key: click it, paste the key, Save. Keys are stored where the midnight.server CLI keeps them."),
+			...mine.flatMap(row),
+			open
+				? h("div", { class: "sform" },
+					h("p", { class: "hint" }, "Sign in with a subscription in your browser, or paste an API key. Keys are stored where midnight.server keeps them."),
+					search,
+					h("div", {}, list.length ? list.flatMap(row) : h("p", { class: "hint" }, "No providers match.")),
+					h("div", { class: "row2" },
+						!q && hidden ? h("button", { class: "sb", onclick: () => { showAll = !showAll; render(); } }, showAll ? "Show fewer" : `Show ${hidden} more`) : null,
+						mine.length ? h("button", { class: "sb", onclick: () => { picking = false; q = ""; showAll = false; keyFor = ""; render(); } }, "Done") : null))
+				: h("div", { class: "row" }, h("button", { class: "sb", onclick: () => { picking = true; render(); root.querySelector("#sec-accounts .sinp")?.focus(); } }, "Add account…")),
 		);
 	}
 
-	function autonomySection() {
-		return sec("autonomy", "AUTONOMY", autonomyField(), field("Desktop control", "Mouse and keyboard; always needs a plan you approve, and Esc takes over", dropdown({ label: "Desktop control", value: S.settings.computerUse, groups: [{ items: [{ value: "ask", label: "Ask in the plan" }, { value: "never", label: "Never" }] }], onPick: (v) => save({ computerUse: v }) })));
-	}
-
+	// ---------- Files ----------
 	function sourcesSection() {
 		return sec(
 			"sources",
-			"FOLDERS MIDNIGHT MAY USE",
+			"FOLDERS",
+			h("p", { class: "hint" }, "midnight reads only these folders. Drafts folders also receive the drafts it saves."),
 			...extra.sources.map((s) => h("div", { class: "acct" }, h("div", { class: "n", title: s.path }, s.path, h("small", {}, s.purpose === "output" ? "reads and saves drafts" : "reads")), h("button", { class: "sb danger", onclick: attempt(() => api.sources.remove(s.id), "Removed.") }, "Remove"))),
-			extra.sources.length ? null : h("p", { class: "hint" }, "No folders yet. midnight cannot read your files until you add one."),
-			h("div", { class: "row" }, h("button", { class: "sb", onclick: attempt(() => api.sources.pick("source"), "Folder added.") }, "Add folder to read"), h("button", { class: "sb", onclick: attempt(() => api.sources.pick("output"), "Folder added.") }, "Add folder for drafts")),
+			h("div", { class: "row" }, h("button", { class: "sb", onclick: attempt(() => api.sources.pick("source"), "Folder added.") }, "Add folder to read"), h("button", { class: "sb", onclick: attempt(() => api.sources.pick("output"), "Folder added.") }, "Add drafts folder")),
 		);
 	}
 
 	function fileSearchSection() {
 		const embedding = S.settings.embedding ?? {};
-		const python = h("input", { class: "sinp", value: embedding.pythonPath ?? "", placeholder: "python (or a Python executable path)", "aria-label": "File search Python executable", onchange: (e) => save({ embedding: { pythonPath: e.target.value.trim() } }) });
 		return sec(
 			"file-search",
-			"LOCAL FILE SEARCH",
-			field("Search by meaning", "EmbeddingGemma 2 runs on this computer; filename and word matches work without it", toggle(!!embedding.enabled, () => save({ embedding: { enabled: !embedding.enabled } }), "Enable local meaning search")),
-			field("Relevant context for AI", "Find related memories, previous tasks, selected files and workflows for your chosen model. A cloud provider receives the retrieved excerpts. Word matching works while the local model loads.", toggle(embedding.assist !== false, () => save({ embedding: { assist: embedding.assist === false } }), "Use relevant context for AI")),
-			h("p", { class: "hint" }, "Searches only the folders selected above. Indexes documents, images, audio and video; results can become the starting point for a task."),
-			h("div", { class: "row" }, h("button", { class: "sb", onclick: () => window.openFileSearch?.() }, "Open file search")),
-			h("details", {}, h("summary", { class: "hint" }, "Python runtime"), h("p", { class: "hint" }, "Install local search in the search view downloads packages and the model. Python must already be installed. Leave this blank to use Python on your PATH."), python),
-		);
-	}
-
-	const EFFECT_LABEL = { "external.communication": "Send email", "local.write": "Save files", "local.move": "Move files", "read.connector": "Read connected accounts", "connector.write": "Change connected records", "browser.commit": "Submit on websites" };
-	function rulesSection() {
-		const label = h("input", { class: "sinp", placeholder: "Rule name, e.g. Weekly report to Sam", "aria-label": "Rule name" });
-		const dest = h("input", { class: "sinp", placeholder: "Exact recipients or sites, comma separated", "aria-label": "Allowed recipients or sites" });
-		let effect = "external.communication";
-		let days = 30;
-		const draft = () => ({ label: label.value.trim() || EFFECT_LABEL[effect], actionClasses: [effect], destinations: dest.value.split(",").map((x) => x.trim()).filter(Boolean), expiresInDays: days, limits: { maxActions: 50 } });
-		return sec(
-			"rules",
-			"RULES",
-			h("p", { class: "hint" }, "A rule lets midnight do one kind of action without asking, only for the recipients or sites you list, until it expires. Only you can create or widen a rule; revoking it takes effect immediately."),
-			...extra.grants.map((g) =>
-				h(
-					"div",
-					{ class: "acct" },
-					h("div", { class: "n", title: `${g.actionClasses.join(", ")}${g.destinations.length ? ` → ${g.destinations.join(", ")}` : ""}` }, g.label, h("small", {}, `${g.missionId ? "this mission only" : `${g.used}${g.limits?.maxActions ? `/${g.limits.maxActions}` : ""} used`}${g.expiresAt ? ` · until ${new Date(g.expiresAt).toLocaleDateString()}` : ""}`)),
-					h("button", { class: "sb danger", onclick: attempt(() => api.grants.revoke(g.id), "Rule revoked.") }, "Revoke"),
-				),
-			),
-			h("div", { class: "keyrow" }, label),
-			h(
-				"div",
-				{ class: "keyrow" },
-				dropdown({ label: "Action", value: effect, groups: [{ items: Object.entries(EFFECT_LABEL).map(([value, l]) => ({ value, label: l })) }], onPick: (v) => (effect = v) }),
-				segmented(days, [{ value: 1, label: "1d" }, { value: 7, label: "7d" }, { value: 30, label: "30d" }], (v) => (days = v), "Expires"),
-			),
-			h("div", { class: "keyrow" }, dest, h("button", { class: "sb pri", onclick: attempt(() => { const d = draft(); if (["external.communication", "browser.commit"].includes(effect) && !d.destinations.length) throw new Error("List the exact recipients or sites this rule allows."); return api.grants.create(d); }, "Rule created.") }, "Create")),
-		);
-	}
-
-	function watchesSection() {
-		const label = h("input", { class: "sinp", placeholder: "Name, e.g. Pricing page", "aria-label": "Watch name" });
-		const target = h("input", { class: "sinp", placeholder: "https://… or a folder path inside your folders", "aria-label": "What to watch" });
-		let every = { unit: "hours", n: 6 };
-		let onChange = "notify";
-		return sec(
-			"watches",
-			"WATCHES",
-			h("p", { class: "hint" }, "A watch checks a page, folder or connected account on a schedule without using the model. When nothing changes it stays silent; a change lands in the attention queue (held during quiet hours)."),
-			...extra.watches.map((w) => h("div", { class: "acct" }, h("div", { class: "n", title: JSON.stringify(w.source) }, w.label, h("small", {}, w.status)), h("button", { class: "sb", onclick: attempt(() => api.watches.setPaused({ watchId: w.id, paused: !w.paused })) }, w.paused ? "Resume" : "Pause"), h("button", { class: "sb danger", onclick: attempt(() => api.watches.remove(w.id), "Watch removed.") }, "Delete"))),
-			h("div", { class: "keyrow" }, label),
-			h("div", { class: "keyrow" }, target),
-			h(
-				"div",
-				{ class: "keyrow" },
-				segmented("6h", [{ value: "30m", label: "30m" }, { value: "6h", label: "6h" }, { value: "1d", label: "daily" }, { value: "wd", label: "weekdays" }], (v) => (every = { "30m": { unit: "minutes", n: 30 }, "6h": { unit: "hours", n: 6 }, "1d": { unit: "days", n: 1, at: "09:00" }, wd: { unit: "weekdays", n: 1, at: "08:30" } }[v]), "How often"),
-				segmented("notify", [{ value: "notify", label: "Tell me" }, { value: "prepare", label: "Prepare an update" }], (v) => (onChange = v), "On change"),
-				h(
-					"button",
-					{
-						class: "sb pri",
-						onclick: attempt(() => {
-							const t = target.value.trim();
-							const source = /^https?:\/\//i.test(t) ? { kind: "url", url: t } : { kind: "folder", path: t };
-							return api.watches.create({ label: label.value.trim() || t.slice(0, 60), source, every, onChange, cooldownMinutes: 60 });
-						}, "Watching."),
-					},
-					"Add",
-				),
-			),
+			"SEARCH",
+			field("Search by meaning", "Find files by what they say, not only their names. EmbeddingGemma 2 runs on this computer.", toggle(!!embedding.enabled, () => save({ embedding: { enabled: !embedding.enabled } }), "Enable local meaning search")),
+			embedding.enabled ? field("Use the graphics card", "Faster indexing where supported; otherwise the processor is used", toggle(embedding.device === "gpu", () => save({ embedding: { device: embedding.device === "gpu" ? "cpu" : "gpu" } }), "Use the graphics card for local search")) : null,
+			field("Give the model relevant context", "Related memories, past tasks and files are added to requests. A cloud provider receives these excerpts.", toggle(embedding.assist !== false, () => save({ embedding: { assist: embedding.assist === false } }), "Use relevant context for AI")),
 		);
 	}
 
@@ -414,7 +425,7 @@
 		return sec(
 			"memory",
 			"MEMORY",
-			h("p", { class: "hint" }, "Only confirmed memories are used, and only when relevant. A memory never grants permission."),
+			h("p", { class: "hint" }, "Only memories you keep are used, and only when relevant. A memory never grants permission."),
 			...extra.memory.flatMap((m) => [
 				h(
 					"div",
@@ -427,15 +438,85 @@
 				editing === m.id ? correctRow(m) : null,
 			]),
 			h("div", { class: "keyrow" }, input, h("button", { class: "sb pri", onclick: attempt(() => input.value.trim() && api.memory.remember({ text: input.value.trim(), kind: "preference" }), "Remembered.") }, "Remember")),
-			h("button", { class: "sb", onclick: attempt(async () => api.clipboard.write(JSON.stringify(await api.memory.export(), null, 2)), "Memory copied as JSON.") }, "Export"),
+		);
+	}
+
+	// ---------- Automation ----------
+	const EFFECT_LABEL = { "external.communication": "Send email", "local.write": "Save files", "local.move": "Move files", "read.connector": "Read connected accounts", "connector.write": "Change connected records", "browser.commit": "Submit on websites" };
+	let ruleDraft = { effect: "external.communication", days: 30 };
+	function rulesSection() {
+		const form = () => {
+			const label = h("input", { class: "sinp", placeholder: "Rule name, e.g. Weekly report to Sam", "aria-label": "Rule name" });
+			const dest = h("input", { class: "sinp", placeholder: "Exact recipients or sites, comma separated", "aria-label": "Allowed recipients or sites" });
+			form.submit = () => {
+				const d = { label: label.value.trim() || EFFECT_LABEL[ruleDraft.effect], actionClasses: [ruleDraft.effect], destinations: dest.value.split(",").map((x) => x.trim()).filter(Boolean), expiresInDays: ruleDraft.days, limits: { maxActions: 50 } };
+				if (["external.communication", "browser.commit"].includes(ruleDraft.effect) && !d.destinations.length) throw new Error("List the exact recipients or sites this rule allows.");
+				return api.grants.create(d);
+			};
+			return [
+				label,
+				h("div", { class: "row" },
+					dropdown({ label: "Action", value: ruleDraft.effect, groups: [{ items: Object.entries(EFFECT_LABEL).map(([value, l]) => ({ value, label: l })) }], onPick: (v) => (ruleDraft.effect = v) }),
+					h("span", { class: "hint" }, "for"),
+					segmented(ruleDraft.days, [{ value: 1, label: "1 day" }, { value: 7, label: "7 days" }, { value: 30, label: "30 days" }], (v) => (ruleDraft.days = v), "Expires")),
+				dest,
+			];
+		};
+		form.action = "Create rule";
+		form.done = "Rule created.";
+		return sec(
+			"rules",
+			"RULES",
+			h("p", { class: "hint" }, "A rule lets midnight do one kind of action without asking, only for the recipients or sites you list, until it expires. Revoking takes effect immediately."),
+			...extra.grants.map((g) =>
+				h(
+					"div",
+					{ class: "acct" },
+					h("div", { class: "n", title: `${g.actionClasses.join(", ")}${g.destinations.length ? ` → ${g.destinations.join(", ")}` : ""}` }, g.label, h("small", {}, `${g.missionId ? "this mission only" : `${g.used}${g.limits?.maxActions ? `/${g.limits.maxActions}` : ""} used`}${g.expiresAt ? ` · until ${new Date(g.expiresAt).toLocaleDateString()}` : ""}`)),
+					h("button", { class: "sb danger", onclick: attempt(() => api.grants.revoke(g.id), "Rule revoked.") }, "Revoke"),
+				),
+			),
+			adder("rule", "New rule…", form),
+		);
+	}
+
+	let watchDraft = { every: "6h", onChange: "notify" };
+	const EVERY = { "30m": { unit: "minutes", n: 30 }, "6h": { unit: "hours", n: 6 }, "1d": { unit: "days", n: 1, at: "09:00" }, wd: { unit: "weekdays", n: 1, at: "08:30" } };
+	function watchesSection() {
+		const qh = S.settings.quietHours ?? {};
+		const form = () => {
+			const label = h("input", { class: "sinp", placeholder: "Name, e.g. Pricing page", "aria-label": "Watch name" });
+			const target = h("input", { class: "sinp", placeholder: "https://… or a folder inside your folders", "aria-label": "What to watch" });
+			form.submit = () => {
+				const t = target.value.trim();
+				const source = /^https?:\/\//i.test(t) ? { kind: "url", url: t } : { kind: "folder", path: t };
+				return api.watches.create({ label: label.value.trim() || t.slice(0, 60), source, every: EVERY[watchDraft.every], onChange: watchDraft.onChange, cooldownMinutes: 60 });
+			};
+			return [
+				label,
+				target,
+				h("div", { class: "row" },
+					segmented(watchDraft.every, [{ value: "30m", label: "30m" }, { value: "6h", label: "6h" }, { value: "1d", label: "daily" }, { value: "wd", label: "weekdays" }], (v) => (watchDraft.every = v), "How often"),
+					segmented(watchDraft.onChange, [{ value: "notify", label: "Tell me" }, { value: "prepare", label: "Prepare an update" }], (v) => (watchDraft.onChange = v), "On change")),
+			];
+		};
+		form.action = "Add watch";
+		form.done = "Watching.";
+		return sec(
+			"watches",
+			"WATCHES",
+			h("p", { class: "hint" }, "A watch checks a page, folder or connected account on a schedule without using the model, and tells you only when something changes."),
+			...extra.watches.map((w) => h("div", { class: "acct" }, h("div", { class: "n", title: JSON.stringify(w.source) }, w.label, h("small", {}, w.status)), h("button", { class: "sb", onclick: attempt(() => api.watches.setPaused({ watchId: w.id, paused: !w.paused })) }, w.paused ? "Resume" : "Pause"), h("button", { class: "sb danger", onclick: attempt(() => api.watches.remove(w.id), "Watch removed.") }, "Delete"))),
+			adder("watch", "New watch…", form),
+			field("Quiet hours", `${qh.from ?? "22:00"}–${qh.to ?? "07:00"} · changes wait until morning`, toggle(!!qh.enabled, () => save({ quietHours: { enabled: !qh.enabled } }), "Quiet hours")),
 		);
 	}
 
 	function routinesSection() {
-		if (!extra.recipes.length) return null;
 		return sec(
 			"routines",
 			"ROUTINES",
+			h("p", { class: "hint" }, "Save a finished mission as a routine, or import one someone shared. Imported routines start unreviewed and in Ask me mode."),
 			...extra.recipes.map((r) =>
 				h(
 					"div",
@@ -443,49 +524,129 @@
 					h("div", { class: "n", title: `${r.template.goal}\nUses: ${r.template.tools.join(", ")}\nEffects: ${r.template.effects.join(", ")}` }, r.label, h("small", {}, r.reviewed ? "reviewed" : "review the steps before running")),
 					r.reviewed ? null : h("button", { class: "sb", onclick: attempt(() => api.recipes.review({ recipeId: r.id }), "Reviewed.") }, "Mark reviewed"),
 					r.reviewed ? h("button", { class: "sb pri", onclick: attempt(() => api.recipes.run({ recipeId: r.id, requestId: `req_${Date.now()}` }), "Started.") }, "Run") : null,
+					h("button", { class: "sb", title: "Save this routine as a file to share", onclick: attempt(async () => { const x = await api.recipes.export(r.id); if (x?.file) setStatus(`Saved ${x.file}`); return x; }) }, "Export"),
 				),
 			),
+			h("div", { class: "row" }, h("button", { class: "sb", onclick: attempt(async () => { const x = await api.recipes.import(); if (x?.recipe) setStatus(`Imported “${x.recipe.label}”. Review it before it runs.`); return x; }) }, "Import routine…")),
 		);
 	}
 
-	function resourcesSection() {
-		const st = S.settings;
-		const qh = st.quietHours ?? {};
+	let mcpTools = {}; // connector id -> inspected tools, while their list is open
+	let windowsConnectors; // what Windows' agent registry offers, looked up once per Settings visit
+	function connectorsSection() {
+		const servers = extra.mcp ?? [];
+		if (windowsConnectors === undefined) {
+			windowsConnectors = null;
+			api.connectors.windowsConnectors().then((r) => ((windowsConnectors = r), render())).catch(() => {});
+		}
+		const form = () => {
+			const name = h("input", { class: "sinp", placeholder: "Name, e.g. GitHub", "aria-label": "Connector name" });
+			const target = h("input", { class: "sinp", placeholder: "npx -y @modelcontextprotocol/server-github   or   https://mcp.example.com/mcp", "aria-label": "Command or address" });
+			const token = h("input", { class: "sinp", type: "password", placeholder: "Access token for a remote service (optional, stored encrypted)", "aria-label": "Access token" });
+			form.submit = () => {
+				const t = target.value.trim();
+				const remote = /^https?:\/\//i.test(t);
+				const parts = t.match(/"[^"]*"|\S+/g)?.map((x) => x.replace(/^"|"$/g, "")) ?? [];
+				return api.connectors.mcpAdd(remote ? { name: name.value.trim() || new URL(t).host, kind: "http", url: t, ...(token.value ? { token: token.value } : {}) } : { name: name.value.trim() || parts[0] || "connector", kind: "stdio", command: parts[0] ?? "", args: parts.slice(1) });
+			};
+			return [name, target, token];
+		};
+		form.action = "Add connector";
+		form.done = "Connector added.";
+		const suggested = (windowsConnectors?.connectors ?? []).filter((c) => !servers.some((s) => s.kind === "stdio" && s.command === c.command && JSON.stringify(s.args) === JSON.stringify(c.args)));
 		return sec(
-			"resources",
-			"RESOURCES",
-			field(
-				"Profile",
-				st.profile === "quiet" ? "Only your direct requests run; background work and local models rest" : st.profile === "focused" ? "Your active mission first; background suggestions wait" : st.profile === "burst" ? "More at once, for 30 minutes" : "One model task and bounded web work at a time",
-				segmented(st.profile, [{ value: "quiet", label: "Quiet" }, { value: "balanced", label: "Balanced" }, { value: "focused", label: "Focused" }, { value: "burst", label: "Burst" }], (v) => save({ profile: v }), "Resource profile"),
-			),
-			field("Quiet hours", `${qh.from ?? "22:00"}–${qh.to ?? "07:00"} · updates wait until morning`, toggle(!!qh.enabled, () => save({ quietHours: { enabled: !qh.enabled } }), "Quiet hours")),
-			field(
-				"Budget per mission",
-				"midnight stops starting new work at the cap and keeps what's done",
-				segmented(st.budget?.costUsd ?? 2, [{ value: 0.5, label: "$0.50" }, { value: 2, label: "$2" }, { value: 10, label: "$10" }], (v) => save({ budget: { costUsd: v } }), "Budget"),
-			),
+			"connectors",
+			"CONNECTORS",
+			h("p", { class: "hint" }, "Give midnight tools from any Model Context Protocol server, on this computer or remote. Each use asks first; read-only tools you review can run without asking."),
+			...servers.map((s) => h("div", { class: "mcp-server" },
+				h("div", { class: "acct" },
+					h("div", { class: "n", title: s.kind === "stdio" ? `${s.command} ${s.args.join(" ")}` : s.url }, s.name, h("small", {}, s.kind === "stdio" ? "program on this computer" : `remote · ${new URL(s.url).host}`)),
+					toggle(s.enabled, attempt(() => api.connectors.mcpSetEnabled(s.id, !s.enabled)), `Use ${s.name}`),
+					h("button", { class: "sb", onclick: attempt(async () => { mcpTools[s.id] = mcpTools[s.id] ? undefined : await api.connectors.mcpInspect(s.id); return { ok: true }; }) }, mcpTools[s.id] ? "Hide tools" : "Show tools"),
+					h("button", { class: "sb danger", onclick: attempt(() => api.connectors.mcpRemove(s.id), "Removed.") }, "Remove"),
+				),
+				mcpTools[s.id] ? h("div", { class: "mcp-tools" },
+					h("p", { class: "hint" }, `${mcpTools[s.id].server.info?.name ?? s.name} · protocol ${mcpTools[s.id].server.protocol ?? "?"}`),
+					...mcpTools[s.id].tools.map((t) => h("div", { class: "acct" },
+						h("div", { class: "n", title: t.description }, t.title ?? t.name, h("small", {}, t.review?.readOnly && t.review.current ? "reviewed · runs without asking" : t.review && !t.review.current ? "changed since review · asks" : t.readOnlyHint ? "read-only · asks until reviewed" : "may change data · always asks")),
+						t.app ? h("small", { class: "mono" }, "app view") : null,
+						t.readOnlyHint ? toggle(!!(t.review?.readOnly && t.review.current), attempt(async () => { const r = await api.connectors.mcpReview(s.id, t.name, t.digest, !(t.review?.readOnly && t.review.current)); mcpTools[s.id] = await api.connectors.mcpInspect(s.id); return r; }), `Run ${t.name} without asking`) : null,
+					)),
+				) : null,
+			)),
+			// Windows' own agent connectors (File Explorer, Settings and apps that registered one), when this Windows has the registry.
+			...suggested.map((c) =>
+				h("div", { class: "acct" }, h("div", { class: "n", title: c.description }, c.name, h("small", {}, "offered by Windows")), h("button", { class: "sb", onclick: attempt(() => api.connectors.mcpAdd({ name: c.name, kind: "stdio", command: c.command, args: c.args }), "Connector added.") }, "Add"))),
+			adder("connector", "Add connector…", form),
 		);
 	}
 
-	function behaviourSection() {
-		const st = S.settings;
-		const ta = h("textarea", { class: "sta", placeholder: "e.g. Reply in Spanish. Prefer official sources. Keep answers under 5 lines.", "aria-label": "Standing instructions", onchange: (e) => save({ instructions: e.target.value }) });
-		ta.value = st.instructions;
+	function shareSection() {
+		const on = !!S.settings.mcpServer;
 		return sec(
-			"behaviour",
-			"BEHAVIOUR",
-			field("Know where I was", "Tell midnight the window or page you were on when you opened it", toggle(st.shareContext, () => save({ shareContext: !st.shareContext }), "Know where I was")),
-			field("Summon shortcut", "Ctrl + Win: press both keys, then release. Other shortcuts can include a letter.", hotkeyButton()),
-			h("p", { class: "hint" }, "midnight opens in the centre of the screen. Drag its title bar to move it. Minimize, close or Esc hides it in the tray; your work keeps running."),
-			field("Start with Windows", "Takes effect in the installed app", toggle(st.launchAtLogin, () => save({ launchAtLogin: !st.launchAtLogin }), "Start with Windows")),
-			field("Standing instructions", "Added to every mission", null),
-			ta,
+			"share",
+			"OTHER APPS",
+			field("Let other apps use midnight", "Windows agents, Claude Desktop and other MCP clients on this computer can search your folders and start tasks. Changes still wait for your approval.", toggle(on, () => save({ mcpServer: !on }), "Let other apps use midnight")),
+			on ? h("div", { class: "row" },
+				h("button", { class: "sb", onclick: attempt(async () => { const r = await api.connectors.registerWithWindows(); setStatus(r.ok ? "Registered with Windows." : r.reason, !r.ok); return { ok: true }; }) }, "Register with Windows"),
+				h("button", { class: "sb", title: S.mcpServer?.bridge, onclick: attempt(async () => { await api.clipboard.write(JSON.stringify({ mcpServers: { midnight: { command: S.mcpServer?.bridge, args: [] } } }, null, 2)); setStatus("Client settings copied."); return { ok: true }; }) }, "Copy client settings"),
+			) : null,
+		);
+	}
+
+	// ---------- Display ----------
+	function displaySection() {
+		const st = S.settings;
+		const sizes = [0.9, 1, 1.15, 1.3, 1.45, 1.6].map((value, i) => ({ value, label: ["S", "M", "L", "XL", "2X", "3X"][i] }));
+		const near = sizes.reduce((a, b) => (Math.abs(b.value - st.textSize) < Math.abs(a.value - st.textSize) ? b : a)).value;
+		return sec(
+			"display",
+			"DISPLAY",
+			field("Text size", "Also Ctrl + and Ctrl −; Ctrl 0 resets", segmented(near, sizes, (v) => save({ textSize: v }), "Text size")),
+			field("High contrast", "Brighter text, stronger edges", toggle(st.highContrast, () => save({ highContrast: !st.highContrast }), "High contrast")),
+			field("Reduce motion", "No animations or pulsing status light", toggle(st.reducedMotion, () => save({ reducedMotion: !st.reducedMotion }), "Reduce motion")),
+			field("Reading view for long answers", "Opens the wide view automatically. Ctrl+E toggles it.", toggle(st.autoExpand, () => save({ autoExpand: !st.autoExpand }), "Reading view for long answers")),
+		);
+	}
+
+	// ---------- Data ----------
+	function dataSection() {
+		return sec(
+			"data",
+			"YOUR DATA",
+			field("Export everything", "Missions, receipts, rules, watches and memory as JSON", h("button", { class: "sb", onclick: attempt(async () => { const r = await api.data.export(); setStatus(`Exported to ${r.file}`); }) }, "Export")),
+			field("Delete finished missions' content", "Answers, evidence, drafts and transcripts. Records of actions that left the computer stay.", h("button", { class: "sb danger", onclick: () => confirm("Delete the content of finished missions?") && attempt(() => api.data.remove("history"), "Deleted.")() }, "Delete")),
+			field("Delete all memory", "", h("button", { class: "sb danger", onclick: () => confirm("Forget everything midnight remembers?") && attempt(() => api.data.remove("memory"), "Memory deleted.")() }, "Delete")),
+			field("Website data", "Cookies, logins and cache for saved apps and the background browser", h("button", { class: "sb danger", onclick: attempt(() => api.data.clearBrowser(), "Website data cleared. Saved apps are still pinned.") }, "Clear")),
+			field("App data folder", "", h("button", { class: "sb", onclick: () => api.data.openFolder() }, "Open")),
+		);
+	}
+
+	function aboutSection() {
+		const st = S.settings;
+		return sec(
+			"about",
+			"ABOUT",
+			field(
+				"Updates",
+				"Checks at most once a day. Installs only signed builds, only when you say so.",
+				h(
+					"div",
+					{ class: "row" },
+					segmented(st.updates ?? "notify", [{ value: "notify", label: "Tell me" }, { value: "off", label: "Off" }], (v) => save({ updates: v }), "Updates"),
+					h("button", { class: "sb", onclick: attempt(async () => { const r = await api.updates.check(); updateReady = !!r.available; setStatus(r.error ? `Couldn't check: ${r.error}` : r.available ? `Version ${r.latest} is available.` : "You have the latest version."); }) }, "Check"),
+					updateReady ? h("button", { class: "sb pri", onclick: attempt(async () => { const r = await api.updates.install(); setStatus(r.ok ? "Installing…" : r.reason, !r.ok); }) }, "Install") : null,
+				),
+			),
+			field("Support bundle", "Preview it, then save. No prompts, files, screenshots or secrets.", h("button", { class: "sb", onclick: attempt(async () => { const p = await api.data.diagnostics(); if (confirm(`${p.note}\n\n${JSON.stringify(p.preview, null, 1).slice(0, 1500)}…\n\nSave it?`)) await api.data.saveDiagnostics(); }) }, "Preview")),
+			field("Demo connectors", "Pretend CRM and mail for trying the sales-brief workflow. Nothing is really sent.", toggle(!!st.demoConnectors, () => save({ demoConnectors: !st.demoConnectors }).then(() => setStatus("Restart the engine (tray → Restart engine) to apply.")), "Demo connectors")),
+			h("p", { class: "hint" }, "Shortcuts: ? quick · ?? deep research · ↑ last prompt · Ctrl+E reading view · Ctrl+Shift+C copy · 1–9 open a source · Ctrl+L new task · Esc takes over"),
+			h("p", { class: "hint mono" }, `midnight ${S.version} · engine ${S.engine} · ${S.dataDir}`),
 		);
 	}
 
 	function hotkeyButton() {
-		const b = h("button", { class: "sb", "aria-label": "Change summon shortcut" }, h("kbd", {}, pretty(S.settings.hotkey)), " change");
+		const b = h("button", { class: "sb", "aria-label": "Change summon shortcut" }, h("kbd", {}, pretty(S.settings.hotkey)), " · change");
 		b.onclick = () => {
 			cancelHotkeyCapture?.();
 			b.textContent = "Press shortcut… (Esc cancels)";
@@ -522,57 +683,33 @@
 		return b;
 	}
 
-	function readingSection() {
-		const st = S.settings;
-		const sizes = [0.9, 1, 1.15, 1.3, 1.45, 1.6].map((value, i) => ({ value, label: ["S", "M", "L", "XL", "2X", "3X"][i] }));
-		const near = sizes.reduce((a, b) => (Math.abs(b.value - st.textSize) < Math.abs(a.value - st.textSize) ? b : a)).value;
-		return sec(
-			"reading",
-			"READING",
-			field("Text size", "Ctrl + / Ctrl − / Ctrl 0 anywhere in midnight", segmented(near, sizes, (v) => save({ textSize: v }), "Text size")),
-			field("High contrast", "Brighter text, stronger edges", toggle(st.highContrast, () => save({ highContrast: !st.highContrast }), "High contrast")),
-			field("Reduce motion", "Instant view changes, no animated status light", toggle(st.reducedMotion, () => save({ reducedMotion: !st.reducedMotion }), "Reduce motion")),
-			field("Reading view for long answers", "Opens the wide view automatically · Ctrl+E toggles it", toggle(st.autoExpand, () => save({ autoExpand: !st.autoExpand }), "Reading view for long answers")),
-			field("Answer length", "", segmented(st.answerLength, [{ value: "brief", label: "Brief" }, { value: "normal", label: "Normal" }, { value: "detailed", label: "Detailed" }], (v) => save({ answerLength: v }), "Answer length")),
-		);
-	}
-
-	function webSection() {
-		const st = S.settings;
-		return sec(
-			"web",
-			"WEB",
-			field("Search engine", "Falls back to the others if one blocks", dropdown({ label: "Search engine", value: st.searchEngine, groups: [{ items: [{ value: "google", label: "Google" }, { value: "bing", label: "Bing" }, { value: "duckduckgo", label: "DuckDuckGo" }] }], onPick: (v) => save({ searchEngine: v }) })),
-			field("Fast page reading", "Fetch pages directly when possible; skip images, video, fonts and trackers", toggle(st.fastPages, () => save({ fastPages: !st.fastPages }), "Fast page reading")),
-		);
-	}
-
-	function dataSection() {
-		const st = S.settings;
-		return sec(
-			"data",
-			"DATA",
-			field("Export everything", "Missions, receipts, rules, watches and memory as JSON", h("button", { class: "sb", onclick: attempt(async () => { const r = await api.data.export(); setStatus(`Exported to ${r.file}`); }) }, "Export")),
-			field("Delete finished missions' content", "Answers, evidence, drafts and transcripts. Records of actions that left the computer stay.", h("button", { class: "sb danger", onclick: () => confirm("Delete the content of finished missions?") && attempt(() => api.data.remove("history"), "Deleted.")() }, "Delete")),
-			field("Delete all memory", "", h("button", { class: "sb danger", onclick: () => confirm("Forget everything midnight remembers?") && attempt(() => api.data.remove("memory"), "Memory deleted.")() }, "Delete")),
-			field("Website data", "Cookies, logins and cache for saved apps and midnight's background browser", h("button", { class: "sb danger", onclick: attempt(() => api.data.clearBrowser(), "Website data cleared. Saved apps are still pinned.") }, "Clear")),
-			field("Support bundle", "Preview what it contains, then save it. No prompts, files, screenshots or secrets.", h("button", { class: "sb", onclick: attempt(async () => { const p = await api.data.diagnostics(); if (confirm(`${p.note}\n\n${JSON.stringify(p.preview, null, 1).slice(0, 1500)}…\n\nSave it?`)) await api.data.saveDiagnostics(); }) }, "Preview")),
-			field("App data folder", "", h("button", { class: "sb", onclick: () => api.data.openFolder() }, "Open")),
-			field(
-				"Updates",
-				"Reads the public release list at most once a day; installs only signed builds, only when you ask and nothing is running",
-				h(
-					"div",
-					{ class: "row" },
-					segmented(st.updates ?? "notify", [{ value: "notify", label: "Tell me" }, { value: "off", label: "Off" }], (v) => save({ updates: v }), "Updates"),
-					h("button", { class: "sb", onclick: attempt(async () => { const r = await api.updates.check(); updateReady = !!r.available; setStatus(r.error ? `Couldn't check: ${r.error}` : r.available ? `Version ${r.latest} is available.` : "You have the latest version."); }) }, "Check"),
-					updateReady ? h("button", { class: "sb pri", onclick: attempt(async () => { const r = await api.updates.install(); setStatus(r.ok ? "Installing…" : r.reason, !r.ok); }) }, "Install") : null,
-				),
-			),
-			field("Demo connectors", "Fixture CRM and mail for trying the sales-brief workflow. Nothing is really sent.", toggle(!!st.demoConnectors, () => save({ demoConnectors: !st.demoConnectors }).then(() => setStatus("Restart the engine (tray → Restart engine) to apply.")), "Demo connectors")),
-			h("p", { class: "hint" }, "Shortcuts: ? quick · ?? deep research · ↑ last prompt · Ctrl+E reading view (click ⤢ again for evidence) · Ctrl+Shift+C copy · 1–9 open a source · Ctrl+L new task · Esc takes over"),
-			h("p", { class: "hint" }, `midnight ${S.version} · engine ${S.engine} · ${S.dataDir}`),
-		);
+	// ---------- tabs ----------
+	const TABS = [
+		{ id: "general", label: "General", sections: () => [autonomySection(), answersSection(), launcherSection(), voiceSection(), webSection()] },
+		{ id: "models", label: "Models", sections: () => [modelSection(), accountsSection(), privacySection(), usageSection()] },
+		{ id: "files", label: "Files & memory", sections: () => [sourcesSection(), fileSearchSection(), memorySection()] },
+		{ id: "automation", label: "Automation", sections: () => [rulesSection(), watchesSection(), routinesSection(), connectorsSection(), shareSection()] },
+		{ id: "display", label: "Display", sections: () => [displaySection()] },
+		{ id: "data", label: "Data", sections: () => [dataSection(), aboutSection()] },
+	];
+	const SECTION_TAB = { autonomy: "general", answers: "general", launcher: "general", voice: "general", web: "general", accounts: "models", model: "models", privacy: "models", usage: "models", sources: "files", "file-search": "files", memory: "files", rules: "automation", watches: "automation", routines: "automation", connectors: "automation", share: "automation", display: "display", data: "data", about: "data" };
+	let tab = "general";
+	function tabBar() {
+		const pick = (id) => {
+			tab = id;
+			render();
+			root.querySelector(`.stabs [data-tab="${id}"]`)?.focus();
+		};
+		const bar = h("div", { class: "stabs", role: "tablist", "aria-label": "Settings sections" },
+			...TABS.map((t) => h("button", { type: "button", role: "tab", "data-tab": t.id, "aria-selected": String(t.id === tab), tabindex: t.id === tab ? "0" : "-1", class: t.id === tab ? "on" : "", onclick: () => pick(t.id) }, t.label)));
+		bar.onkeydown = (e) => {
+			const i = TABS.findIndex((t) => t.id === tab);
+			const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1 }[e.key];
+			if (next === undefined) return;
+			e.preventDefault();
+			pick(TABS[(next + TABS.length) % TABS.length].id);
+		};
+		return bar;
 	}
 
 	// ---------- actions ----------
@@ -602,11 +739,13 @@
 		const p = m.prompt;
 		let value = "";
 		const done = (v) => {
+			focusTrap.release(box);
 			modal.remove();
 			modal = undefined;
 			api.auth.answer(m.id, v);
 		};
-		const box = h("div", { class: "box", role: "dialog" }, h("p", {}, p.message));
+		const message = h("p", { id: `authPrompt${m.id}` }, p.message);
+		const box = h("div", { class: "box", role: "dialog", "aria-modal": "true", "aria-labelledby": message.id }, message);
 		if (p.kind === "select") box.append(h("div", { class: "opts" }, ...p.options.map((o) => h("button", { class: "sb", onclick: () => done(o.id) }, o.label, o.description ? h("small", { class: "mono" }, `  ${o.description}`) : null))));
 		else {
 			const input = h("input", { class: "sinp", type: p.kind === "secret" ? "password" : "text", placeholder: p.placeholder ?? "" });
@@ -621,6 +760,7 @@
 		modal?.remove();
 		modal = h("div", { class: "modal" }, box);
 		root.append(modal);
+		focusTrap.contain(box, { focus: p.kind === "select" }); // a text prompt focuses its input instead
 	}
 
 	api.on((m) => {
@@ -638,25 +778,26 @@
 		if (!S) return;
 		cancelHotkeyCapture?.();
 		closeMenu();
-		const keep = root.querySelector(".sbody")?.scrollTop ?? 0;
+		const keep = root.querySelector(`.sbody[data-tab="${page === "welcome" ? "welcome" : tab}"]`)?.scrollTop ?? 0;
 		root.textContent = "";
 		root.append(
 			h("div", { class: "sh" }, h("button", { class: "ib", title: "Back", "aria-label": "Back", onclick: () => window.closeSettings() }, "←"), h("b", {}, page === "welcome" ? "Welcome to midnight" : "Settings")),
+			page === "welcome" ? null : tabBar(),
 			h(
 				"div",
 				{ id: "sStatus", class: `${status.text ? "on" : ""}${status.err ? " err" : ""}`, role: "status" },
 				h("span", {}, status.text),
 				busy ? h("button", { class: "sb", onclick: () => api.auth.cancel() }, "Cancel") : h("button", { class: "sb", "aria-label": "Dismiss", onclick: () => setStatus("") }, "✕"),
 			),
-			page === "welcome"
-				? welcome()
-				: h("div", { class: "sbody" }, autonomySection(), modelSection(), accountsSection(), sourcesSection(), fileSearchSection(), rulesSection(), watchesSection(), memorySection(), routinesSection(), resourcesSection(), readingSection(), webSection(), behaviourSection(), dataSection()),
+			page === "welcome" ? welcome() : h("div", { class: "sbody", role: "tabpanel", "data-tab": tab, "aria-label": TABS.find((t) => t.id === tab).label }, ...TABS.find((t) => t.id === tab).sections()),
 		);
 		if (modal) root.append(modal);
 		const body = root.querySelector(".sbody");
 		if (body) body.scrollTop = keep;
 		if (scrollTo) {
-			root.querySelector(`#sec-${scrollTo}`)?.scrollIntoView();
+			// Scroll only the settings panel; scrollIntoView would also nudge the window's own layout.
+			const target = root.querySelector(`#sec-${scrollTo}`);
+			if (body && target) body.scrollTop += target.getBoundingClientRect().top - body.getBoundingClientRect().top;
 			scrollTo = undefined;
 		}
 	}
@@ -664,6 +805,11 @@
 	window.renderSettings = async (section) => {
 		page = section === "welcome" ? "welcome" : "main";
 		scrollTo = section === "welcome" ? undefined : section;
+		if (SECTION_TAB[section]) tab = SECTION_TAB[section];
+		picking = section === "accounts";
+		q = "";
+		showAll = false;
+		Object.keys(adding).forEach((k) => delete adding[k]);
 		status = { text: "", err: false };
 		try { await refresh(); } catch (err) { setStatus(String(err.message ?? err), true); }
 	};

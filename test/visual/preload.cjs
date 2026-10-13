@@ -69,6 +69,16 @@ const variants = {
 			},
 		],
 	},
+	"approval-diff": {
+		...base,
+		status: "waiting-approval",
+		approvals: [{ id: "apr2", nonce: "n2", intentHash: "sha256:y", display: { title: "Save plan.md to C:\\Users\\you\\Documents", verb: "Save", decline: "Decline", effect: "local.write", effectLabel: "save a file", previewKind: "diff", preview: "--- plan.md (now)\n+++ plan.md (after saving)\n # Plan\n-Ship on Thursday\n+Ship on Friday\n Owner: Sam\n(1 line added, 1 removed)", consequence: "This replaces the existing file (a backup is kept).", routine: true } }],
+	},
+	"approval-submit": {
+		...base,
+		status: "waiting-approval",
+		approvals: [{ id: "apr3", nonce: "n3", intentHash: "sha256:z", display: { title: "Press “Place order” on shop.example", verb: "Allow this click", decline: "Decline", effect: "browser.commit", effectLabel: "submit on a website", consequence: "This may submit a form, send a message or make a purchase on that website.", sends: [{ label: "Email", value: "you@example.test" }, { label: "Password", value: "••••••••" }, { label: "Quantity", value: "2" }], sendsHidden: 3, sendsTo: "shop.example · POST" } }],
+	},
 	question: { ...base, status: "waiting-input", waiting: { kind: "input", question: { id: "q1", prompt: "Two workbooks look like Q3 sales. Which one is final?", options: ["Q3 sales final.xlsx", "Q3 sales draft.xlsx"] } } },
 	reconcile: { ...base, status: "needs-reconciliation", recovery: { finished: ["revenue-by-region.svg r1 (validated)", "q3-sales-brief.docx r2 (validated)"], uncertain: [{ intentId: "act1", title: "Send “Q3 sales brief”", effect: "external.communication" }], next: "Check whether the uncertain action happened before anything is retried." } },
 	done: {
@@ -82,7 +92,7 @@ const variants = {
 			{ id: "c2", kind: "artifact", label: "A validated chart was produced", state: "passed", detail: "" },
 			{ id: "c3", kind: "receipt", label: "An external effect has a verified receipt", state: "passed", detail: "" },
 		],
-		budget: { text: "41k tokens · $0.086 · 11 actions" },
+		budget: { text: "41k tokens · $0.086 · 11 actions", spent: { tokens: 41200, costUsd: 0.086, toolCalls: 11 }, limits: { costUsd: 2 } },
 		outcome: { status: "succeeded", summary: "3/3 checks passed" },
 	},
 	partial: {
@@ -126,7 +136,9 @@ const fileResults = [
 // contextBridge cannot clone proxies: list every method, defaulting to a no-op.
 const NS = {
 	ui: ["size", "dims", "focus", "hide", "show", "textSize"],
+	voice: ["status", "setup", "transcribe"],
 	clipboard: ["read", "write"],
+	attachments: ["fromFiles", "paste", "remove"],
 	apps: ["state", "open", "add", "update", "remove", "layout", "command", "ask", "stop", "viewTask"],
 	settings: ["get", "set"],
 	query: ["snapshot", "events", "mission", "history"],
@@ -137,8 +149,8 @@ const NS = {
 	files: ["status", "setup", "index", "search", "cancel", "clear", "open"],
 	grants: ["create", "revoke", "list"],
 	memory: ["list", "remember", "correct", "confirm", "forget", "export"],
-	recipes: ["list", "review", "run"],
-	connectors: ["list"],
+	recipes: ["list", "review", "run", "export", "import"],
+	connectors: ["list", "windowsConnectors", "mcpList", "mcpAdd", "mcpRemove", "mcpSetEnabled", "mcpInspect", "mcpReview", "openApp"],
 	skills: ["list"],
 	resources: ["status"],
 	data: ["clearBrowser", "openFolder", "export", "remove", "diagnostics", "saveDiagnostics"],
@@ -179,6 +191,7 @@ contextBridge.exposeInMainWorld(
 	fill({
 		ui: proxy({ size: (s) => ipcRenderer.invoke("fixture:size", s), dims: ok(dims), focus: noop, textSize: ok(1) }),
 		clipboard: proxy({ read: ok(""), write: noop }),
+		attachments: proxy({ fromFiles: ok([{ status: "fulfilled", value: { id: "att_1", name: "notes.txt", kind: "text", size: 2048 } }]), paste: ok({ id: "att_2", name: "Pasted picture.jpg", kind: "image", size: 40000, thumbnail: "data:image/gif;base64,R0lGODlhAQABAAAAACw=" }), remove: ok({ removed: true }) }),
 		apps: proxy({ state: ok({ apps: [] }) }),
 		settings: proxy({ get: () => Promise.resolve(settings), set: (patch) => { Object.assign(settings.settings, patch); return Promise.resolve({ settings: settings.settings, current: settings.current }); } }),
 		query: proxy({ snapshot: () => Promise.resolve(snapshot()), mission: ok({ evidence: [{ kind: "calculation", source: "Q3 vs Q2 change (%)", locator: {}, capturedAt: t(2), derived: { formula: "round((q3 - q2) / q2 * 100, 1)", inputs: { q2: 1287, q3: 1421 }, result: 10.4 } }], actions: [] }) }),

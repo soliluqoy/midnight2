@@ -10,7 +10,6 @@ export const DEFAULTS = {
 	version: SETTINGS_VERSION,
 	provider: "", // "" = choose automatically from what you are signed in to
 	model: "",
-	taskModel: "", // "provider|id" for plans, computer use and research; "" = a stronger model when "model" is the fast default
 	thinking: "low", // off | low | medium | high
 	computerUse: "ask", // ask = allowed once a plan that needs it is approved | never
 	hotkey: defaultHotkey(),
@@ -21,6 +20,8 @@ export const DEFAULTS = {
 	textSize: 1, // zoom for the whole capsule: 0.9 … 1.6
 	highContrast: false,
 	reducedMotion: false,
+	voice: false, // dictation into Ask with local Whisper
+	mcpServer: false, // let other apps on this computer use midnight through its MCP connector
 	autoExpand: true, // open the wide reading view when an answer is long
 	answerLength: "normal", // brief | normal | detailed
 	// web
@@ -93,7 +94,6 @@ export function loadSettings() {
 export const hostSettings = (s) => ({
 	provider: s.provider,
 	model: s.model,
-	taskModel: s.taskModel,
 	thinking: s.thinking,
 	answerLength: s.answerLength,
 	instructions: s.instructions,

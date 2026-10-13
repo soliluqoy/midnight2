@@ -7,3 +7,7 @@ main { flex: 1; min-height: 0; display: flex; justify-content: center; align-ite
 img, video { max-width: 100%; max-height: 100%; object-fit: contain; }
 audio { width: min(100%, 640px); }
 #error { color: #f0b6aa; margin: 0 24px 18px; }
+@media (forced-colors: active) {
+  :root { background: Canvas; color: CanvasText; }
+  #position, #error { color: CanvasText; }
+}

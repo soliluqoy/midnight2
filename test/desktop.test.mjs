@@ -3,7 +3,8 @@ import { EventEmitter } from "node:events";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { createHotkey, defaultHotkey, LEGACY_HOTKEY, migrateHotkey, WINDOWS_HOTKEY } from "../src/desktop/hotkey.mjs";
+import { createHotkey, defaultHotkey, LEGACY_HOTKEY, listenerCommand, migrateHotkey, NATIVE_HELPER, WINDOWS_HOTKEY } from "../src/desktop/hotkey.mjs";
+import { buildNative } from "../scripts/build-native.mjs";
 import { GUTTER, windowBounds, windowDims } from "../src/desktop/window-layout.mjs";
 
 const area = { x: 0, y: 0, width: 1920, height: 1040 };
@@ -54,6 +55,14 @@ test("upgrade replaces the old default shortcut on Windows but preserves custom 
 });
 
 test("native Ctrl+Win chord handles either key order without stealing other Windows shortcuts", { skip: process.platform !== "win32" }, () => {
+	buildNative({ quiet: true });
+	const native = spawnSync(NATIVE_HELPER, ["--self-test"], { encoding: "utf8", timeout: 45000, windowsHide: true });
+	assert.equal(native.status, 0, native.error?.message ?? native.stderr);
+	assert.match(native.stdout, /PASS modifier-only chord/);
+	// The listener runs the compiled exe, never PowerShell with an execution-policy bypass, once it is built.
+	assert.deepEqual(listenerCommand(42), { command: NATIVE_HELPER, args: ["--parent-pid", "42"] });
+	assert.equal(listenerCommand(42, () => false).command, "powershell.exe", "unbuilt checkouts fall back to the script");
+	// The development fallback loads the same C# source.
 	const helper = fileURLToPath(new URL("../src/desktop/hotkey-helper.ps1", import.meta.url));
 	const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", helper, "-SelfTest"], { encoding: "utf8", timeout: 45000, windowsHide: true });
 	assert.equal(result.status, 0, result.error?.message ?? result.stderr);
@@ -136,4 +145,16 @@ test("rapid shortcut changes serialize and shutdown removes all listeners", asyn
 	f.controller.stop();
 	assert.equal(f.registered.size, 0);
 	assert.match(await f.controller.set(WINDOWS_HOTKEY), /stopped/);
+});
+
+test("the tray icon ships at every display scale and as a macOS template, drawn by the build script", async () => {
+	const fs = await import("node:fs");
+	const dir = new URL("../src/assets/tray/", import.meta.url);
+	const size = (name) => fs.readFileSync(new URL(name, dir)).readUInt32BE(16);
+	for (const [suffix, px] of [["", 16], ["@1.25x", 20], ["@1.5x", 24], ["@2x", 32], ["@2.5x", 40], ["@3x", 48]]) assert.equal(size(`tray${suffix}.png`), px, `tray${suffix}.png`);
+	assert.equal(size("trayTemplate.png"), 16);
+	assert.equal(size("trayTemplate@2x.png"), 32);
+	const main = fs.readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8");
+	assert.match(main, /setTemplateImage\(true\)/);
+	assert.doesNotMatch(main, /Buffer\.alloc\(n \* n \* 4\)/, "no runtime-drawn 16 px bitmap");
 });

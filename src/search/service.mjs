@@ -13,9 +13,9 @@ import { createEmbeddingRuntime } from "./runtime.mjs";
 
 export const SEARCH_LIMITS = Object.freeze({ maxFiles: 5000, maxEntries: 20000, maxDepth: 12, maxSegments: 20000, maxSegmentsPerFile: 120, maxTextChars: 300000, maxFileBytes: 512 * 1024 * 1024, maxTextFileBytes: 20 * 1024 * 1024 });
 const SKIP_DIR = /^(node_modules|\.git|\.svn|\$recycle\.bin|system volume information|appdata|\.cache|cache|temp|tmp|__pycache__|\.venv|venv|windows|windows\.old|program files(?:\s*\(x86\))?|programdata|recovery|boot|build|dist|vendor)$/i;
-const SECRET_NAME = /(^\.env(\..*)?$|\.pem$|\.key$|\.pfx$|\.p12$|^id_(rsa|ed25519|ecdsa)|\.kdbx$|credentials|secret|password|token)/i;
+export const SECRET_NAME = /(^\.env(\..*)?$|\.pem$|\.key$|\.pfx$|\.p12$|^id_(rsa|ed25519|ecdsa)|\.kdbx$|credentials|secret|password|token)/i;
 // Reject whole documents containing recognizable private key material or live credential assignments.
-const SECRET_TEXT = /-----BEGIN (?:[A-Z ]*PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----|\b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16})\b|(?:api[_ -]?key|access[_ -]?token|client[_ -]?secret|password|authorization)\s*[=:]\s*["']?(?:Bearer\s+)?[A-Za-z0-9_+./=-]{12,}/i;
+export const SECRET_TEXT = /-----BEGIN (?:[A-Z ]*PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----|\b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16})\b|(?:api[_ -]?key|access[_ -]?token|client[_ -]?secret|password|authorization)\s*[=:]\s*["']?(?:Bearer\s+)?[A-Za-z0-9_+./=-]{12,}/i;
 const TEXT_EXTS = new Set([".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".jsonl", ".log", ".html", ".htm", ".xml", ".yaml", ".yml", ".rst"]);
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"]);
 const AUDIO_EXTS = new Set([".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac", ".aiff", ".aif", ".opus", ".wma"]);
@@ -193,6 +193,25 @@ export function createFileSearch({ store, roots, settings, paths, runtime = crea
 	let epoch = 0;
 	const readers = new Set();
 	const known = new Map(); // bounded filename-only results for trusted id-only open
+	// Filename discovery is reused instead of walking every folder per query. A folder's modification time changes
+	// when an entry is added, removed or renamed in it, so a cheap stat of the known folders detects new files.
+	let discovered = null; // { at, found, folders: Map(path -> mtimeMs), roots }
+	const DISCOVERY_TTL = 10 * 60_000;
+	const folderTimes = (folders) => new Map([...folders].map((dir) => { try { return [dir, fs.statSync(dir).mtimeMs]; } catch { return [dir, -1]; } }));
+	const remember = (found) => (discovered = { at: Date.now(), found, folders: folderTimes(found.folders ?? []), roots: roots.list().map((r) => r.id).join(",") });
+	function fresh() {
+		if (!discovered || Date.now() - discovered.at > DISCOVERY_TTL || discovered.roots !== roots.list().map((r) => r.id).join(",")) return false;
+		for (const [dir, mtime] of discovered.folders) {
+			try { if (fs.statSync(dir).mtimeMs !== mtime) return false; } catch { if (mtime !== -1) return false; }
+		}
+		return true;
+	}
+	async function discoverCached(signal) {
+		if (fresh()) return discovered.found;
+		const found = await discover(signal);
+		remember(found);
+		return found;
+	}
 	let state = "idle";
 	let error = null;
 	let phase = "idle";
@@ -220,7 +239,13 @@ export function createFileSearch({ store, roots, settings, paths, runtime = crea
 			return fs.statSync(real).isFile();
 		} catch { return false; }
 	}
-	const forgetFile = (id) => { if (!closed && !store.readOnly) store.run("DELETE FROM search_files WHERE id = ?", id); known.delete(id); };
+	const forgetFile = (id) => {
+		if (!closed && !store.readOnly) store.tx(() => {
+			for (const table of vecTables()) store.run(`DELETE FROM ${table} WHERE rowid IN (SELECT seq FROM search_segments WHERE file_id = ?)`, id);
+			store.run("DELETE FROM search_files WHERE id = ?", id);
+		});
+		known.delete(id);
+	};
 	function counts() {
 		if (closed) return { files: 0, segments: 0, kinds: {} };
 		return {
@@ -322,7 +347,7 @@ export function createFileSearch({ store, roots, settings, paths, runtime = crea
 		});
 		if (safe.length < files.length) warning("Hidden, system, linked, unavailable or cloud-only files were skipped; OneDrive files were not downloaded.");
 		if (limited) warning(`Discovery is limited to ${SEARCH_LIMITS.maxFiles} files, ${SEARCH_LIMITS.maxEntries} entries and ${SEARCH_LIMITS.maxDepth} folder levels. Narrow your selected folders to cover more files.`);
-		return { files: safe, limited, safe: !attributeFailure };
+		return { files: safe, limited, safe: !attributeFailure, folders: [...selected.map((root) => root.path), ...directories] };
 	}
 	async function revalidate(file, { signal, checkHash = true } = {}) {
 		checkSignal(signal);
@@ -346,13 +371,36 @@ export function createFileSearch({ store, roots, settings, paths, runtime = crea
 		if (after.size !== st.size || after.mtimeMs !== st.mtimeMs) return null;
 		return { path: file.path, name: file.name, kind: file.kind, hash: expected ?? undefined, sourceVersion: metadataVersion(after) };
 	}
+	// Vectors: Float32 BLOBs in search_segments; with sqlite-vec loaded, a vec0 table per dimension gives KNN.
+	const vecTable = (dims) => `search_vec_${dims}`;
+	const vecReady = new Set();
+	function ensureVec(dims) {
+		if (!store.vector || vecReady.has(dims)) return store.vector;
+		store.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS ${vecTable(dims)} USING vec0(embedding float[${dims}] distance_metric=cosine)`);
+		vecReady.add(dims);
+		return true;
+	}
+	const vecTables = () => store.vector ? store.all("SELECT name FROM sqlite_master WHERE type = 'table' AND name GLOB 'search_vec_[0-9]*' AND sql LIKE 'CREATE VIRTUAL TABLE%'").map((r) => r.name) : [];
+	/** Remove vector rows for segments that are gone (a deleted file, root or cleared index). */
+	function pruneVectors() {
+		if (closed || store.readOnly) return;
+		for (const table of vecTables()) store.run(`DELETE FROM ${table} WHERE rowid NOT IN (SELECT seq FROM search_segments)`);
+	}
+	const blob = (vector) => new Uint8Array(Float32Array.from(vector).buffer);
+	const unblob = (b) => b ? new Float32Array(b.buffer, b.byteOffset, Math.floor(b.byteLength / 4)) : null;
 	function saveFile(file, source, fp, segments, { state: fileState = "indexed", note = null, truncated: clipped = false } = {}) {
+		const dims = segments.find((s) => s.vector)?.vector.length;
+		const useVec = dims ? ensureVec(dims) : false;
 		store.tx(() => {
+			for (const table of vecTables()) store.run(`DELETE FROM ${table} WHERE rowid IN (SELECT seq FROM search_segments WHERE file_id = ?)`, file.id);
 			store.run("DELETE FROM search_files WHERE id = ?", file.id);
 			store.run("INSERT INTO search_files (id,root_id,path,name,kind,size,modified_ms,source_hash,fingerprint,state,note,truncated,indexed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", file.id, file.rootId, file.path, file.name, file.kind, file.size, file.modifiedMs, source, fp, fileState, note, Number(clipped), new Date().toISOString());
 			for (let ordinal = 0; ordinal < segments.length; ordinal++) {
 				const segment = segments[ordinal];
-				store.run("INSERT INTO search_segments (id,file_id,ordinal,text,locator,vector,dimensions,fingerprint) VALUES (?,?,?,?,?,?,?,?)", segmentId(file.id, ordinal), file.id, ordinal, segment.text ?? "", JSON.stringify(segment.locator ?? {}), segment.vector ? JSON.stringify(segment.vector) : null, segment.vector?.length ?? 0, fp);
+				const vector = segment.vector ? blob(segment.vector) : null;
+				const seq = store.run("INSERT INTO search_segments (id,file_id,ordinal,text,locator,embedding,dimensions,fingerprint) VALUES (?,?,?,?,?,?,?,?)", segmentId(file.id, ordinal), file.id, ordinal, segment.text ?? "", JSON.stringify(segment.locator ?? {}), vector, segment.vector?.length ?? 0, fp).lastInsertRowid;
+				store.run("INSERT INTO search_fts (rowid, text, name) VALUES (?, ?, ?)", seq, segment.text ?? "", file.name);
+				if (vector && useVec && segment.vector.length === dims) store.run(`INSERT INTO ${vecTable(dims)} (rowid, embedding) VALUES (?, ?)`, BigInt(seq), vector);
 			}
 		});
 	}
@@ -461,7 +509,7 @@ export function createFileSearch({ store, roots, settings, paths, runtime = crea
 		let mode = "words";
 		let searchWarning;
 		let queryVector;
-		const matchingVectors = Number(store.get("SELECT COUNT(*) AS n FROM search_segments WHERE fingerprint = ? AND vector IS NOT NULL", fp).n);
+		const matchingVectors = Number(store.get("SELECT COUNT(*) AS n FROM search_segments WHERE fingerprint = ? AND embedding IS NOT NULL", fp).n);
 		if (available && matchingVectors && suppliedVector && vectorFingerprint === fp) {
 			queryVector = normalizeVector(suppliedVector, Number(settingsNow().embedding?.dimensions ?? runtime.status().dimensions));
 			mode = "hybrid";
@@ -475,39 +523,71 @@ export function createFileSearch({ store, roots, settings, paths, runtime = crea
 				mode = "hybrid";
 			} catch (err) { checkSignal(signal); assertLive(); searchWarning = `Semantic search failed: ${errText(err)} Showing word and filename matches.`; }
 		} else searchWarning = !settingsNow().embedding?.enabled ? "Local embeddings are disabled. Showing word and filename matches." : !runtime.status().available ? "The embedding model is not set up. Showing word and filename matches." : "Index your selected folders to enable semantic matches for this model. Showing word and filename matches.";
+		// Candidate passages come from two indexes instead of a scan: FTS5 for words and sqlite-vec (or a BLOB scan
+		// when the extension is unavailable) for meaning. Only candidates are scored, loaded and revalidated.
+		const pool = limit * 30;
+		const cosineBySeq = new Map();
+		const seqs = new Set();
+		if (ts.length) {
+			const match = ts.map((t) => `"${t.replace(/"/g, '""')}"*`).join(" OR ");
+			try { for (const r of store.all("SELECT rowid FROM search_fts WHERE search_fts MATCH ? ORDER BY bm25(search_fts) LIMIT ?", match, pool)) seqs.add(Number(r.rowid)); }
+			catch (err) { searchWarning = searchWarning ?? `Word search failed: ${errText(err)}`; }
+		}
+		let vectorComparisons = 0;
+		if (queryVector) {
+			const dims = queryVector.length;
+			if (store.vector && vecTables().includes(vecTable(dims))) {
+				for (const r of store.all(`SELECT rowid, distance FROM ${vecTable(dims)} WHERE embedding MATCH ? AND k = ?`, blob(queryVector), pool)) {
+					cosineBySeq.set(Number(r.rowid), 1 - r.distance);
+					seqs.add(Number(r.rowid));
+				}
+			} else {
+				const q = Float32Array.from(queryVector);
+				const best = [];
+				for (const r of store.raw.prepare("SELECT seq, embedding FROM search_segments WHERE fingerprint = ? AND dimensions = ? AND embedding IS NOT NULL LIMIT ?").iterate(fp, dims, SEARCH_LIMITS.maxSegments)) {
+					const v = unblob(r.embedding);
+					let dot = 0;
+					for (let i = 0; i < dims; i++) dot += v[i] * q[i];
+					best.push([Number(r.seq), dot]);
+				}
+				best.sort((a, b) => b[1] - a[1]);
+				for (const [seq, cosine] of best.slice(0, pool)) { cosineBySeq.set(seq, cosine); seqs.add(seq); }
+			}
+		}
 		const candidates = [];
 		const files = new Map();
-		for (const row of store.all("SELECT * FROM search_files LIMIT ?", SEARCH_LIMITS.maxFiles)) {
-			if (!validPath(row)) { forgetFile(row.id); continue; }
-			try { const st = fs.statSync(row.path); if (st.size !== row.size || st.mtimeMs !== row.modified_ms) { forgetFile(row.id); continue; } }
-			catch { forgetFile(row.id); continue; }
-			if (!kindFilter || kindFilter === "all" || row.kind === kindFilter) files.set(row.id, row);
-		}
+		const fileRow = (id) => {
+			if (!files.has(id)) {
+				const row = store.get("SELECT * FROM search_files WHERE id = ?", id);
+				files.set(id, row && (!kindFilter || kindFilter === "all" || row.kind === kindFilter) ? row : null);
+			}
+			return files.get(id);
+		};
 		const add = (candidate) => { candidates.push(candidate); if (candidates.length > limit * 30) { candidates.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)); candidates.length = limit * 20; } };
-		let vectorComparisons = 0;
-		for (const segment of store.raw.prepare("SELECT * FROM search_segments ORDER BY file_id,ordinal LIMIT ?").iterate(SEARCH_LIMITS.maxSegments)) {
-			const file = files.get(segment.file_id);
+		for (const seq of seqs) {
+			const segment = store.get("SELECT * FROM search_segments WHERE seq = ?", seq);
+			if (!segment) continue;
+			const file = fileRow(segment.file_id);
 			if (!file) continue;
 			const words = lexical(q, ts, segment.text, file.name);
 			let cosine = 0;
-			if (queryVector && segment.fingerprint === fp && segment.dimensions === queryVector.length) {
-				try { const vector = normalizeVector(json(segment.vector, []), queryVector.length); cosine = vector.reduce((sum, v, i) => sum + v * queryVector[i], 0); vectorComparisons++; }
-				catch { searchWarning = "Some cached vectors are invalid. Index your folders again; valid word matches remain available."; }
-			}
+			if (queryVector && segment.fingerprint === fp && segment.dimensions === queryVector.length && cosineBySeq.has(seq)) { cosine = cosineBySeq.get(seq); vectorComparisons++; }
 			if (!words.matched && cosine < 0.2) continue;
 			add({ ...file, id: segment.id, fileId: file.id, text: segment.text, locator: json(segment.locator, {}), score: words.score + Math.max(0, cosine) * 0.6, match: words.matched ? (cosine >= 0.2 ? "both" : "words") : "semantic" });
 		}
 		if (mode === "hybrid" && !vectorComparisons) { mode = "words"; searchWarning = searchWarning ?? "No valid indexed vectors are available for this model. Showing word and filename matches."; }
-		for (const file of files.values()) {
+		for (const file of store.all("SELECT * FROM search_files LIMIT ?", SEARCH_LIMITS.maxFiles)) {
+			if (kindFilter && kindFilter !== "all" && file.kind !== kindFilter) continue;
 			const words = lexical(q, ts, "", file.name);
 			if (words.matched) add({ ...file, fileId: file.id, text: "", locator: {}, score: words.score, match: "filename" });
 		}
-		// Only names are discovered on demand; content is indexed exclusively from the user's Index action.
-		const found = await discover(signal);
+		// Only names are discovered on demand (cached briefly); content is indexed exclusively from the user's Index action.
+		const found = await discoverCached(signal);
 		checkSignal(signal); assertLive();
 		known.clear();
+		const indexed = new Set(store.all("SELECT id FROM search_files").map((r) => r.id));
 		for (const file of found.files) {
-			if (files.has(file.id) || (kindFilter && kindFilter !== "all" && file.kind !== kindFilter)) continue;
+			if (indexed.has(file.id) || (kindFilter && kindFilter !== "all" && file.kind !== kindFilter)) continue;
 			const words = lexical(q, ts, "", file.name);
 			if (!words.matched) continue;
 			const candidate = { ...file, root_id: file.rootId, modified_ms: file.modifiedMs, fileId: file.id, text: "", locator: {}, score: words.score, match: "filename", note: file.format === "unsupported" ? "Unsupported format; filename only." : "Content has not been indexed; filename only." };
@@ -569,10 +649,12 @@ export function createFileSearch({ store, roots, settings, paths, runtime = crea
 		assertLive(); cancel(); known.clear();
 		for (const reader of readers) reader.controller.abort(abortError());
 		store.tx(() => { store.run("DELETE FROM search_files"); store.run("DELETE FROM meta WHERE key = 'search.last-indexed-at'"); });
+		pruneVectors();
+		discovered = null;
 		state = "idle"; phase = "idle"; error = null; warnings = []; progress = { done: 0, total: 0, file: null, segments: 0 };
 		return { cleared: true };
 	}
-	function removeRoot(rootId) { assertLive(); cancel(); known.clear(); for (const reader of readers) reader.controller.abort(abortError()); store.run("DELETE FROM search_files WHERE root_id = ?", rootId); return { removed: true }; }
+	function removeRoot(rootId) { assertLive(); cancel(); known.clear(); for (const reader of readers) reader.controller.abort(abortError()); store.run("DELETE FROM search_files WHERE root_id = ?", rootId); pruneVectors(); discovered = null; return { removed: true }; }
 	async function close() {
 		if (closed) return;
 		cancel(); closed = true; epoch++; known.clear();

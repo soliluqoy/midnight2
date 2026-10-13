@@ -16,12 +16,14 @@ import { missionTools } from "./mission-tools.mjs";
 import { shellTools } from "./shell-tools.mjs";
 import { workTools } from "./work.mjs";
 import { createEmbeddingRuntime } from "../search/runtime.mjs";
+import { platformMedia } from "../search/media-preview.mjs";
 import { createContextService } from "../context/service.mjs";
 import { contextTools } from "./context.mjs";
+import { createMcpConnectors, discoverWindowsConnectors } from "../connectors/mcp.mjs";
 
 // Tools every mission gets; shell tools are left out for offline missions (the broker would block them anyway).
 const MISSION = ["plan", "step", "ask_user", "remember"];
-const LOCAL = ["recall_context", "files_find", "files_search", "files_view", "files_read", "file_publish", "files_move", "files_undo_moves", "sheet_read", "calculate", "chart_create", "report_create", "crm_query", "mail_draft", "mail_send", "open_draft"];
+const LOCAL = ["recall_context", "files_find", "files_search", "files_view", "files_read", "file_publish", "files_move", "files_undo_moves", "sheet_read", "calculate", "chart_create", "report_create", "slide_create", "crm_query", "mail_draft", "mail_send", "open_draft"];
 const WEB = ["search", "read_pages", "browser", "user_browser"];
 
 export function buildTools(s) {
@@ -39,21 +41,23 @@ export function buildTools(s) {
 		markStep: (...a) => s.coord().markStep(...a),
 		askUser: (...a) => s.coord().askUser(...a),
 	};
-	const embeddingRuntime = s.searchRuntime ?? createEmbeddingRuntime({ settings: s.settings, paths: s.paths });
+	const decodeMedia = s.decodeMedia ?? platformMedia(s.platform);
+	const embeddingRuntime = s.searchRuntime ?? createEmbeddingRuntime({ settings: s.settings, paths: s.paths, decodeMedia });
 	let context;
 	const shell = shellTools({ platform: s.platform, evidence: s.evidence, commit: s.commit, selectPassages: (...args) => context.focusPages(...args) });
 	const fileSearch = createFileSearch({ ...s, runtime: embeddingRuntime });
-	const groups = [missionTools(coordProxy), fileTools(s).all, fileSearchTools({ ...s, search: fileSearch, runtime: embeddingRuntime }).all, workTools(s).all, connectorTools({ connectors, evidence: s.evidence, commit: s.commit, platform: s.platform }).all, shell.all];
+	const groups = [missionTools(coordProxy), fileTools({ ...s, decodeMedia }).all, fileSearchTools({ ...s, search: fileSearch, decodeMedia }).all, workTools(s).all, connectorTools({ connectors, evidence: s.evidence, commit: s.commit, platform: s.platform }).all, shell.all];
 	const all = groups.flat();
 	const names = new Set(all.map((t) => t.name));
 	names.add("recall_context");
 	const skills = createSkills({ toolNames: names });
 	const watches = createWatches({ ...s, connectors, attention, stop: { proactivePaused: () => false, ...s.stop }, coord: s.coord });
-	const recipes = createRecipes({ store: s.store, repo: s.repo, ledger: s.ledger, evidence: s.evidence, coord: s.coord });
+	const recipes = createRecipes({ store: s.store, repo: s.repo, ledger: s.ledger, evidence: s.evidence, coord: s.coord, skills, version: s.version });
 	context = createContextService({ ...s, memory, skills, recipes, runtime: embeddingRuntime, fileSearch });
 	all.push(...contextTools({ context, repo: s.repo, evidence: s.evidence, commit: s.commit }).all);
 	const data = createData({ store: s.store, journal: s.journal, commit: s.commit, paths: s.paths, memory, context, version: s.version ?? "midnight" });
 	const vault = createVault({ store: s.store, platform: s.platform });
+	const mcp = createMcpConnectors({ store: s.store, vault, evidence: s.evidence, commit: s.commit, log: s.log });
 	return {
 		all,
 		fileSearch,
@@ -66,6 +70,8 @@ export function buildTools(s) {
 		recipes,
 		data,
 		vault,
+		mcp,
+		discoverWindowsConnectors: s.discoverWindowsConnectors ?? discoverWindowsConnectors,
 		resources: undefined, // set by the host once the queue exists
 		/** Tool names offered to a mission's model. */
 		forMission(mission, settings) {

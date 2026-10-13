@@ -407,4 +407,52 @@ END;
 `,
 });
 
+// Local search v2 (no Python): vectors become Float32 BLOBs keyed by an integer row id that sqlite-vec and FTS5 share.
+// The index is a cache and the model changed, so the old rows are dropped; the next "Index" rebuilds them.
+MIGRATIONS.push({
+	version: 4,
+	name: "local search vectors and full-text index",
+	sql: `
+DROP TABLE search_segments;
+DELETE FROM search_files;
+CREATE TABLE search_segments (
+  seq INTEGER PRIMARY KEY,
+  id TEXT NOT NULL UNIQUE,
+  file_id TEXT NOT NULL REFERENCES search_files(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  text TEXT NOT NULL DEFAULT '',
+  locator TEXT NOT NULL DEFAULT '{}',
+  embedding BLOB,
+  dimensions INTEGER NOT NULL DEFAULT 0,
+  fingerprint TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX search_segments_file ON search_segments(file_id, ordinal);
+CREATE VIRTUAL TABLE search_fts USING fts5(text, name, content='', contentless_delete=1, tokenize='unicode61 remove_diacritics 2');
+CREATE TRIGGER search_segments_fts_delete AFTER DELETE ON search_segments BEGIN
+  DELETE FROM search_fts WHERE rowid = old.seq;
+END;
+`,
+});
+
+// MCP connectors the user added: a local command (stdio) or a remote address (Streamable HTTP). Tokens live in the
+// vault; reviews pin a tool's digest so a changed tool asks again.
+MIGRATIONS.push({
+	version: 5,
+	name: "mcp connectors",
+	sql: `
+CREATE TABLE mcp_servers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  command TEXT,
+  args TEXT NOT NULL DEFAULT '[]',
+  url TEXT,
+  secret_ref TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  reviews TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+`,
+});
+
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;

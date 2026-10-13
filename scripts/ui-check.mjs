@@ -22,6 +22,7 @@ const contrast = (a, b) => {
 	return (light + 0.05) / (dark + 0.05);
 };
 ipcMain.handle("fixture:size", () => null);
+const json = (v) => JSON.stringify(v);
 
 app.whenReady().then(async () => {
 	const win = new BrowserWindow({ width: 1300, height: 1400, show: false, webPreferences: { preload: path.join(root, "test/visual/preload.cjs"), contextIsolation: true, sandbox: true, offscreen: true } });
@@ -73,6 +74,20 @@ app.whenReady().then(async () => {
 					assert.ok(marker.outline ? contrast(over(marker.outlineColor, adjacent), adjacent) >= 3 : marker.changed && contrast(over(marker.border, background), background) >= 3, `${selector} has a distinguishable focus marker`);
 				}
 			} finally { win.webContents.debugger.detach(); }
+		}],
+		["Windows High Contrast (forced colors) gives every control a system-colored edge", async () => {
+			win.webContents.debugger.attach("1.3");
+			try {
+				await win.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }] });
+				await js(`await setState('chat'); document.activeElement.blur();`);
+				await sleep(200);
+				assert.equal(await js(`return matchMedia('(forced-colors: active)').matches;`), true);
+				const missing = await js(`return [...document.querySelectorAll('#cap button:not([hidden]), #box')].filter(el=>el.offsetParent).filter(el=>{const s=getComputedStyle(el);return !(parseFloat(s.borderTopWidth)>0 && s.borderTopStyle!=='none');}).map(el=>el.id||el.className);`);
+				assert.deepEqual(missing, [], "every visible control has a border in forced colors");
+			} finally {
+				await win.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [] }).catch(() => {});
+				win.webContents.debugger.detach();
+			}
 		}],
 		["high contrast makes mission and action boundaries distinguishable", async () => {
 			await js(`await setState('chat'); applyPrefs({highContrast:true}); document.activeElement.blur();`);
@@ -201,7 +216,7 @@ app.whenReady().then(async () => {
 			assert.equal(await js(`return document.getElementById('chipClip').hidden;`), true);
 		}],
 		["settings can record the modifier-only Ctrl+Win shortcut", async () => {
-			await js(`Object.defineProperty(navigator,'platform',{value:'Win32',configurable:true}); openSettings('behaviour');`);
+			await js(`Object.defineProperty(navigator,'platform',{value:'Win32',configurable:true}); openSettings('launcher');`);
 			await sleep(200);
 			await js(`document.querySelector('[aria-label="Change summon shortcut"]').click(); document.dispatchEvent(new KeyboardEvent('keydown',{key:'Control',ctrlKey:true,bubbles:true})); document.dispatchEvent(new KeyboardEvent('keydown',{key:'Meta',ctrlKey:true,metaKey:true,bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup',{key:'Meta',ctrlKey:true,bubbles:true}));`);
 			await sleep(80);
@@ -394,8 +409,10 @@ app.whenReady().then(async () => {
 			assert.equal(await js("return document.getElementById('ans').scrollTop;"), 0);
 		}],
 		["rule and watch selections match their submitted values", async () => {
-			await js("openSettings();");
+			await js("openSettings('rules');");
 			await sleep(200);
+			assert.equal(await js("return document.querySelectorAll('#sec-rules input, #sec-watches input').length;"), 0, "add forms stay closed until asked for");
+			await js(`[...document.querySelectorAll('#sec-rules .sb, #sec-watches .sb')].filter(b=>/^New /.test(b.textContent)).forEach(b=>b.click());`);
 			await js(`document.querySelector('#sec-rules [aria-label=Action]').click(); [...document.querySelectorAll('.dd-i')].find(b=>b.textContent==='Save files').click(); document.querySelector('#sec-rules [aria-label=Expires] button').click();`);
 			assert.match(await js("return document.querySelector('#sec-rules [aria-label=Action]').textContent;"), /Save files/);
 			assert.equal(await js("return document.querySelector('#sec-rules [aria-label=Expires] button').getAttribute('aria-checked');"), "true");
@@ -404,6 +421,108 @@ app.whenReady().then(async () => {
 			assert.equal(await js("return document.querySelector('#sec-watches [aria-label=\"On change\"] [aria-checked=true]').textContent;"), "Prepare an update");
 			await js(`document.querySelector('#sec-rules [aria-label=Action]').click(); __fixture.emit({kind:'auth-event',event:{type:'info',message:'Background update'}}); document.querySelector('#sec-rules [aria-label=Action]').click();`);
 			assert.equal(await js("return document.querySelectorAll('.dd-menu').length;"), 1);
+		}],
+		["an approval takes keyboard focus on its card, keeps Tab inside it, and never starts on Approve", async () => {
+			await js(`__fixture.variant('approval'); await setState('mission');`);
+			await sleep(400);
+			assert.equal(await js(`return document.activeElement?.id;`), "fAsk", "focus moves to the approval card itself");
+			win.webContents.debugger.attach("1.3");
+			try {
+				const seen = new Set();
+				for (let i = 0; i < 12; i++) {
+					await win.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+					await win.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+					const at = await js(`const a=document.activeElement; return {inside: document.getElementById('fAsk').contains(a), id: a.id || a.tagName};`);
+					assert.ok(at.inside, `Tab ${i + 1} stays in the approval card (${at.id})`);
+					seen.add(at.id);
+				}
+				assert.ok(seen.has("askYes") && seen.has("askNo"), "both decisions are reachable by keyboard");
+				await win.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, modifiers: 8 });
+				assert.ok(await js(`return document.getElementById('fAsk').contains(document.activeElement);`), "Shift+Tab wraps inside too");
+			} finally { win.webContents.debugger.detach(); }
+			await js(`await setState('chat');`);
+			await sleep(100);
+			assert.equal(await js(`return focusTrap.active === undefined;`), true, "leaving the mission releases focus");
+		}],
+		["dropped and pasted files become removable chips and are sent with the task", async () => {
+			await js(`await setState('chat'); document.getElementById('box').value='';`);
+			await js(`const dt=new DataTransfer(); dt.items.add(new File(['hello'],'notes.txt',{type:'text/plain'})); window.dispatchEvent(new DragEvent('dragenter',{dataTransfer:dt})); window.dispatchEvent(new DragEvent('drop',{dataTransfer:dt,cancelable:true}));`);
+			await sleep(100);
+			assert.equal(await js(`return [...document.querySelectorAll('#attachList .attach-chip .attach-name')].map(n=>n.textContent).join();`), "notes.txt");
+			assert.equal(await js(`return cap.dataset.drop === undefined;`), true, "the drop highlight clears");
+			await js(`const dt=new DataTransfer(); dt.items.add(new File([new Uint8Array([137,80,78,71])],'image.png',{type:'image/png'})); __fixture.configure({'attachments.fromFiles':{result:[]}}); document.getElementById('box').dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,cancelable:true}));`);
+			await sleep(100);
+			assert.equal((await calls("attachments.paste")).length, 1, "a pasted picture without a file path is read from the clipboard by the shell");
+			assert.equal(await js(`return document.querySelectorAll('#attachList .attach-chip').length;`), 2);
+			await js(`document.querySelector('#attachList .attach-remove').click();`);
+			await sleep(50);
+			assert.deepEqual((await calls("attachments.remove")).map((c) => c.args[0]), ["att_1"]);
+			await js(`document.getElementById('box').value=''; document.getElementById('sendTask').click();`);
+			await sleep(150);
+			const create = (await calls("missions.create")).at(-1).args[0];
+			assert.deepEqual(create.attachments, ["att_2"], "only the remaining attachment is sent");
+			assert.ok(create.text.length > 0, "a task with only attachments still has a request");
+		}],
+		["approvals show a file write's diff and the fields a submit would send", async () => {
+			await js(`__fixture.variant('approval-diff'); await setState('mission');`);
+			await sleep(300);
+			const diff = await js(`const p=document.getElementById('askPreview'); return {open:document.getElementById('askPreviewBox').open, add:[...p.querySelectorAll('.diff-add')].map(s=>s.textContent.trim()), del:[...p.querySelectorAll('.diff-del')].map(s=>s.textContent.trim()), sends:document.getElementById('askSends').hidden};`);
+			assert.deepEqual(diff, { open: true, add: ["+Ship on Friday"], del: ["-Ship on Thursday"], sends: true });
+			await js(`__fixture.variant('approval-submit'); await setState('mission');`);
+			await sleep(300);
+			const sends = await js(`const s=document.getElementById('askSends'); return {hidden:s.hidden, title:s.querySelector('h6').textContent, rows:[...s.querySelectorAll('dt')].map((d)=>d.textContent+'='+d.nextElementSibling.textContent), extra:s.querySelector('.hint')?.textContent};`);
+			assert.equal(sends.hidden, false);
+			assert.match(sends.title, /shop\.example · POST/);
+			assert.deepEqual(sends.rows, ["Email=you@example.test", "Password=••••••••", "Quantity=2"]);
+			assert.match(sends.extra, /3 hidden fields/);
+		}],
+		["missions show their cost live and searched history opens older missions", async () => {
+			await js(`__fixture.variant('done'); await setState('mission');`);
+			await sleep(300);
+			assert.equal(await js(`return document.getElementById('mCost').textContent;`), "$0.086 of $2.00 · 41k tokens");
+			await js(`__fixture.variant('running'); missionApi.openMission('m1'); __fixture.emit({kind:'live',missionId:'m1',type:'usage',usage:{tokens:2500,costUsd:0.012}});`);
+			await sleep(100);
+			assert.match(await js(`return document.getElementById('mCost').textContent;`), /^\$0\.\d{3}/, "a running mission shows what it has spent so far");
+			const old = { id: "m9", title: "Antarctic field report", goal: "Summarize the Antarctic field report", status: "succeeded", archived: true, createdAt: "2025-02-01T10:00:00Z", updatedAt: "2025-02-01T10:05:00Z", steps: [], approvals: [], artifacts: [], plan: { nodes: [] }, feed: [], budget: { spent: { tokens: 9000, costUsd: 0.02 } }, outcome: { status: "succeeded", summary: "1/1 checks passed" } };
+			await js(`__fixture.configure({'query.history':{result:[${json(old)}]}}); await setState('stack'); const s=document.getElementById('historySearch'); s.value='penguin'; s.dispatchEvent(new Event('input'));`);
+			await sleep(450);
+			assert.deepEqual((await calls("query.history")).at(-1).args[0], { query: "penguin", limit: 50 });
+			const found = await js(`return [...document.querySelectorAll('#stack .card')].map((c)=>c.querySelector('b').textContent + ' | ' + c.querySelector('span').textContent + ' | ' + c.querySelector('em').textContent);`);
+			assert.equal(found.length, 1);
+			assert.match(found[0], /^Antarctic field report \| completed · archived/);
+			assert.match(found[0], /\$0\.020 · \w+ \d+$|\$0\.020 · \d+ \w+$/, "older missions show their cost and date");
+			await js(`document.querySelector('#stack .card').click();`);
+			await sleep(200);
+			assert.equal(await js(`return cur + ':' + document.getElementById('mTitle').textContent;`), "mission:Antarctic field report");
+			assert.match(await js(`return document.getElementById('spend').textContent;`), /This month \$/);
+			await js(`await setState('stack'); const s=document.getElementById('historySearch'); s.value=''; s.dispatchEvent(new Event('input'));`);
+		}],
+		["dictation records, transcribes locally and inserts at the cursor; Esc cancels", async () => {
+			await js(`
+				window.__tracks = 0;
+				navigator.mediaDevices.getUserMedia = async () => ({ getTracks: () => [{ stop: () => window.__tracks++ }] });
+				window.MediaRecorder = class { static isTypeSupported(t) { return t === "audio/webm;codecs=opus"; } constructor(_s, o) { this.mimeType = o.mimeType; this.state = "inactive"; } start() { this.state = "recording"; setTimeout(() => this.ondataavailable?.({ data: new Blob([new Uint8Array([1, 2, 3, 4])]) }), 20); } stop() { this.state = "inactive"; setTimeout(() => this.onstop?.(), 30); } };
+				__fixture.configure({ "voice.status": { result: { available: true } }, "voice.transcribe": { result: { text: "summarize the budget meeting" } } });
+				applyPrefs({ voice: true }); await setState('chat'); document.getElementById('box').value = 'Please '; document.getElementById('box').setSelectionRange(7, 7);`);
+			await sleep(150);
+			assert.equal(await js(`return document.getElementById('micTask').hidden;`), false, "the microphone appears when Whisper is installed");
+			await js(`document.getElementById('micTask').click();`);
+			await sleep(120);
+			assert.equal(await js(`return document.getElementById('micTask').getAttribute('aria-pressed');`), "true");
+			await js(`document.getElementById('micTask').click();`);
+			await sleep(200);
+			const call = (await calls("voice.transcribe")).at(-1).args;
+			assert.equal(call[1], "audio/webm;codecs=opus");
+			assert.equal(await js(`return document.getElementById('box').value;`), "Please summarize the budget meeting");
+			assert.equal(await js(`return window.__tracks;`), 1, "the microphone is released when recording stops");
+			await js(`document.getElementById('micTask').click();`);
+			await sleep(80);
+			await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));`);
+			await sleep(150);
+			assert.equal((await calls("voice.transcribe")).length, 1, "a cancelled recording is not transcribed");
+			assert.equal(await js(`return document.getElementById('micTask').dataset.state;`), "idle");
+			await js(`applyPrefs({ voice: false }); renderHomeMode();`);
+			assert.equal(await js(`return document.getElementById('micTask').hidden;`), true);
 		}],
 		["small-screen plans scroll without hiding the header or footer", async () => {
 			await js(`document.documentElement.style.setProperty('--h-mission','390px'); __fixture.variant('approval'); await setState('mission');`);

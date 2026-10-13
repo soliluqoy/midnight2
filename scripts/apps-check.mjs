@@ -9,6 +9,7 @@ import { app, BrowserWindow, ipcMain, session, webContents } from "electron";
 import { createAppRegistry, appPartition } from "../src/apps/registry.mjs";
 import { createAppWorkspace } from "../src/desktop/app-workspace.mjs";
 import { createIpcRouter } from "../src/desktop/ipc.mjs";
+import { openMcpApp } from "../src/desktop/mcp-app.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "midnight-apps-check-"));
@@ -141,6 +142,26 @@ app.whenReady().then(async () => {
 		await workspace.remove({ id: work.id, forget: true });
 		assert.equal(registry.list().length, 1);
 		process.stdout.write("[apps] PASS unpinning preserves profiles; sign-out and removal affect only the chosen profile\n");
+		// A connector's MCP App view: runs its own script, but cannot reach the network, local files or midnight.
+		const viewFile = path.join(temp, "view.html");
+		const secretFile = path.join(temp, "secret.txt");
+		fs.writeFileSync(secretFile, "top secret");
+		let hits = 0;
+		const probe = http.createServer((_q, r) => { hits++; r.end("leak"); });
+		await new Promise((r) => probe.listen(0, "127.0.0.1", r));
+		const probeUrl = `http://127.0.0.1:${probe.address().port}/`;
+		const secretUrl = new URL(`file:///${secretFile.replace(/\\/g, "/")}`).href;
+		fs.writeFileSync(viewFile, `<!doctype html><h1 id=t>Forecast</h1><script>document.getElementById('t').textContent='Forecast ready'; window.results={net:'pending',file:'pending',img:'pending'}; fetch(${JSON.stringify(probeUrl)}).then(()=>results.net='open',()=>results.net='blocked'); fetch(${JSON.stringify(secretUrl)}).then(r=>r.text()).then(t=>results.file=t,()=>results.file='blocked'); const i=new Image(); i.onload=()=>results.img='open'; i.onerror=()=>results.img='blocked'; i.src=${JSON.stringify(`${probeUrl}pixel.png`)};</script>`);
+		const before = new Set(BrowserWindow.getAllWindows());
+		openMcpApp({ path: viewFile, name: "Fixture" });
+		const viewer = BrowserWindow.getAllWindows().find((w) => !before.has(w));
+		await until(async () => (await viewer.webContents.executeJavaScript("document.getElementById('t')?.textContent").catch(() => "")) === "Forecast ready");
+		const results = await until(async () => { const r = await viewer.webContents.executeJavaScript("window.results"); return Object.values(r).every((v) => v !== "pending") && r; });
+		assert.deepEqual(results, { net: "blocked", file: "blocked", img: "blocked" });
+		assert.equal(hits, 0, "nothing reached the network");
+		assert.equal(await viewer.webContents.executeJavaScript("typeof window.midnight + typeof window.midnightApps + typeof require"), "undefinedundefinedundefined", "no bridge to midnight or Node");
+		viewer.destroy(); probe.close();
+		process.stdout.write("[apps] PASS connector views run sandboxed with no network, files or bridge\n");
 		assert.deepEqual(shellErrors, []);
 		process.stdout.write("[apps] PASS no renderer errors\n");
 		if (compat) {

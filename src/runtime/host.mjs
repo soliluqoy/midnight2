@@ -25,6 +25,7 @@ import { createModelRuntime, createPiRuntime, RUNTIME_VERSION } from "./adapter.
 import { registerLocalEndpoint } from "./models.mjs";
 import { corePaths, dataPaths } from "./paths.mjs";
 import { EMBEDDING_DEFAULTS, embeddingSettings } from "../search/config.mjs";
+import { createSpeechRuntime } from "../voice/runtime.mjs";
 
 export const HOST_DEFAULTS = {
 	provider: "",
@@ -127,6 +128,8 @@ export async function createHost(o) {
 	});
 
 	const queue = createQueue({ start: (item) => coord.start(item) });
+	const speech = o.speechRuntime ?? createSpeechRuntime({ paths: { dataDir: o.dataDir } });
+	let speechSetup;
 	tools.resources = createResources({ queue, settings: () => settings });
 	coord = createCoordinator({
 		...services,
@@ -136,6 +139,11 @@ export async function createHost(o) {
 		live: send,
 		toPiTool,
 		toolset: (mission) => tools.forMission(mission, settings).map((n) => toolMap.get(n)).filter(Boolean),
+		connectorTools: async (mission) => {
+			const specs = await tools.mcp.specsFor(mission);
+			for (const s of specs) toolMap.set(s.name, s); // the broker dispatches by name
+			return specs;
+		},
 		memory: tools.memory,
 		context: tools.context,
 		skills: tools.skills,
@@ -212,8 +220,8 @@ export async function createHost(o) {
 			if (repo.list().some((m) => m.scope.pageAssistant?.appId === page.appId && !["succeeded", "partially-succeeded", "failed", "cancelled"].includes(m.status))) throw new Error("This app already has an active conversation. Finish or stop it first.");
 			return coord.createMission({ text: p.text, requestId: p.requestId, context, contextEvidence, mode: "prepare", scope: { pageAssistant: { appId: page.appId } }, trigger: { kind: "user", appId: page.appId, appName: page.appName, profile: page.profile } });
 		},
-		"mission.create": (p) => coord.createMission({ text: p.text, requestId: p.requestId, mode: p.mode, skill: p.skill, privacy: p.privacy, context: p.context }),
-		"mission.followUp": (p) => coord.followUp(p.missionId, p.text, p.requestId, p.context),
+		"mission.create": (p) => coord.createMission({ text: p.text, requestId: p.requestId, mode: p.mode, skill: p.skill, privacy: p.privacy, context: p.context, attachments: p.attachments }),
+		"mission.followUp": (p) => coord.followUp(p.missionId, p.text, p.requestId, p.context, p.attachments),
 		"mission.steer": (p) => coord.steer(p.missionId, p.text),
 		"mission.pause": (p) => coord.pause(p.missionId),
 		"mission.resume": (p) => coord.resume(p.missionId),
@@ -228,8 +236,23 @@ export async function createHost(o) {
 		"recipe.list": () => tools.recipes.list(),
 		"recipe.review": (p) => ({ ok: tools.recipes.markReviewed(p.recipeId) }),
 		"recipe.run": (p) => tools.recipes.run(p.recipeId, { requestId: p.requestId }),
+		"recipe.exportFile": (p) => tools.recipes.exportFile(p.recipeId), // only the shell's save dialog calls this
+		"recipe.importFile": (p) => tools.recipes.importFile(p.routine), // only the shell's open dialog calls this
 		"skill.list": () => tools.skills.list(),
 		"connector.list": () => tools.connectors.list(),
+		"mcp.list": () => tools.mcp.list(),
+		"mcp.add": (p) => tools.mcp.add(p), // only the shell calls this, after the user confirms in a system dialog
+		"mcp.remove": (p) => tools.mcp.remove(p.id),
+		"mcp.setEnabled": (p) => tools.mcp.setEnabled(p.id, p.enabled),
+		"mcp.inspect": (p) => tools.mcp.inspect(p.id),
+		"mcp.windows": () => tools.discoverWindowsConnectors(),
+		"mcp.review": (p) => tools.mcp.review(p.id, p.tool, { digest: p.digest, readOnly: p.readOnly }),
+		"artifact.view": (p) => {
+			// Only the shell's sandboxed MCP App viewer calls this.
+			const a = evidence.artifact(p.artifactId);
+			if (!a || a.type !== "mcp-app") throw new Error("no such app view");
+			return { path: a.path, name: a.name };
+		},
 		"stop.emergency": () => {
 			tools.fileSearch.cancel();
 			return coord.emergencyStop();
@@ -285,6 +308,7 @@ export async function createHost(o) {
 		"artifact.open": (p) => {
 			const a = evidence.artifact(p.artifactId);
 			if (!a) throw new Error("no such artifact");
+			if (a.type === "mcp-app") throw new Error("Open a connector's view from the mission; it is never opened in your browser.");
 			return platform.call("open.path", { path: a.publishedPath ?? a.path, reveal: !!p.reveal });
 		},
 		"query.snapshot": () => snapshot(),
@@ -295,13 +319,23 @@ export async function createHost(o) {
 			actions: ledger.forMission(p.missionId).map((i) => ({ ...i, receipt: ledger.latestReceipt(i.id) })),
 			questions: repo.openQuestions(p.missionId),
 		}),
-		"query.history": (p) => repo.list({ limit: p.limit ?? 50 }).map((m) => viewOf(m.id)).filter(Boolean),
+		"query.history": (p) => (p.query?.trim() ? repo.search(p.query, { limit: p.limit ?? 50 }) : repo.list({ limit: p.limit ?? 50 })).map((m) => viewOf(m.id)).filter(Boolean),
 		"data.export": () => tools.data.exportAll(),
 		"data.delete": (p) => {
 			if (p.scope === "all") tools.fileSearch.clear();
 			return tools.data.remove(p.scope);
 		},
 		"diagnostics.preview": () => tools.data.diagnostics(),
+		// The packaged app's native pieces load: sqlite-vec in the store and ONNX Runtime for local search.
+		"diagnostics.native": async () => ({ vector: !!store.vector, onnx: await import("@huggingface/transformers").then(() => true, (err) => err.message) }),
+		"voice.status": () => ({ ...speech.status(), progress: speechSetup?.progress }),
+		"voice.setup": () => {
+			if (speechSetup?.running) return { started: false, reason: "Voice input is already being installed." };
+			const job = (speechSetup = { running: true, progress: undefined });
+			speech.setup({ onProgress: (p) => (job.progress = { done: p.bytesDone, total: p.bytesTotal }) }).catch((err) => log("voice setup", err.message)).finally(() => (job.running = false));
+			return { started: true };
+		},
+		"voice.transcribe": (p) => speech.transcribe(p.samples), // only the shell calls this
 		"resources.status": () => ({ queue: queue.status(), profile: settings.profile, weather: tools.resources?.weather() }),
 	};
 
@@ -366,6 +400,8 @@ export async function createHost(o) {
 		async close() {
 			tools.watches?.stop();
 			await coord.shutdown();
+			await tools.mcp?.closeAll();
+			speech.close();
 			tools.context.close();
 			await tools.fileSearch.close();
 			for (const id of runtime.running()) await runtime.abort(id).catch(() => {});

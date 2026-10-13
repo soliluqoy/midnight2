@@ -1,7 +1,7 @@
 // The capsule's only bridge to the shell (plan ch. 04, R01): one named function per allowed method, a versioned
 // envelope with a per-page sequence number, and no generic invoke. Must match src/contracts/ipc.mjs (a sandboxed
 // preload cannot import it).
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 const V = 1;
 const CHANNEL = "midnight:v1";
@@ -18,6 +18,13 @@ const m = (method) => (params) => call(method, params);
 contextBridge.exposeInMainWorld("midnight", {
 	ui: { size: (state) => call("ui.size", { state }), dims: m("ui.dims"), focus: m("ui.focus"), hide: m("ui.hide"), show: m("ui.show"), textSize: (z) => call("ui.textSize", { z }) },
 	clipboard: { read: m("clipboard.read"), write: (text) => call("clipboard.write", { text }) },
+	voice: { status: m("voice.status"), setup: m("voice.setup"), transcribe: (audio, type) => call("voice.transcribe", { audio, type }) },
+	// Only real File objects from a drop or paste have a disk path (page scripts cannot forge one); the shell reads them.
+	attachments: {
+		fromFiles: (files) => Promise.allSettled([...(files ?? [])].map((f) => webUtils.getPathForFile(f)).filter(Boolean).map((p) => call("attachments.add", { path: p }))),
+		paste: m("attachments.paste"),
+		remove: (id) => call("attachments.remove", { id }),
+	},
 	openExternal: (url) => call("open.external", { url }),
 	peekBrowser: m("browser.peek"),
 	apps: { state: m("apps.state"), open: m("apps.open"), add: m("apps.add"), update: m("apps.update"), remove: m("apps.remove"), layout: m("apps.layout"), command: m("apps.command"), ask: m("apps.ask"), stop: m("apps.stop"), viewTask: m("apps.viewTask") },
@@ -50,9 +57,20 @@ contextBridge.exposeInMainWorld("midnight", {
 	watches: { create: (draft) => call("watch.create", { draft }), setPaused: m("watch.setPaused"), remove: (watchId) => call("watch.delete", { watchId }), list: m("watch.list") },
 	notifications: { act: m("notification.act") },
 	memory: { list: m("memory.list"), remember: m("memory.remember"), correct: m("memory.correct"), confirm: (memoryId) => call("memory.confirm", { memoryId }), forget: (memoryId) => call("memory.forget", { memoryId }), export: m("memory.export") },
-	recipes: { list: m("recipe.list"), review: m("recipe.review"), run: m("recipe.run") },
+	recipes: { list: m("recipe.list"), review: m("recipe.review"), run: m("recipe.run"), export: (recipeId) => call("recipe.export", { recipeId }), import: m("recipe.import") },
 	skills: { list: m("skill.list") },
-	connectors: { list: m("connector.list") },
+	connectors: {
+		list: m("connector.list"),
+		mcpList: m("mcp.list"),
+		mcpAdd: (draft) => call("connector.mcpAdd", draft),
+		mcpRemove: (id) => call("mcp.remove", { id }),
+		mcpSetEnabled: (id, enabled) => call("mcp.setEnabled", { id, enabled }),
+		mcpInspect: (id) => call("mcp.inspect", { id }),
+		windowsConnectors: m("mcp.windows"),
+		mcpReview: (id, tool, digest, readOnly) => call("mcp.review", { id, tool, digest, readOnly }),
+		openApp: (artifactId) => call("mcpapp.open", { artifactId }),
+		registerWithWindows: m("mcpserver.register"),
+	},
 	sources: { pick: (purpose) => call("sources.pick", { purpose }), list: m("sources.list"), remove: (rootId) => call("sources.remove", { rootId }) },
 	files: { status: m("files.status"), setup: m("files.setup"), index: m("files.index"), search: m("files.search"), cancel: m("files.cancel"), clear: m("files.clear"), open: m("files.open") },
 	artifacts: { open: (artifactId, reveal) => call("artifact.open", reveal ? { artifactId, reveal: true } : { artifactId }) },
