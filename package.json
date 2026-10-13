@@ -1,7 +1,7 @@
 {
 	"name": "midnight-app",
 	"productName": "midnight",
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"description": "midnight: a tray-first desktop launcher that plans, does and verifies work on your computer, in plain view",
 	"author": "soliluqoy",
 	"license": "MIT",
@@ -112,7 +112,10 @@
 			"signAndEditExecutable": true,
 			"verifyUpdateCodeSignature": true,
 			"extraFiles": [
-				{ "from": "src/desktop/native/midnight-recovery.exe", "to": "midnight-recovery.exe" }
+				{
+					"from": "src/desktop/native/midnight-recovery.exe",
+					"to": "midnight-recovery.exe"
+				}
 			],
 			"signExts": [
 				".exe"

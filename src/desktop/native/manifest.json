@@ -2,7 +2,7 @@
 	"manifest_version": "0.3",
 	"name": "midnight",
 	"display_name": "midnight",
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"description": "Search the folders you chose in midnight and give midnight tasks on this computer. Anything beyond reading waits for your approval in midnight.",
 	"author": {
 		"name": "soliluqoy",
