@@ -11,7 +11,9 @@ const escape = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;"
 const error = (e) => { $("appErrorText").textContent = e.message ?? String(e); $("appError").hidden = false; scheduleLayout(); };
 const requestId = () => `req_${crypto.randomUUID()}`;
 
-async function bounds(cover = $("appDialog").open) {
+// While the dialog is opening, a layout from another frame must not show the website over it.
+let dialogOpening = false;
+async function bounds(cover = $("appDialog").open || dialogOpening) {
 	const rect = $("siteViewport").getBoundingClientRect();
 	return api.layout({ x: Math.max(0, rect.x), y: Math.max(0, rect.y), width: rect.width, height: rect.height, covered: cover || (panelOpen && innerWidth <= 1050) });
 }
@@ -105,8 +107,13 @@ async function openDialog(item) {
 	$("pinApp").textContent = item?.pinned ? "Unpin" : "Pin to launcher";
 	$("saveApp").textContent = item ? "Save changes" : "Add website";
 	for (const id of ["dialogError", "confirmNote", "confirmDestructive"]) $(id).hidden = true;
-	await bounds(true);
-	$("appDialog").showModal();
+	dialogOpening = true;
+	try {
+		await bounds(true);
+		$("appDialog").showModal();
+	} finally {
+		dialogOpening = false;
+	}
 	(item ? $("websiteName") : $("websiteUrl")).focus();
 }
 function closeDialog() { $("appDialog").close(); scheduleLayout(); }
