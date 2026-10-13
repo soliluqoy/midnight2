@@ -11,7 +11,7 @@
 	const node = (tag, className, text) => {
 		const el = document.createElement(tag);
 		if (className) el.className = className;
-		if (text != null) el.textContent = typeof text === "string" ? i18n.t(text) : text;
+		if (text != null) el.textContent = text;
 		return el;
 	};
 	const checked = (result) => window.checkedResult(result);
@@ -22,10 +22,13 @@
 	};
 	function location(row) {
 		const loc = row?.locator ?? {};
-		if (loc.page != null) return i18n.t("Page {n}", { n: loc.page });
-		if (loc.slide != null) return i18n.t("Slide {n}", { n: loc.slide });
-		if (loc.seconds != null) return i18n.t(loc.modality === "audio" && row.kind === "video" ? "Audio at {time}" : "At {time}", { time: `${clock(loc.seconds)}${loc.endSeconds != null ? `–${clock(loc.endSeconds)}` : ""}` });
-		if (loc.line != null) return i18n.t("Line {n}", { n: loc.line });
+		if (loc.page != null) return `Page ${loc.page}`;
+		if (loc.slide != null) return `Slide ${loc.slide}`;
+		if (loc.seconds != null) {
+			const time = `${clock(loc.seconds)}${loc.endSeconds != null ? `–${clock(loc.endSeconds)}` : ""}`;
+			return loc.modality === "audio" && row.kind === "video" ? `Audio at ${time}` : `At ${time}`;
+		}
+		if (loc.line != null) return `Line ${loc.line}`;
 		return "";
 	}
 	function reason(row) {
@@ -42,7 +45,7 @@
 	}
 	byId("manageSearch").onclick = () => manage(byId("fileManagement").hidden);
 	function statusMessage(text, error = false) {
-		byId("fileStatus").textContent = i18n.t(text);
+		byId("fileStatus").textContent = text;
 		root.querySelector(".file-progress").dataset.error = String(error);
 		if (error) manage(true);
 	}
@@ -53,11 +56,11 @@
 		const details = metadata.progress ?? {};
 		byId("fileSetup").disabled = !!busy;
 		byId("fileIndex").disabled = !!busy || !sources.length || !installed || metadata.enabled === false;
-		byId("fileIndex").title = i18n.t(!installed ? "Install local search first" : !sources.length ? "Choose folders first" : metadata.enabled === false ? "Enable meaning search in Settings first" : "Read the selected folders for meaning search");
+		byId("fileIndex").title = !installed ? "Install local search first" : !sources.length ? "Choose folders first" : metadata.enabled === false ? "Enable meaning search in Settings first" : "Read the selected folders for meaning search";
 		byId("fileClear").disabled = !!busy || !(metadata.counts?.segments || metadata.counts?.files);
 		byId("fileStop").hidden = !metadata.busy;
-		byId("fileSetup").textContent = i18n.t(installed ? "Repair local search" : "Install local search");
-		byId("fileSetupNote").textContent = i18n.t(installed ? "EmbeddingGemma 2 is installed on this computer. Choose folders, then index them to search their contents by meaning." : "First, install EmbeddingGemma 2 (a one-time download of about 850 MB; nothing else to install). Then choose folders and index them. Indexing and search run on this computer.");
+		byId("fileSetup").textContent = installed ? "Repair local search" : "Install local search";
+		byId("fileSetupNote").textContent = installed ? "EmbeddingGemma 2 is installed on this computer. Choose folders, then index them to search their contents by meaning." : "First, install EmbeddingGemma 2 (a one-time download of about 850 MB; nothing else to install). Then choose folders and index them. Indexing and search run on this computer.";
 		const progress = byId("fileProgress");
 		progress.hidden = !metadata.busy;
 		if (details.bytesTotal > 0 && metadata.operation === "setup") {
@@ -72,8 +75,8 @@
 		const extra = [];
 		if (metadata.busy) {
 			if (details.file) extra.push(details.file);
-			if (details.locator?.page != null) extra.push(i18n.t("Page {n}", { n: details.locator.page }));
-			else if (details.locator?.seconds != null) extra.push(i18n.t("At {time}", { time: clock(details.locator.seconds) }));
+			if (details.locator?.page != null) extra.push(`Page ${details.locator.page}`);
+			else if (details.locator?.seconds != null) extra.push(`At ${clock(details.locator.seconds)}`);
 			if (details.fileSegments) extra.push(`${details.fileSegments} passages read`);
 			if (details.startedAt) extra.push(`${clock((Date.now() - details.startedAt) / 1000)} elapsed`);
 		} else extra.push(...notes);
@@ -82,12 +85,12 @@
 		if (actionError || metadata.error) return statusMessage(actionError || metadata.error, true);
 		if (metadata.busy) {
 			const phases = { downloading: "Downloading EmbeddingGemma 2", loading: "Loading EmbeddingGemma 2", verifying: "Checking the local model", discovering: "Finding files in your selected folders", embedding: "Reading files for meaning search", cancelled: "Stopping local search" };
-			let part = details.total > 0 ? ` · ${i18n.t("{done} of {total} files finished", { done: details.done ?? 0, total: details.total })}` : "";
+			let part = details.total > 0 ? ` · ${details.done ?? 0} of ${details.total} files finished` : "";
 			if (details.bytesTotal > 0 && metadata.operation === "setup") {
 				const mb = value => (value / 1_000_000).toFixed(1);
 				part = ` · ${mb(Math.min(details.bytesDone ?? 0, details.bytesTotal))} / ${mb(details.bytesTotal)} MB`;
 			}
-			return statusMessage(`${i18n.t(metadata.phase === "cancelled" ? phases.cancelled : details.message || phases[metadata.phase] || (metadata.operation === "setup" ? "Installing local search…" : "Reading selected folders…"))}${part}`);
+			return statusMessage(`${metadata.phase === "cancelled" ? phases.cancelled : details.message || phases[metadata.phase] || (metadata.operation === "setup" ? "Installing local search…" : "Reading selected folders…")}${part}`);
 		}
 		const count = metadata.counts?.files ?? 0;
 		if (metadata.state === "cancelled") return statusMessage("Stopped. Choose Install local search or Index selected folders to continue.");
@@ -138,7 +141,7 @@
 		preview.append(node("p", "file-excerpt", row.text || emptyText));
 		const actions = node("div", "file-actions");
 		const loc = row.locator ?? {};
-		const openTitle = loc.seconds != null ? i18n.t("Open at {time}", { time: clock(loc.seconds) }) : loc.page != null ? i18n.t("Open page {n}", { n: loc.page }) : "Open";
+		const openTitle = loc.seconds != null ? `Open at ${clock(loc.seconds)}` : loc.page != null ? `Open page ${loc.page}` : "Open";
 		for (const [label, fn] of [[openTitle, () => open(false)], ["Show in Explorer", () => open(true)], ["Use in task", useInTask]]) {
 			const button = node("button", "sb", label);
 			button.type = "button";
@@ -185,7 +188,7 @@
 			}
 		}
 		select(selected);
-		byId("fileSummary").textContent = searching ? i18n.t("Searching…") : !query.value.trim() ? i18n.t("Describe what you remember.") : `${i18n.t(rows.length === 1 ? "{n} result" : "{n} results", { n: rows.length })} · ${i18n.t(mode === "hybrid" ? "Words + local meaning" : "Word matches")}${warning ? ` · ${i18n.t(warning)}` : ""}`;
+		byId("fileSummary").textContent = searching ? "Searching…" : !query.value.trim() ? "Describe what you remember." : `${rows.length} result${rows.length === 1 ? "" : "s"} · ${mode === "hybrid" ? "Words + local meaning" : "Word matches"}${warning ? ` · ${warning}` : ""}`;
 		byId("fileSummary").title = byId("fileSummary").textContent;
 	}
 	function schedule(immediate = false) {
@@ -218,7 +221,7 @@
 			rows = [];
 			renderResults();
 			actionError = errorText(err); renderStatus();
-			byId("fileSummary").textContent = i18n.t("Search could not finish. Your query is kept; press Enter to retry.");
+			byId("fileSummary").textContent = "Search could not finish. Your query is kept; press Enter to retry.";
 		}
 	}
 	async function open(reveal) {

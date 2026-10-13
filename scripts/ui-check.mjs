@@ -216,7 +216,7 @@ app.whenReady().then(async () => {
 			assert.equal(await js(`return document.getElementById('chipClip').hidden;`), true);
 		}],
 		["settings can record the modifier-only Ctrl+Win shortcut", async () => {
-			await js(`Object.defineProperty(navigator,'platform',{value:'Win32',configurable:true}); openSettings('behaviour');`);
+			await js(`Object.defineProperty(navigator,'platform',{value:'Win32',configurable:true}); openSettings('launcher');`);
 			await sleep(200);
 			await js(`document.querySelector('[aria-label="Change summon shortcut"]').click(); document.dispatchEvent(new KeyboardEvent('keydown',{key:'Control',ctrlKey:true,bubbles:true})); document.dispatchEvent(new KeyboardEvent('keydown',{key:'Meta',ctrlKey:true,metaKey:true,bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup',{key:'Meta',ctrlKey:true,bubbles:true}));`);
 			await sleep(80);
@@ -409,8 +409,10 @@ app.whenReady().then(async () => {
 			assert.equal(await js("return document.getElementById('ans').scrollTop;"), 0);
 		}],
 		["rule and watch selections match their submitted values", async () => {
-			await js("openSettings();");
+			await js("openSettings('rules');");
 			await sleep(200);
+			assert.equal(await js("return document.querySelectorAll('#sec-rules input, #sec-watches input').length;"), 0, "add forms stay closed until asked for");
+			await js(`[...document.querySelectorAll('#sec-rules .sb, #sec-watches .sb')].filter(b=>/^New /.test(b.textContent)).forEach(b=>b.click());`);
 			await js(`document.querySelector('#sec-rules [aria-label=Action]').click(); [...document.querySelectorAll('.dd-i')].find(b=>b.textContent==='Save files').click(); document.querySelector('#sec-rules [aria-label=Expires] button').click();`);
 			assert.match(await js("return document.querySelector('#sec-rules [aria-label=Action]').textContent;"), /Save files/);
 			assert.equal(await js("return document.querySelector('#sec-rules [aria-label=Expires] button').getAttribute('aria-checked');"), "true");

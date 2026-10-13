@@ -273,6 +273,15 @@ input::placeholder,textarea::placeholder{color:var(--faint);opacity:1}
 #sStatus.on{display:flex}
 #sStatus.err{color:var(--amber)}
 #sStatus span{flex:1;user-select:text}
+/* Settings tabs: one short page per area instead of one long scroll. */
+.stabs{display:flex;gap:2px;padding:0 18px;margin:0 0 14px;border-bottom:1px solid var(--line);overflow-x:auto;flex:none;scrollbar-width:none}
+.stabs button{border:0;border-radius:0;background:none;padding:8px 10px;color:var(--muted);font-size:12.5px;white-space:nowrap;box-shadow:inset 0 -2px 0 transparent}
+.stabs button:hover{color:var(--ink)}
+.stabs button.on{color:var(--highlight);box-shadow:inset 0 -2px 0 var(--highlight)}
+.stabs button:focus-visible{outline:2px solid var(--highlight);outline-offset:-2px}
+.sec>.row{margin-top:8px;flex-wrap:wrap}
+.sform{display:flex;flex-direction:column;gap:8px;margin-top:8px;padding:12px;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--surface-low)}
+.sform>.row{flex-wrap:wrap}
 .sbody{flex:1;min-height:0;overflow:auto;padding:0 18px 18px;display:flex;flex-direction:column;gap:22px}
 .sec h6{margin:0 0 8px;font:11px "Segoe UI",sans-serif;color:var(--muted);font-weight:600;letter-spacing:.65px}
 .field{display:flex;align-items:center;gap:16px;padding:8px 0}
@@ -362,7 +371,7 @@ body[data-motion=reduced] *{animation-duration:.001s!important;animation-iterati
 @media (forced-colors:active){
   #cap,.modal .box,.dd-menu,.card,.continue-mission,.launcher-app-pin,.launcher-add-app,.task-file,.ui-error,.f-ask,.f-q,.f-rec{border:1px solid CanvasText}
   button,.chip,select,textarea,input,.window-control,.seg button,.rail-button,.ib,.pb,.sb{border:1px solid ButtonText}
-  .rail-button[aria-current=page],.seg button.on,.seg button[aria-pressed=true]{forced-color-adjust:none;background:Highlight;color:HighlightText;border-color:Highlight}
+  .rail-button[aria-current=page],.stabs button[aria-selected=true],.seg button.on,.seg button[aria-pressed=true]{forced-color-adjust:none;background:Highlight;color:HighlightText;border-color:Highlight}
   .pb.pri,.sb.pri,.switch.on{forced-color-adjust:none;background:Highlight;color:HighlightText;border-color:Highlight}
   .switch:after,.switch.on:after{forced-color-adjust:none;background:ButtonText}
   .dot,.badge,.start-logo i{forced-color-adjust:none;background:CanvasText;color:Canvas}

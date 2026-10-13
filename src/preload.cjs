@@ -16,7 +16,7 @@ async function call(method, params = {}) {
 const m = (method) => (params) => call(method, params);
 
 contextBridge.exposeInMainWorld("midnight", {
-	ui: { size: (state) => call("ui.size", { state }), dims: m("ui.dims"), focus: m("ui.focus"), hide: m("ui.hide"), show: m("ui.show"), textSize: (z) => call("ui.textSize", { z }), strings: m("ui.strings") },
+	ui: { size: (state) => call("ui.size", { state }), dims: m("ui.dims"), focus: m("ui.focus"), hide: m("ui.hide"), show: m("ui.show"), textSize: (z) => call("ui.textSize", { z }) },
 	clipboard: { read: m("clipboard.read"), write: (text) => call("clipboard.write", { text }) },
 	voice: { status: m("voice.status"), setup: m("voice.setup"), transcribe: (audio, type) => call("voice.transcribe", { audio, type }) },
 	// Only real File objects from a drop or paste have a disk path (page scripts cannot forge one); the shell reads them.

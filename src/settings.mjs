@@ -23,7 +23,6 @@ export const DEFAULTS = {
 	reducedMotion: false,
 	voice: false, // dictation into Ask with local Whisper
 	mcpServer: false, // let other apps on this computer use midnight through its MCP connector
-	language: "", // "" = follow the system; otherwise a supported locale code such as "en" or "id"
 	autoExpand: true, // open the wide reading view when an answer is long
 	answerLength: "normal", // brief | normal | detailed
 	// web
@@ -84,7 +83,6 @@ export function loadSettings() {
 			s.textSize = Math.min(1.6, Math.max(0.9, Math.round(s.textSize * 100) / 100));
 			s.embedding = embeddingSettings(s.embedding);
 			if (!["ask", "prepare", "rules"].includes(s.mode)) s.mode = "ask";
-			if (!/^([a-z]{2}(-[A-Z]{2})?)?$/.test(s.language)) s.language = "";
 			if (!["cloud", "local", "offline"].includes(s.privacy)) s.privacy = "cloud";
 			if (!["quiet", "balanced", "focused", "burst"].includes(s.profile)) s.profile = "balanced";
 			write();

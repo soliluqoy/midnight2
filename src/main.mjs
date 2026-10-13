@@ -20,7 +20,6 @@ import { previewFile, closeFilePreviews } from "./desktop/file-preview.mjs";
 import { createSupervisor } from "./desktop/supervisor.mjs";
 import { createUpdater } from "./desktop/updater.mjs";
 import { hostSettings, loadSettings } from "./settings.mjs";
-import { catalog, LANGUAGES, resolveLanguage, translator } from "./i18n.mjs";
 import { armHelper, disarmHelper, noteForeground, stopComputer } from "./tools/computer.mjs";
 import { userContext } from "./tools/userbrowser.mjs";
 import { createWeb } from "./tools/web.mjs";
@@ -179,19 +178,17 @@ function startMissionShell() {
 	}
 	let proactivePaused = false;
 	let trayStopped = false;
-	const language = () => resolveLanguage(settings.get().language, app.getPreferredSystemLanguages?.() ?? [app.getLocale()]);
 	function rebuildTray(stopped = trayStopped) {
 		if (!tray) return;
 		trayStopped = stopped;
-		const t = translator(language());
 		tray.setContextMenu(
 			Menu.buildFromTemplate([
-				{ label: t("Ask midnight"), click: summon },
-				{ label: t("Settings…"), click: openSettings },
-				{ label: t("Show background browser"), click: () => browsers.peek() },
+				{ label: "Ask midnight", click: summon },
+				{ label: "Settings…", click: openSettings },
+				{ label: "Show background browser", click: () => browsers.peek() },
 				{ type: "separator" },
 				{
-					label: t("Pause proactive work"),
+					label: "Pause proactive work",
 					type: "checkbox",
 					checked: proactivePaused,
 					click: (item) => {
@@ -200,11 +197,11 @@ function startMissionShell() {
 					},
 				},
 				stopped
-					? { label: t("Resume after emergency stop"), click: () => supervisor.request("stop.clear", {}).then(() => rebuildTray(false)).catch(() => {}) }
-					: { label: t("Emergency stop"), click: emergencyStop },
-				{ label: t("Restart engine"), click: () => supervisor.restart() },
+					? { label: "Resume after emergency stop", click: () => supervisor.request("stop.clear", {}).then(() => rebuildTray(false)).catch(() => {}) }
+					: { label: "Emergency stop", click: emergencyStop },
+				{ label: "Restart engine", click: () => supervisor.restart() },
 				{
-					label: t("Check for updates…"),
+					label: "Check for updates…",
 					click: async () => {
 						const r = await updater.check({ force: true });
 						toCapsule({ kind: "shell", type: "update", ...r });
@@ -212,7 +209,7 @@ function startMissionShell() {
 					},
 				},
 				{ type: "separator" },
-				{ label: t("Quit"), click: () => app.quit() },
+				{ label: "Quit", click: () => app.quit() },
 			]),
 		);
 	}
@@ -342,10 +339,6 @@ function startMissionShell() {
 	const shellMethods = {
 		"ui.size": ({ state }) => place(state),
 		"ui.dims": () => dims(),
-		"ui.strings": () => {
-			const locale = language();
-			return { locale, strings: catalog(locale), languages: LANGUAGES };
-		},
 		"ui.focus": () => capsule.isVisible() && capsule.focus(),
 		"ui.hide": hideCapsule,
 		"ui.show": () => summon({ toggle: false }),
@@ -386,10 +379,6 @@ function startMissionShell() {
 			const after = settings.set(patch);
 			if (after.launchAtLogin !== before.launchAtLogin && app.isPackaged && process.platform !== "linux") app.setLoginItemSettings({ openAtLogin: after.launchAtLogin });
 			if (after.mcpServer !== before.mcpServer) await syncMcpServer();
-			if (after.language !== before.language) {
-				rebuildTray();
-				for (const w of BrowserWindow.getAllWindows()) if (w !== capsule && w.webContents.getURL().endsWith("/apps.html")) w.webContents.reload();
-			}
 			if (after.textSize !== before.textSize) {
 				applyZoom();
 				toCapsule({ kind: "shell", type: "relayout" });
@@ -450,11 +439,11 @@ function startMissionShell() {
 		},
 		// Dictation: the launcher records, the hidden decoder turns it into 16 kHz samples, local Whisper transcribes.
 		"voice.transcribe": async ({ audio, type }) => {
-			if (!settings.get().voice) throw new Error("Voice input is off. Turn it on in Settings → Voice input.");
+			if (!settings.get().voice) throw new Error("Voice input is off. Turn it on in Settings → General → Voice input.");
 			const media = await mediaDecoder.fromBytes(audio, "audio", type);
 			try {
 				const { samples } = await media.audio({ start: 0, seconds: 300 });
-				return supervisor.request("voice.transcribe", { samples, language: language() }, 180000);
+				return supervisor.request("voice.transcribe", { samples }, 180000);
 			} finally {
 				await media.close();
 			}
@@ -542,7 +531,7 @@ function startMissionShell() {
 		router = createIpcRouter({
 			ipcMain,
 			isTrusted: (event) => (event.sender === capsule?.webContents && event.senderFrame === capsule.webContents.mainFrame && (event.senderFrame?.url ?? "").split("#")[0] === UI_URL) || appWorkspace.isTrusted(event),
-			canCall: (event, method) => event.sender === capsule?.webContents || method.startsWith("apps.") || method === "ui.strings",
+			canCall: (event, method) => event.sender === capsule?.webContents || method.startsWith("apps."),
 			shell: shellMethods,
 			host: hostCall,
 			log,

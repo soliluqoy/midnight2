@@ -8,8 +8,6 @@ import { downloadModel } from "../search/model-files.mjs";
 import { SPEECH_BYTES, SPEECH_DTYPE, SPEECH_FILES, SPEECH_MODEL_ID, SPEECH_MODEL_REVISION } from "./model-files.mjs";
 
 const WORKER = new URL("./speech-worker.mjs", import.meta.url);
-/** Whisper language codes for midnight's interface languages; anything else lets Whisper use English. */
-const WHISPER_LANGUAGE = { en: "en", id: "id" };
 
 export function createSpeechRuntime({ paths, workerFactory = (data) => new Worker(WORKER, { workerData: data }), download = downloadModel, timeoutMs = 120_000, idleMs = 120_000 }) {
 	const dir = path.join(paths.dataDir, "voice-runtime");
@@ -60,7 +58,7 @@ export function createSpeechRuntime({ paths, workerFactory = (data) => new Worke
 		});
 	}
 	async function ready() {
-		if (!available()) throw new Error("Voice input is not installed. Install it in Settings → Voice input.");
+		if (!available()) throw new Error("Voice input is not installed. Install it in Settings → General → Voice input.");
 		if (!worker) {
 			worker = spawn();
 			const w = worker;
@@ -102,12 +100,12 @@ export function createSpeechRuntime({ paths, workerFactory = (data) => new Worke
 			})();
 			return setupPromise;
 		},
-		/** Mono 16 kHz samples in, text out. `language` is midnight's interface language. */
-		async transcribe(samples, { language } = {}) {
+		/** Mono 16 kHz samples in, English text out. */
+		async transcribe(samples) {
 			if (!(samples instanceof Float32Array)) throw new Error("Voice input needs audio samples.");
 			if (samples.length > 300 * 16000) throw new Error("Dictate up to five minutes at a time.");
 			const w = await ready();
-			const r = await send(w, { op: "transcribe", samples, language: WHISPER_LANGUAGE[language] ?? "en" });
+			const r = await send(w, { op: "transcribe", samples, language: "en" });
 			idle?.refresh?.();
 			return r;
 		},

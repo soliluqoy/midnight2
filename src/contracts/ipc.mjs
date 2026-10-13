@@ -57,7 +57,6 @@ export const METHODS = {
 	"ui.hide": { route: "shell", params: None },
 	"ui.show": { route: "shell", params: None },
 	"ui.textSize": { route: "shell", params: Obj({ z: Type.Number({ minimum: 0.5, maximum: 2 }) }) },
-	"ui.strings": { route: "shell", params: None },
 	"clipboard.read": { route: "shell", params: None },
 	"clipboard.write": { route: "shell", params: Obj({ text: Text(200000) }) },
 	"attachments.add": { route: "shell", params: Obj({ path: Text(2000) }) },

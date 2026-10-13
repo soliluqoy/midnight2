@@ -29,10 +29,10 @@ function setPanel(open) {
 }
 function sharingNote() {
 	const scope = $("contextScope").value;
-	const destination = (currentJob()?.privacy || state.privacy) === "cloud" ? (state.model || t("your configured AI model")) : t("your local model");
+	const destination = (currentJob()?.privacy || state.privacy) === "cloud" ? (state.model || "your configured AI model") : "your local model";
 	$("sharingNote").textContent = scope === "none"
-		? t("Your message goes to {destination}. Earlier shared text stays in this conversation.", { destination })
-		: t(scope === "selection" ? "Selected text goes to {destination} when you send and is saved in task history. Input fields are excluded." : "Page text goes to {destination} when you send and is saved in task history. Input fields are excluded.", { destination });
+		? `Your message goes to ${destination}. Earlier shared text stays in this conversation.`
+		: (scope === "selection" ? `Selected text goes to ${destination} when you send and is saved in task history. Input fields are excluded.` : `Page text goes to ${destination} when you send and is saved in task history. Input fields are excluded.`);
 }
 function accept(next) {
 	if (next.revision < lastRevision) return;
@@ -59,10 +59,10 @@ function render() {
 	const list = pinned.map(appButton).join("") + (saved.length ? '<p class="saved-heading">Unpinned</p>' + saved.map(appButton).join("") : "");
 	if ($("appList").innerHTML !== list) $("appList").innerHTML = list;
 	$("emptyState").hidden = !!app;
-	$("appTitle").textContent = app ? `${app.name}${app.profile ? ` · ${app.profile}` : ""}` : t("Your everyday apps");
-	$("siteAddress").textContent = state.page?.url || app?.url || t("Add a website to get started");
+	$("appTitle").textContent = app ? `${app.name}${app.profile ? ` · ${app.profile}` : ""}` : "Your everyday apps";
+	$("siteAddress").textContent = state.page?.url || app?.url || "Add a website to get started";
 	$("siteAddress").title = state.page?.url || app?.url || "";
-	$("contextLabel").textContent = app ? `${app.name}${app.profile ? ` · ${app.profile}` : ""} · ${state.page?.title || t("Current page")}` : t("Choose an app");
+	$("contextLabel").textContent = app ? `${app.name}${app.profile ? ` · ${app.profile}` : ""} · ${state.page?.title || "Current page"}` : "Choose an app";
 	$("contextLabel").title = $("contextLabel").textContent;
 	for (const id of ["reload", "external", "manage"]) $(id).disabled = !app;
 	$("back").disabled = !state.page?.back; $("forward").disabled = !state.page?.forward;
@@ -80,30 +80,30 @@ function renderConversation() {
 	const working = m && !end.has(m.status);
 	const answer = working ? stream || "" : m?.answer || stream || "";
 	const html = m
-		? `<div class="message-question">${escape(m.lastInput || m.goal)}</div><div class="message-answer">${answer ? window.md.render(answer) : '<p class="message-status">' + (working ? escape(t("Working…")) : escape(t(m.outcome?.summary || "No answer was saved."))) + "</p>"}</div>`
-		: `<div class="assistant-empty"><h2>${escape(t("A little help, right here."))}</h2><p>${escape(t("Ask about the page or prepare something to copy back into the website."))}</p><button data-prompt="${escape(t("Summarize this page."))}">${escape(t("Summarize this page"))}</button><button data-prompt="${escape(t("Help me draft a response to this page."))}">${escape(t("Help me draft a response"))}</button></div>`;
+		? `<div class="message-question">${escape(m.lastInput || m.goal)}</div><div class="message-answer">${answer ? window.md.render(answer) : '<p class="message-status">' + (working ? escape("Working…") : escape(m.outcome?.summary || "No answer was saved.")) + "</p>"}</div>`
+		: `<div class="assistant-empty"><h2>${escape("A little help, right here.")}</h2><p>${escape("Ask about the page or prepare something to copy back into the website.")}</p><button data-prompt="${escape("Summarize this page.")}">${escape("Summarize this page")}</button><button data-prompt="${escape("Help me draft a response to this page.")}">${escape("Help me draft a response")}</button></div>`;
 	const box = $("conversation"), nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
 	if (box.innerHTML !== html) { box.innerHTML = html; if (nearBottom) box.scrollTop = box.scrollHeight; }
 	$("taskActions").hidden = !m;
-	$("taskStatus").textContent = m ? t({ succeeded: "Done · answer saved in task history", failed: "Couldn’t finish", "partially-succeeded": "Needs a look", cancelled: "Stopped", paused: "Paused" }[m.status] || "Working…") : "";
+	$("taskStatus").textContent = m ? ({ succeeded: "Done · answer saved in task history", failed: "Couldn’t finish", "partially-succeeded": "Needs a look", cancelled: "Stopped", paused: "Paused" }[m.status] || "Working…") : "";
 	$("stopTask").hidden = !working;
 	$("copyAnswer").disabled = !answer || working;
 	$("newConversation").disabled = busy();
 	$("sendAppPrompt").disabled = !currentApp() || busy();
-	$("sendAppPrompt").textContent = t(sending.has(state.activeId) ? "Sending…" : "Send ↵");
+	$("sendAppPrompt").textContent = sending.has(state.activeId) ? "Sending…" : "Send ↵";
 	sharingNote();
 }
 async function openDialog(item) {
 	if ($("appDialog").open) return;
 	editing = item?.id;
 	confirming = undefined;
-	$("dialogTitle").textContent = t(item ? "App settings" : "Add a website");
-	$("dialogNote").textContent = t(item ? "Rename this app or manage its saved sign-in profile." : "Give it a home in Midnight. Sign in on the website after adding it.");
+	$("dialogTitle").textContent = item ? "App settings" : "Add a website";
+	$("dialogNote").textContent = item ? "Rename this app or manage its saved sign-in profile." : "Give it a home in Midnight. Sign in on the website after adding it.";
 	$("websiteUrl").value = item?.url ?? ""; $("websiteUrl").disabled = !!item;
 	$("websiteName").value = item?.name ?? ""; $("websiteProfile").value = item?.profile ?? "";
 	$("manageActions").hidden = !item;
-	$("pinApp").textContent = t(item?.pinned ? "Unpin" : "Pin to launcher");
-	$("saveApp").textContent = t(item ? "Save changes" : "Add website");
+	$("pinApp").textContent = item?.pinned ? "Unpin" : "Pin to launcher";
+	$("saveApp").textContent = item ? "Save changes" : "Add website";
 	for (const id of ["dialogError", "confirmNote", "confirmDestructive"]) $(id).hidden = true;
 	await bounds(true);
 	$("appDialog").showModal();
@@ -147,7 +147,7 @@ $("pinApp").onclick = async () => {
 	try { const item = state.apps.find((a) => a.id === editing); await api.update({ id: item.id, pinned: !item.pinned }); closeDialog(); } catch (err) { error(err); }
 };
 for (const [id, action, message] of [["signoutApp", "signout", "Close this app’s pages and remove its saved website sign-in?"], ["forgetApp", "forget", "Remove this app and its website data? Saved task conversations remain in history."]]) $(id).onclick = () => {
-	confirming = action; $("confirmNote").textContent = t(message); $("confirmNote").hidden = false; $("confirmDestructive").hidden = false;
+	confirming = action; $("confirmNote").textContent = message; $("confirmNote").hidden = false; $("confirmDestructive").hidden = false;
 };
 $("confirmDestructive").onclick = async () => {
 	$("confirmDestructive").disabled = true;
@@ -176,7 +176,7 @@ $("conversation").onclick = (event) => {
 };
 $("stopTask").onclick = () => api.stop({ missionId: currentJob().id }).catch(error);
 $("viewTask").onclick = () => api.viewTask({ missionId: currentJob().id }).catch(error);
-$("copyAnswer").onclick = () => api.command({ action: "copy", text: currentJob()?.answer || streams.get(currentJob()?.id) || "" }).then(() => { $("taskStatus").textContent = t("Answer copied"); }).catch(error);
+$("copyAnswer").onclick = () => api.command({ action: "copy", text: currentJob()?.answer || streams.get(currentJob()?.id) || "" }).then(() => { $("taskStatus").textContent = "Answer copied"; }).catch(error);
 $("dismissError").onclick = () => { $("appError").hidden = true; scheduleLayout(); };
 document.addEventListener("keydown", (event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "j") { event.preventDefault(); setPanel(!panelOpen); } });
 new ResizeObserver(scheduleLayout).observe($("siteViewport"));
@@ -193,4 +193,4 @@ api.on((message) => {
 		renderConversation();
 	}
 });
-i18n.load(api.strings).finally(() => api.state().then(accept).catch(error));
+api.state().then(accept).catch(error);

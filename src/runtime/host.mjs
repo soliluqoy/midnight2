@@ -335,7 +335,7 @@ export async function createHost(o) {
 			speech.setup({ onProgress: (p) => (job.progress = { done: p.bytesDone, total: p.bytesTotal }) }).catch((err) => log("voice setup", err.message)).finally(() => (job.running = false));
 			return { started: true };
 		},
-		"voice.transcribe": (p) => speech.transcribe(p.samples, { language: p.language }), // only the shell calls this
+		"voice.transcribe": (p) => speech.transcribe(p.samples), // only the shell calls this
 		"resources.status": () => ({ queue: queue.status(), profile: settings.profile, weather: tools.resources?.weather() }),
 	};
 

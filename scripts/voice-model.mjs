@@ -34,7 +34,7 @@ async function run() {
 		const { samples } = await media.audio({ start: 0, seconds: 300 });
 		await media.close();
 		const t0 = Date.now();
-		const { text } = await runtime.transcribe(samples, { language: "en" });
+		const { text } = await runtime.transcribe(samples);
 		say(`heard "${text}" in ${Date.now() - t0} ms`);
 		const words = (s) => s.toLowerCase().replace(/[^a-z ]/g, "").split(/\s+/).filter(Boolean);
 		const got = new Set(words(text));

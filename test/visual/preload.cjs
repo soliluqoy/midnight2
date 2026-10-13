@@ -135,7 +135,7 @@ const fileResults = [
 ];
 // contextBridge cannot clone proxies: list every method, defaulting to a no-op.
 const NS = {
-	ui: ["size", "dims", "focus", "hide", "show", "textSize", "strings"],
+	ui: ["size", "dims", "focus", "hide", "show", "textSize"],
 	voice: ["status", "setup", "transcribe"],
 	clipboard: ["read", "write"],
 	attachments: ["fromFiles", "paste", "remove"],

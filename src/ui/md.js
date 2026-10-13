@@ -114,10 +114,9 @@ window.md = (() => {
 		}
 		return out;
 	}
-	const label = (text) => (typeof window.i18n?.t === "function" ? window.i18n.t(text) : text);
 	function codeBlock(code, lang) {
 		const name = String(lang || "").replace(/[^\w#+.-]/g, "").slice(0, 20);
-		return `<div class="code-block"><div class="code-head"><span class="code-lang">${esc(name || label("Code"))}</span><button type="button" class="code-copy" aria-label="${esc(label("Copy code"))}">${esc(label("Copy"))}</button></div><pre><code${name ? ` class="lang-${esc(name.toLowerCase())}"` : ""}>${highlight(code, name)}</code></pre></div>`;
+		return `<div class="code-block"><div class="code-head"><span class="code-lang">${esc(name || "Code")}</span><button type="button" class="code-copy" aria-label="Copy code">Copy</button></div><pre><code${name ? ` class="lang-${esc(name.toLowerCase())}"` : ""}>${highlight(code, name)}</code></pre></div>`;
 	}
 
 	// ---------- lists: a tree by indentation; ordered and unordered lists nest to any depth ----------
@@ -223,9 +222,8 @@ window.md = (() => {
 /** A code block's copy button: copies the block's text and confirms on the button. */
 window.copyCode = (button, write) => {
 	const code = button.closest(".code-block")?.querySelector("code")?.textContent ?? "";
-	const t = typeof window.i18n?.t === "function" ? window.i18n.t : (s) => s;
 	Promise.resolve(write(code)).then(
-		() => (button.textContent = t("Copied ✓")),
-		() => (button.textContent = t("Copy failed")),
-	).finally(() => setTimeout(() => (button.textContent = t("Copy")), 1400));
+		() => (button.textContent = "Copied ✓"),
+		() => (button.textContent = "Copy failed"),
+	).finally(() => setTimeout(() => (button.textContent = "Copy"), 1400));
 };

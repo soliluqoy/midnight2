@@ -29,7 +29,7 @@ function fixture({ loadError } = {}) {
 	return { runtime, workers, downloads, dataDir };
 }
 
-test("voice input downloads pinned Whisper, verifies it loads, then transcribes in midnight's language", async () => {
+test("voice input downloads pinned Whisper, verifies it loads, then transcribes in English", async () => {
 	const f = fixture();
 	assert.equal(f.runtime.status().available, false);
 	await assert.rejects(f.runtime.transcribe(new Float32Array(16000)), /not installed/);
@@ -40,8 +40,7 @@ test("voice input downloads pinned Whisper, verifies it loads, then transcribes 
 	assert.equal(f.workers[0].terminated, true, "the verification worker exits");
 	assert.equal(JSON.parse(readFileSync(path.join(f.dataDir, "voice-runtime", "prepared.json"), "utf8")).revision, SPEECH_MODEL_REVISION);
 	assert.equal(f.runtime.status().available, true);
-	assert.deepEqual(await f.runtime.transcribe(new Float32Array(32000), { language: "id" }), { text: "heard 32000 samples in id" });
-	assert.deepEqual(await f.runtime.transcribe(new Float32Array(16000), { language: "fr" }), { text: "heard 16000 samples in en" }, "unsupported interface languages use English");
+	assert.deepEqual(await f.runtime.transcribe(new Float32Array(32000)), { text: "heard 32000 samples in en" });
 	await assert.rejects(f.runtime.transcribe(new Float32Array(301 * 16000)), /five minutes/);
 	f.runtime.close();
 	assert.ok(SPEECH_FILES.every((x) => x.size > 0 && (x.sha256?.length === 64 || x.git?.length === 40)), "every Whisper file is pinned by hash");
