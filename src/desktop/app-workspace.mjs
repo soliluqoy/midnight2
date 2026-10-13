@@ -25,7 +25,7 @@ export function createAppWorkspace({ registry, settings, request, onChanged = ()
 	}
 	function state() {
 		const prefs = settings();
-		return { revision, apps: registry.list(), activeId, page: pageState(activeId), missions: [...missions.values()], model: prefs.taskModel || "your configured AI model", privacy: prefs.privacy, highContrast: prefs.highContrast, reducedMotion: prefs.reducedMotion };
+		return { revision, apps: registry.list(), activeId, page: pageState(activeId), missions: [...missions.values()], model: prefs.model || "your configured AI model", privacy: prefs.privacy, highContrast: prefs.highContrast, reducedMotion: prefs.reducedMotion };
 	}
 	function layout() {
 		if (!win || win.isDestroyed()) return;

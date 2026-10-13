@@ -112,7 +112,7 @@ export function createCoordinator(d) {
 		const st = settings();
 		let route;
 		try {
-			route = await routeModel(runtime.modelRuntime, st, m.privacy, labelFor(m.goal) === "QUICK ANSWER" ? "quick" : "task");
+			route = await routeModel(runtime.modelRuntime, st, m.privacy);
 		} catch (err) {
 			commit(() => {
 				clearPending(missionId);

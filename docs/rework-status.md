@@ -22,7 +22,7 @@ architecture/provenance guards) · `npm run test:smoke` (real Electron, engine i
 | G01–G03 budgets, lazy/idle, power profiles | ✓ | `src/resources` |
 | C01–C03, B01, W01 queue, screen lease + helper fencing, locks, per-mission browser, MTA helper | ✓ | `src/windows/lease.mjs`, `src/tools/input-helper.ps1`, `src/desktop/browsers.mjs` |
 | S01–S04 recurrence (DST), watches, rules editor, attention/quiet hours | ✓ | `src/scheduler` |
-| M01 model routing (task model: plans/computer/research on a stronger model, `?` on the chosen one), local endpoint, no cloud fallback | ✓ | `src/runtime/models.mjs` |
+| M01 model routing (one chosen model for every mission; default Sol, then Luna), local endpoint, no cloud fallback | ✓ | `src/runtime/models.mjs` |
 | K01–K02 memory, skill packs, recipes | ✓ | `src/memory`, `src/skills` |
 | Q01 adversarial corpus · Q02 holdout (51 scenarios, runner, headless web) · Q03 idle trace | ✓ / runner not yet run / partial | `test/adversarial.test.mjs`, `evals/`, `src/tools/web-headless.mjs` |
 | D01–D03 NSIS + updater (verify sha512 + signature), export/delete, diagnostics | ✓ code; signing needs a certificate | `src/desktop/updater.mjs`, `src/storage/data.mjs` |

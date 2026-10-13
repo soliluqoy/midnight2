@@ -109,11 +109,9 @@ async function auth(op, a) {
 			return (await rt.getAvailable()).map((m) => ({ provider: m.provider, providerName: rt.getProvider(m.provider)?.name ?? m.provider, id: m.id, name: m.name, vision: !!m.input?.includes("image"), reasoning: !!m.reasoning, local: m.provider === "local" }));
 		case "current": {
 			const { routeModel } = await import("./models.mjs");
-			// The chosen model (what quick answers use), plus where tasks go: the task model, or an automatic upgrade.
 			try {
-				const st = host.settings();
-				const [chosen, task] = await Promise.all([routeModel(rt, st, st.privacy, "quick"), routeModel(rt, st, st.privacy, "task")]);
-				return { provider: chosen.route.provider, model: chosen.route.model, task: { provider: task.route.provider, model: task.route.model } };
+				const r = await routeModel(rt, host.settings(), host.settings().privacy);
+				return { provider: r.route.provider, model: r.route.model };
 			} catch {
 				return { provider: "", model: "" };
 			}

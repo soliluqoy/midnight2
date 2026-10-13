@@ -259,7 +259,7 @@
 			groups: [...groups].map(([name, list]) => ({ label: name, items: list.map((m) => ({ value: `${m.provider}|${m.id}`, label: m.name, hint: m.local ? "local" : m.vision ? "" : "no vision" })) })),
 			onPick: (v) => {
 				const [provider, ...id] = v.split("|");
-				save({ provider, model: id.join("|"), ...(S.settings.taskModel === v ? { taskModel: "" } : {}) });
+				save({ provider, model: id.join("|") });
 			},
 		});
 		const cur = S.models.find((m) => m.provider === S.current.provider && m.id === S.current.model);
@@ -268,35 +268,9 @@
 		return sec(
 			"model",
 			"MODELS",
-			field("Model", "Used for everything unless tasks use another below", sel),
+			field("Model", "Answers, tasks, research and computer use", sel),
 			cur && !cur.vision ? h("p", { class: "hint warn" }, "This model can't see images, so browser and screen screenshots won't work.") : null,
-			tasksField(groups),
 			field("Thinking", "More is slower and costs more", segmented(st.thinking, [{ value: "off", label: "Off" }, { value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }], (v) => save({ thinking: v }), "Thinking")),
-		);
-	}
-
-	// Where tasks (plans, computer use, research) run. "" is automatic: it follows the Model above, except that the
-	// fast default is upgraded to a stronger model. Each option names the model that will actually be used.
-	function tasksField(groups) {
-		const cloud = S.models.filter((m) => !m.local);
-		if (cloud.length < 2) return null;
-		const key = (m) => `${m.provider}|${m.id}`;
-		const name = (k) => S.models.find((m) => key(m) === k)?.name ?? k.split("|").slice(1).join("|");
-		const chosen = `${S.current.provider}|${S.current.model}`;
-		const saved = cloud.some((m) => key(m) === S.settings.taskModel) ? S.settings.taskModel : "";
-		const upgrade = !saved && S.current.task ? `${S.current.task.provider}|${S.current.task.model}` : "";
-		const automatic = upgrade && upgrade !== chosen ? { value: "", label: `Automatic · ${name(upgrade)}` } : { value: "", label: saved ? "Automatic" : "Same as Model" };
-		const same = automatic.label === "Same as Model" ? [] : [{ value: chosen, label: `Same as Model · ${name(chosen)}` }];
-		const listed = (m) => !m.local && key(m) !== chosen && !(automatic.label.startsWith("Automatic ·") && key(m) === upgrade);
-		return field(
-			"Tasks",
-			"Plans, computer use and research",
-			dropdown({
-				label: "Model for tasks",
-				value: saved,
-				groups: [{ items: [automatic, ...same] }, ...[...groups].map(([label, list]) => ({ label, items: list.filter(listed).map((m) => ({ value: key(m), label: m.name, hint: m.vision ? "" : "no vision" })) })).filter((g) => g.items.length)],
-				onPick: (v) => save({ taskModel: v }),
-			}),
 		);
 	}
 
