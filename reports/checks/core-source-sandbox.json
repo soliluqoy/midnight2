@@ -1,0 +1,30 @@
+{
+  "at": "2026-10-13T15:27:21.674Z",
+  "passed": true,
+  "image": "sha256:28388b76f14e702c6a42a4cfac35028e7c4f27f47b78dc5ee6791a761c5d33a7",
+  "checks": [
+    "actual container cannot read excluded host paths or the Docker control socket",
+    "actual source mount stays read-only and scratch output stays private",
+    "actual container has no inherited provider credentials or Windows interop environment",
+    "actual build excludes proxy credentials and custom headers from a synthetic Docker client config",
+    "actual namespace prevents external TCP egress",
+    "actual Docker memory/CPU/process policy was applied and processes exited",
+    "deadline cleanup removes an actual container with a detached child",
+    "explicit cancellation observes container exit and removal before settlement",
+    "fresh owner recovers a live container and detached child after its parent process exits",
+    "excluded owned host sentinel remains unchanged"
+  ],
+  "forcedDeadlineAndCleanupMs": 8487,
+  "policy": {
+    "image": "sha256:28388b76f14e702c6a42a4cfac35028e7c4f27f47b78dc5ee6791a761c5d33a7",
+    "network": "none",
+    "memoryBytes": 2147483648,
+    "cpuCount": 2,
+    "pids": 128,
+    "readonlySource": true
+  },
+  "limitations": [
+    "Synthetic boundary probes on this Docker Desktop Linux engine; no hostile-code certification, kernel escape proof or full application repair/build claim.",
+    "No production data, credentials, checkout mutation, installation or publication; signed Windows builds and interactive previews remain separate qualification."
+  ]
+}

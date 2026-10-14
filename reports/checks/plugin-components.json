@@ -1,0 +1,48 @@
+{
+  "at": "2026-10-13T08:55:03.444Z",
+  "passed": true,
+  "components": [
+    "midnight.chart",
+    "midnight.theme"
+  ],
+  "privateChart": {
+    "id": "midnight.chart",
+    "digest": "sha256:4036856f912833ccc7b71f70026db4de9b519cde1ddd862141db26c8648eafea",
+    "api": 1,
+    "schema": 1,
+    "input": "chart-bar-1",
+    "output": "chart-svg-1"
+  },
+  "privateTheme": {
+    "id": "midnight.theme",
+    "digest": "sha256:ae10730f28c5ca3c84435ac510d6c0b33362367328373d7b9ebdc57715088847",
+    "api": 1,
+    "schema": 1,
+    "input": "ui-colors-1",
+    "output": "ui-colors-json-1"
+  },
+  "preset": {
+    "accent": "#176b65",
+    "accent-hover": "#176b65",
+    "accent-soft": "#173530",
+    "accent-line": "#65547f",
+    "highlight": "#a0e8d0",
+    "on-accent": "#ffffff"
+  },
+  "frozenPresetNeedsExecution": false,
+  "officialThemeTarget": "src/plugins/builtin/theme",
+  "checks": [
+    "actual Chromium sandbox validation",
+    "no Node/application preload",
+    "attempted egress reached zero requests",
+    "hung renderer cleanup",
+    "separate Pi utility builder",
+    "private and official candidates",
+    "private preset restart/profile isolation",
+    "cancel waits for child exit"
+  ],
+  "limitations": [
+    "Scripted coding provider, synthetic inputs and disposable profiles; not real-cloud builder quality or arbitrary-core repair.",
+    "UI paint and high-contrast behavior have separate actual-renderer checks; this process test does not establish full accessibility or hostile-code security."
+  ]
+}

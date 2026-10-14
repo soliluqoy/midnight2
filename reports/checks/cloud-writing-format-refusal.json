@@ -1,0 +1,41 @@
+{
+  "at": "2026-10-13T07:31:18.211Z",
+  "passed": false,
+  "provider": "openai-codex",
+  "model": "gpt-6.1-sol",
+  "completed": [
+    {
+      "fixture": "negation-names-date",
+      "latencyMs": 6405,
+      "inputBytes": 1432,
+      "maxOutputTokens": 2048,
+      "kind": "paragraph.replace",
+      "text": "The team did not approve the launch. Amina will review the revised plan on 18 October 2026; the budget remains MYR 12,500.",
+      "directlySupported": true,
+      "reviewReasons": []
+    },
+    {
+      "fixture": "numbers-citation",
+      "latencyMs": 6610,
+      "inputBytes": 1403,
+      "maxOutputTokens": 2048,
+      "kind": "paragraph.replace",
+      "text": "Revenue from North increased by 12% in 2026 [Report 7], but higher costs reduced the margin by 3%.",
+      "directlySupported": true,
+      "reviewReasons": []
+    }
+  ],
+  "failedFixture": "styled-phrases",
+  "missionStatus": "succeeded",
+  "proposal": {
+    "kind": "paragraph.replace",
+    "text": "North's quarterly revenue rose 12% despite higher costs.",
+    "directlySupported": false,
+    "reviewReasons": [
+      "This rewrite removes or adds text around a styled phrase. Select a smaller range to preserve its formatting."
+    ]
+  },
+  "limitations": [
+    "Only typed synthetic proposals are retained; raw provider and credential errors are suppressed."
+  ]
+}

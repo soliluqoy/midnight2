@@ -1,0 +1,18 @@
+﻿{
+    "at":  "2026-10-13T11:06:30.1308074Z",
+    "built":  true,
+    "signed":  false,
+    "signatureStatus":  "NotSigned",
+    "artifact":  "release/goal-installer-v0.5.0/midnight-setup-x64.exe",
+    "sha256":  "7cfc09f137da3b0827abc6ae74e6736a4a750bfbcec76945942723a4f11ab201",
+    "bytes":  164348000,
+    "product":  "midnight",
+    "version":  "0.5.0",
+    "sourceArchiveSha256":  "3a0415e771fe17a6979737bfd6e415cfb48fd1a824cace7a24e2e84edba78c6f",
+    "recoveryShortcutCompiled":  true,
+    "installed":  false,
+    "published":  false,
+    "limitations":  [
+                        "Unsigned NSIS compilation only; no installation, upgrade/downgrade, shortcut creation/removal, publisher or positive signed-installer recovery qualification."
+                    ]
+}

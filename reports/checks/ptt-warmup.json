@@ -1,0 +1,160 @@
+{
+  "at": "2026-10-13T06:19:52.117Z",
+  "passed": "synthetic microphone → gesture-time warmup → actual hidden PCM → actual Whisper → scripted cloud proposal",
+  "results": [
+    {
+      "turn": 0,
+      "heldToRecorderReadyMs": 755,
+      "warmupMs": 1658,
+      "loadedAtRelease": true,
+      "samples": 45440,
+      "transcript": "Make this paragraph clearer.",
+      "releaseToPreviewMs": 1418
+    },
+    {
+      "turn": 1,
+      "heldToRecorderReadyMs": 158,
+      "warmupMs": 0,
+      "loadedAtRelease": true,
+      "samples": 45440,
+      "transcript": "Make this paragraph clearer.",
+      "releaseToPreviewMs": 1177
+    },
+    {
+      "turn": 2,
+      "heldToRecorderReadyMs": 159,
+      "warmupMs": 1,
+      "loadedAtRelease": true,
+      "samples": 45184,
+      "transcript": "Make this paragraph clearer.",
+      "releaseToPreviewMs": 1186
+    }
+  ],
+  "typing": {
+    "keys": 215,
+    "p50DispatchToRendererMs": 1,
+    "p95DispatchToRendererMs": 1,
+    "maxDispatchToRendererMs": 2,
+    "p95InjectionGapMs": 68,
+    "maxInjectionGapMs": 77,
+    "focusPreserved": true,
+    "injectedElectronInput": true
+  },
+  "resources": {
+    "elapsedMs": 13394,
+    "observedCPUSeconds": 14.577939,
+    "logicalCPUs": 8,
+    "normalizedObservedCPUPercent": 13.603899776035835,
+    "peakSampledWorkingSetMiB": 1371.58984375,
+    "peakSampledPrivateMiB": 964.3359375,
+    "sampleMs": 250,
+    "samples": 54
+  },
+  "idle": {
+    "warm": {
+      "label": "resident Whisper, no requests",
+      "elapsedMs": 5052,
+      "loaded": true,
+      "observedCPUSeconds": 0.07364599999999832,
+      "medianCPUPercent": 0.17377210216109132,
+      "p95CPUPercent": 0.2377245508982142,
+      "privateMiB": 935.2734375,
+      "samples": [
+        {
+          "at": 1791872382881,
+          "processes": 5,
+          "workingSetMiB": 1261.2109375,
+          "privateMiB": 935.7109375,
+          "normalizedCPUPercent": 0.17377210216109132
+        },
+        {
+          "at": 1791872383883,
+          "processes": 5,
+          "workingSetMiB": 1260.8125,
+          "privateMiB": 935.36328125,
+          "normalizedCPUPercent": 0.1969030969030914
+        },
+        {
+          "at": 1791872384899,
+          "processes": 5,
+          "workingSetMiB": 1260.81640625,
+          "privateMiB": 935.36328125,
+          "normalizedCPUPercent": 0.13171182266007814
+        },
+        {
+          "at": 1791872385902,
+          "processes": 5,
+          "workingSetMiB": 1260.7421875,
+          "privateMiB": 935.2734375,
+          "normalizedCPUPercent": 0.2377245508982142
+        },
+        {
+          "at": 1791872386915,
+          "processes": 5,
+          "workingSetMiB": 1260.75390625,
+          "privateMiB": 935.2734375,
+          "normalizedCPUPercent": 0.17244570582428792
+        }
+      ]
+    },
+    "unloaded": {
+      "label": "Whisper worker terminated, no requests",
+      "elapsedMs": 5036,
+      "loaded": false,
+      "observedCPUSeconds": 0.058628000000002345,
+      "medianCPUPercent": 0.11871915103653741,
+      "p95CPUPercent": 0.27557100297916526,
+      "privateMiB": 303.86328125,
+      "samples": [
+        {
+          "at": 1791872388087,
+          "processes": 5,
+          "workingSetMiB": 736.1875,
+          "privateMiB": 307.8984375,
+          "normalizedCPUPercent": 0.27557100297916526
+        },
+        {
+          "at": 1791872389091,
+          "processes": 5,
+          "workingSetMiB": 736.1875,
+          "privateMiB": 307.8984375,
+          "normalizedCPUPercent": 0.08481075697211204
+        },
+        {
+          "at": 1791872390097,
+          "processes": 5,
+          "workingSetMiB": 732.171875,
+          "privateMiB": 303.86328125,
+          "normalizedCPUPercent": 0.13124378109453436
+        },
+        {
+          "at": 1791872391101,
+          "processes": 5,
+          "workingSetMiB": 732.171875,
+          "privateMiB": 303.86328125,
+          "normalizedCPUPercent": 0.11756723107568727
+        },
+        {
+          "at": 1791872392115,
+          "processes": 5,
+          "workingSetMiB": 732.171875,
+          "privateMiB": 303.86328125,
+          "normalizedCPUPercent": 0.11871915103653741
+        }
+      ]
+    }
+  },
+  "cancellation": {
+    "cancelToWorkerExitMs": 80,
+    "workerExited": true,
+    "subsequentAdmissionAfterExit": true,
+    "ownedPCMZeroed": true
+  },
+  "nativeEffect": false,
+  "limitations": [
+    "Three synthetic English recordings, scripted cloud provider and connector; not personal microphone, physical keyboard or Office capture timing.",
+    "Resource observations cover this Electron fixture, not all native helpers/embeddings or full production process tree. Each idle observation is only five seconds.",
+    "Summed working sets can count shared pages more than once; short-lived CPU after the final per-process sample can be missed.",
+    "Dispatch-to-renderer latency excludes injection scheduling delays, which are reported separately."
+  ]
+}

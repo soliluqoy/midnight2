@@ -44,14 +44,18 @@ npm start
 ```
 
 ```sh
-npm test              # Unit, integration, recovery, and policy checks
-npm run test:ui       # Launcher interactions and async races
-npm run test:apps     # Website profiles, page sharing, and IPC
-npm run test:smoke    # Real app startup with a disposable profile
-npm run test:visual   # Screenshots against local baselines
-npm run dist          # Package the current OS into release/
+npm test                  # Full Node suite; keep this as the pre-commit/CI gate
+npm run test:unit          # Fast, focused checks with stubbed external boundaries
+npm run test:integration   # Host/SDK/storage/process, architecture and native checks
+npm run test:ui            # Launcher interactions and async races
+npm run test:apps          # Website profiles, page sharing, and IPC
+npm run test:smoke         # Real app startup with a disposable profile
+npm run test:visual        # Screenshots against local baselines
+npm run dist               # Package the current OS into release/
 ```
+
+The Node suite is not solely unit tests: it also exercises recovery, policy, scripted end-to-end flows and Windows helpers. `test:unit` and `test:integration` partition it by file without dropping tests; mixed files stay in integration and new files default there. Neither subset replaces `npm test`. List a subset with `npm run test:unit -- --list`, or filter it with `npm run test:integration -- --test-name-pattern="selected-target"`. Real cloud, model, Office and Docker qualifications are separate opt-in commands; their historical results do not prove physical microphone or installed-workflow readiness. See the [implementation status](docs/realtime-implementation.md).
 
 Pi SDK packages are pinned to upstream 1.0.1 and vendored in `vendor/`. See the [dependency decision](docs/adr/0002-dependencies.md) for provenance and refresh commands. Sign-ins share `~/.midnight.server/agent/auth.json` with the midnight.server CLI.
 
-Pushing a `v*` tag runs checks, builds Windows x64, macOS arm64, and Linux x64 packages, and publishes a GitHub release.
+Pushing a `v*` tag runs checks, builds Windows x64, macOS arm64, and Linux x64 packages, and creates a draft GitHub release for a person to review and publish.

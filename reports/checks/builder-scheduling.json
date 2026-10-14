@@ -1,0 +1,20 @@
+{
+  "at": "2026-10-13T12:36:21.220Z",
+  "passed": true,
+  "checks": [
+    "actual builder utility process is alive before preemption",
+    "cancel request retains the shared slot and platform request while the actual child remains alive",
+    "quick dispatch observes actual owned child exit before using the single slot",
+    "late maintenance reply cannot revive the exited worker",
+    "reserved capacity serves quick work while the actual builder remains alive",
+    "normal builder completion releases capacity only after child exit",
+    "battery gate defers builder before any utility-process or platform dispatch",
+    "cancelling a gated build leaves no admitted or waiting capacity"
+  ],
+  "preemptionMs": 1041,
+  "actualUtilityProcesses": true,
+  "limitations": [
+    "Owned development-only waiting workers and synthetic scheduler requests; not physical microphone/Word, real-cloud latency, power-device qualification or full process-tree accounting.",
+    "The shipping queue, platform cancellation bridge and builder runner execute; whole-mission preemption for ordinary missions remains separate work."
+  ]
+}

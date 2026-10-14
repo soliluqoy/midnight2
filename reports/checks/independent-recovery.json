@@ -1,0 +1,37 @@
+{
+  "at": "2026-10-13T10:20:01.846Z",
+  "passed": true,
+  "checks": [
+    "actual app startup fails on damaged component cache before the engine starts",
+    "actual standalone shipping helper inspects the stopped registered profile",
+    "shipping executable excludes fixture mutation modes",
+    "live shell ownership refuses an external reset",
+    "an actual live shell file lease refuses reset even with a stale owner record",
+    "a separate live engine process blocks reset after shell ownership becomes stale",
+    "the independent native path archives broken components with no agent engine",
+    "archive retains customization source and damaged cache byte-for-byte",
+    "receipts/settings/models/credential sentinel bytes remain unchanged during recovery",
+    "recovery intent records the exact completed archive",
+    "trusted official component templates rebuild on the next startup",
+    "the real SQLite action identity and receipt survive reset",
+    "unsigned recovery builds refuse signed-installer authority",
+    "actual app boots and its engine becomes ready after independent repair",
+    "normal boot retains the same verified receipt"
+  ],
+  "resetMs": 186,
+  "nativeProcess": true,
+  "damagedCacheStartupRefused": true,
+  "independentArchive": true,
+  "liveShellLeaseRefused": true,
+  "orphanEngineLeaseRefused": true,
+  "receiptDatabasePreserved": true,
+  "sourceRetained": true,
+  "recoveredActualStartup": true,
+  "signedInstallerQualified": false,
+  "limitations": [
+    "Disposable offline profile and a development-only native reset driver; no production profile, document, microphone, credentials or installer was changed.",
+    "Actual recovery policy/archive functions run, but physical native UI confirmation and accessibility remain unqualified.",
+    "Unsigned installer refusal is qualified; positive publisher matching, signed installers, installed upgrade/downgrade, code corruption and migration failures still need qualification.",
+    "Archiving custom components restores official templates; general AI core/source/build repair remains separate implementation work."
+  ]
+}

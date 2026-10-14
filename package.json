@@ -14,6 +14,8 @@
 		"prestart": "node scripts/build-native.mjs",
 		"start": "electron .",
 		"test": "node --test --test-timeout=60000 \"test/**/*.test.mjs\"",
+		"test:unit": "node scripts/test-suites.mjs unit",
+		"test:integration": "node scripts/test-suites.mjs integration",
 		"vendor": "node scripts/vendor-core.mjs",
 		"predist": "node scripts/build-native.mjs",
 		"dist": "electron-builder --publish never",

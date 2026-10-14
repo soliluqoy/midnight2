@@ -1,0 +1,67 @@
+{
+  "at": "2026-10-13T15:06:44.250Z",
+  "passed": true,
+  "provider": "openai-codex",
+  "model": "gpt-6.1-sol",
+  "checks": [
+    "real separate builder changes exactly the requested app source file",
+    "actual isolated full-source validation passes with explicit platform skips",
+    "quick queue error directs a fresh capture without changing capacity",
+    "official patch and exact source candidate are reviewable with Windows steps still pending",
+    "private plugin activation and the immutable app base are untouched",
+    "provider messages use the exact configured cloud model",
+    "source model uses only named maintenance tools"
+  ],
+  "elapsedMs": 920998,
+  "candidate": {
+    "kind": "core.source",
+    "digest": "sha256:351828a0739394e09c998dc8506a737455a1ecc1e9a440037fba85b7b62b2b68",
+    "baseDigest": "sha256:45830dc852d8b691f86c9a01971241946773a8efafa168760409618029df0f2e",
+    "version": "0.5.0"
+  },
+  "changed": [
+    "src/scheduler/queue.mjs"
+  ],
+  "validation": {
+    "ok": true,
+    "digest": "sha256:351828a0739394e09c998dc8506a737455a1ecc1e9a440037fba85b7b62b2b68",
+    "baseDigest": "sha256:45830dc852d8b691f86c9a01971241946773a8efafa168760409618029df0f2e",
+    "processesExited": true,
+    "counts": {
+      "tests": 307,
+      "failed": 0,
+      "passed": 298,
+      "cancelled": 0,
+      "skipped": 9,
+      "todo": 0,
+      "topLevel": 307,
+      "suites": 0
+    },
+    "policy": {
+      "image": "sha256:28388b76f14e702c6a42a4cfac35028e7c4f27f47b78dc5ee6791a761c5d33a7",
+      "network": "none",
+      "memoryBytes": 2147483648,
+      "cpuCount": 2,
+      "pids": 128,
+      "readonlySource": true
+    },
+    "platform": "linux",
+    "windowsBuild": "pending",
+    "appPreview": "pending",
+    "version": 1,
+    "changed": [
+      "src/scheduler/queue.mjs"
+    ],
+    "kernelChanges": [],
+    "requiresNativeBuild": false,
+    "at": "2026-10-13T15:06:09.422Z"
+  },
+  "modelCalls": 9,
+  "limitations": [
+    "One requested app-source wording improvement through the real separate SDK process and Docker validator; not broad repair quality, Windows build/preview, installed source capsules, signing, migration or publication.",
+    "Disposable profile/source candidates and existing selected credentials only; no production customization or checkout source change."
+  ],
+  "installedCredentialsUnchanged": true,
+  "checkoutSourceUnchanged": true,
+  "disposableProfileRemoved": true
+}

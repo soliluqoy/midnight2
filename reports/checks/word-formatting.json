@@ -1,0 +1,30 @@
+{
+  "at": "2026-10-13T07:33:20.906Z",
+  "passed": true,
+  "scope": "paragraph",
+  "provider": "wps",
+  "timings": {
+    "mixedCaptureMs": 96,
+    "mixedApplyMs": 244,
+    "mixedUndoMs": 266
+  },
+  "wordVersion": "12.0",
+  "wordBuild": "12.1.0.28485",
+  "checks": [
+    "original-range-only; repeated-paragraph; duplicate-id; no-focus-change",
+    "paragraph-reverse-patch",
+    "stale-range-conflict",
+    "track-revisions-refused",
+    "unicode-and-surrogate-pairs",
+    "mixed-font-gap-rewrite; bold-italic-color-underline-highlight; paragraph-indent-spacing; original-range; no-focus-change",
+    "mixed-font-conditional-reversal",
+    "leading-trailing-plain-text-delete-and-conditional-reinsert",
+    "changed-duplicate-relocated-anchor-and-removed-gap-refused",
+    "format-only-stale-conflict"
+  ],
+  "limitations": [
+    "Disposable hidden Office automation instance and synthetic document; no personal file or physical hotkey/microphone input.",
+    "Single capture/apply/undo timing samples exclude shell IPC, cloud reasoning and foreground typing contention.",
+    "This provider's paragraph fixtures do not establish Microsoft Word or native chart qualification."
+  ]
+}

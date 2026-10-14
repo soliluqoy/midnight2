@@ -1,0 +1,70 @@
+{
+  "at": "2026-10-13T07:05:44.406Z",
+  "passed": true,
+  "elapsedMs": 18401,
+  "models": {
+    "speech": "onnx-community/whisper-base",
+    "embedding": "ggml-org/embeddinggemma-2-GGUF"
+  },
+  "before": {
+    "realAvailableBytes": 9778442240,
+    "estimatedOwnedBytes": 3758096384
+  },
+  "after": {
+    "realAvailableBytes": 10581172224,
+    "estimatedOwnedBytes": 1073741824
+  },
+  "controlledPressure": {
+    "injectedAvailableBytes": 3221225472,
+    "handlerMs": 106,
+    "evictedRole": "embedding",
+    "nativeProcessExited": true,
+    "speechRetained": true,
+    "heldPinRevoked": true,
+    "cacheUnchanged": true,
+    "fingerprintUnchanged": true
+  },
+  "limits": {
+    "total": 17048944640,
+    "available": 6442450944,
+    "source": "injected",
+    "at": 1791875144395,
+    "reserve": 4294967296,
+    "cap": 4294967296,
+    "estimatedOwnedBytes": 1073741824,
+    "reservations": 0,
+    "pins": [],
+    "waiting": [],
+    "models": [
+      {
+        "role": "speech",
+        "resident": true,
+        "busy": false,
+        "unloading": false,
+        "footprint": 1073741824,
+        "scratch": 268435456
+      },
+      {
+        "role": "embedding",
+        "resident": false,
+        "busy": false,
+        "unloading": false,
+        "footprint": 2684354560,
+        "scratch": 268435456
+      }
+    ],
+    "evictions": [
+      {
+        "role": "embedding",
+        "at": 1791875144395
+      }
+    ],
+    "scope": "owned-speech-and-embeddings",
+    "estimates": true
+  },
+  "limitations": [
+    "Pressure availability is injected; this is not a real OS exhaustion or battery/soak test.",
+    "Model budgets are conservative estimates, not OS-enforced memory limits or complete process-tree measurement.",
+    "The existing cached models are read-only; setup metadata belongs to a disposable profile. No app effect or real cloud API call occurs."
+  ]
+}

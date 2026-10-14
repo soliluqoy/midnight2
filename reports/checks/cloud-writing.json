@@ -1,0 +1,55 @@
+{
+  "at": "2026-10-13T07:34:17.639Z",
+  "passed": true,
+  "provider": "openai-codex",
+  "model": "gpt-6.1-sol",
+  "authType": "oauth",
+  "results": [
+    {
+      "fixture": "negation-names-date",
+      "latencyMs": 4168,
+      "inputBytes": 1432,
+      "maxOutputTokens": 2048,
+      "kind": "paragraph.replace",
+      "text": "The team did not approve the launch. Amina will review the revised plan on 18 October 2026. The budget remains MYR 12,500.",
+      "directlySupported": true,
+      "reviewReasons": []
+    },
+    {
+      "fixture": "numbers-citation",
+      "latencyMs": 5995,
+      "inputBytes": 1403,
+      "maxOutputTokens": 2048,
+      "kind": "paragraph.replace",
+      "text": "Revenue from North increased by 12% in 2026 [Report 7], but higher costs reduced the margin by 3%.",
+      "directlySupported": true,
+      "reviewReasons": []
+    },
+    {
+      "fixture": "styled-phrases",
+      "latencyMs": 3695,
+      "inputBytes": 1429,
+      "maxOutputTokens": 2048,
+      "kind": "paragraph.replace",
+      "text": "North's quarterly revenue rose 12% despite higher costs.",
+      "directlySupported": true,
+      "reviewReasons": []
+    },
+    {
+      "fixture": "unsupported-factual-change",
+      "latencyMs": 6472,
+      "inputBytes": 1341,
+      "maxOutputTokens": 2048,
+      "kind": "needsContext",
+      "question": "What source supports changing the revenue increase from 12% to 21%?"
+    }
+  ],
+  "nativeEffect": false,
+  "credentialStorageChanged": false,
+  "limitations": [
+    "Four synthetic English paragraphs, one account/model and one run per fixture; no statistical latency or broad writing-quality qualification.",
+    "The connector is synthetic. Actual Word capture/apply, local microphone/Whisper and physical foreground typing are separate tests.",
+    "Numeric/citation guards and named examples do not prove general factual or semantic preservation.",
+    "OAuth is read-only and cannot refresh. This qualification requires an already-fresh sign-in."
+  ]
+}

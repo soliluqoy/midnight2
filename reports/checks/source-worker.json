@@ -1,0 +1,63 @@
+{
+  "at": "2026-10-13T16:14:46.072Z",
+  "passed": true,
+  "packagedModules": false,
+  "checks": [
+    "source request returns its durable intent before capturing app source",
+    "actual source capture runs in a worker while the utility host processes heartbeats",
+    "diff, frozen validation preparation and proposal export stay off the host event loop",
+    "whole preparation and proposal work share the builder's admission through actual worker exit",
+    "exact patch changes only its scoped candidate and preserves the original source file",
+    "source proposal explicitly retains pending Windows build and app preview"
+  ],
+  "requestMs": 23,
+  "maxHostHeartbeatGapMs": 150,
+  "stages": [
+    {
+      "op": "capture",
+      "elapsedMs": 29343,
+      "heartbeats": 1691
+    },
+    {
+      "op": "read",
+      "elapsedMs": 4,
+      "heartbeats": 1
+    },
+    {
+      "op": "patch",
+      "elapsedMs": 2786,
+      "heartbeats": 167
+    },
+    {
+      "op": "diff",
+      "elapsedMs": 10801,
+      "heartbeats": 637
+    },
+    {
+      "op": "prepare-validation",
+      "elapsedMs": 16385,
+      "heartbeats": 975
+    },
+    {
+      "op": "finish-validation",
+      "elapsedMs": 5269,
+      "heartbeats": 301
+    },
+    {
+      "op": "prepare-validation",
+      "elapsedMs": 6144,
+      "heartbeats": 375
+    },
+    {
+      "op": "propose",
+      "elapsedMs": 22072,
+      "heartbeats": 1351
+    }
+  ],
+  "actualUtilityProcess": true,
+  "limitations": [
+    "Public checkout captured by actual source workers in an Electron utility process; optional ASAR modules are loaded by the fixture, rather than enabling installed source repairs.",
+    "Model and validator are scripted; this measures host I/O responsiveness and lifecycle, not real-cloud quality, unit conformance, Windows candidate builds, installed source delivery or statistical foreground/whole-day latency."
+  ],
+  "disposableProfileRemoved": true
+}

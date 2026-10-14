@@ -1,0 +1,33 @@
+{
+  "at": "2026-10-13T16:28:32.125Z",
+  "passed": true,
+  "sourceBase": "sha256:064859650bfb9009e047b706aa686675421d53ec3bb5b1942d62a34155aee0e9",
+  "candidate": "sha256:eae7bf957a38be834e54c5ca5a663904b98cdb19af5860c70d1033324e5c7065",
+  "files": 420,
+  "sourceBytes": 15301663,
+  "image": "sha256:28388b76f14e702c6a42a4cfac35028e7c4f27f47b78dc5ee6791a761c5d33a7",
+  "policy": {
+    "image": "sha256:28388b76f14e702c6a42a4cfac35028e7c4f27f47b78dc5ee6791a761c5d33a7",
+    "network": "none",
+    "memoryBytes": 2147483648,
+    "cpuCount": 2,
+    "pids": 128,
+    "readonlySource": true
+  },
+  "counts": {
+    "tests": 325,
+    "failed": 0,
+    "passed": 316,
+    "cancelled": 0,
+    "skipped": 9,
+    "todo": 0,
+    "topLevel": 325,
+    "suites": 0
+  },
+  "processesExited": true,
+  "limitations": [
+    "Current public source in a Linux container and existing declared dependencies; no Windows native/renderer build, signed installation or full core-repair UX claim.",
+    "Host-owned tests/source/dependencies mount read-only and production profiles/credentials are absent; passing tests is not hostile-code certification or a general correctness proof.",
+    "Source jobs and official patch proposals are connected separately; candidate Windows builds, native compilation, installed-source delivery and preview remain unfinished."
+  ]
+}

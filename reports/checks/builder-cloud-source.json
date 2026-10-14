@@ -1,0 +1,8 @@
+{
+  "at": "2026-10-13T12:08:35.563Z",
+  "passed": false,
+  "packagedDirectory": false,
+  "checks": [],
+  "error": "Actual app qualification failed (1); [builder-check] FAIL generation and preview leave active colors unchanged\n\n1 !== 0\n",
+  "disposableProfileRemoved": true
+}

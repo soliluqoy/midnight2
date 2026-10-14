@@ -1,0 +1,264 @@
+{
+  "at": "2026-10-13T08:04:26.032Z",
+  "completed": true,
+  "scope": "chart-probe",
+  "provider": "wps",
+  "probes": [
+    {
+      "name": "shape.HasChart",
+      "ok": true,
+      "value": -1
+    },
+    {
+      "name": "shape.Range.WordOpenXML",
+      "ok": true,
+      "value": {
+        "chars": 45836,
+        "chartSpaces": 1,
+        "series": 3,
+        "parts": [
+          "/_rels/.rels",
+          "/word/_rels/document.xml.rels",
+          "/word/document.xml",
+          "/docProps/app.xml",
+          "/docProps/core.xml",
+          "/word/charts/_rels/chart1.xml.rels",
+          "/word/charts/chart1.xml",
+          "/word/charts/colors1.xml",
+          "/word/charts/style1.xml",
+          "/word/embeddings/Workbook1.xlsx",
+          "/word/fontTable.xml",
+          "/word/settings.xml",
+          "/word/styles.xml",
+          "/word/theme/theme1.xml"
+        ],
+        "plotTypes": [
+          "layout",
+          "barChart",
+          "catAx",
+          "valAx",
+          "spPr"
+        ],
+        "drawingIds": [
+          {
+            "id": "1",
+            "name": "Chart 1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "shape.WidthHeight",
+      "ok": true,
+      "value": {
+        "width": 413.25,
+        "height": 234.75
+      }
+    },
+    {
+      "name": "shape.Chart",
+      "ok": true,
+      "value": true
+    },
+    {
+      "name": "chart.ChartType",
+      "ok": true,
+      "value": 57
+    },
+    {
+      "name": "chart.SeriesCollection.Count",
+      "ok": true,
+      "value": 3
+    },
+    {
+      "name": "series.Values",
+      "ok": true,
+      "value": [
+        4.3,
+        2.5,
+        3.5,
+        4.5
+      ]
+    },
+    {
+      "name": "series.XValues",
+      "ok": true,
+      "value": [
+        "Category 1",
+        "Category 2",
+        "Category 3",
+        "Category 4"
+      ]
+    },
+    {
+      "name": "series.Formula",
+      "ok": true,
+      "value": "=SERIES(Sheet1!$B$1,Sheet1!$A$2:$A$5,Sheet1!$B$2:$B$5,1)"
+    },
+    {
+      "name": "series.Name",
+      "ok": false,
+      "hresult": "0x80070005",
+      "error": "UnauthorizedAccessException"
+    },
+    {
+      "name": "chart.HasTitle",
+      "ok": true,
+      "value": true
+    },
+    {
+      "name": "chart.ChartTitle.Text",
+      "ok": true,
+      "value": "Chart Title"
+    },
+    {
+      "name": "chart.ChartData",
+      "ok": true,
+      "value": true
+    },
+    {
+      "name": "chart.ChartData.Workbook",
+      "ok": true,
+      "value": true
+    },
+    {
+      "name": "chart.ChartType.pie-and-restore",
+      "ok": true,
+      "value": {
+        "before": 57,
+        "after": 5,
+        "restored": 57,
+        "focusPreserved": true,
+        "xmlAfter": {
+          "chars": 45491,
+          "chartSpaces": 1,
+          "series": 3,
+          "parts": [
+            "/_rels/.rels",
+            "/word/_rels/document.xml.rels",
+            "/word/document.xml",
+            "/docProps/app.xml",
+            "/docProps/core.xml",
+            "/word/charts/_rels/chart1.xml.rels",
+            "/word/charts/chart1.xml",
+            "/word/charts/colors1.xml",
+            "/word/charts/style1.xml",
+            "/word/embeddings/Workbook1.xlsx",
+            "/word/fontTable.xml",
+            "/word/settings.xml",
+            "/word/styles.xml",
+            "/word/theme/theme1.xml"
+          ],
+          "plotTypes": [
+            "layout",
+            "pieChart",
+            "spPr"
+          ],
+          "drawingIds": [
+            {
+              "id": "1",
+              "name": "Chart 1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "series.Values.set",
+      "ok": true,
+      "value": [
+        4.3,
+        2.5,
+        3.5,
+        4.5
+      ]
+    },
+    {
+      "name": "series.Delete",
+      "ok": true,
+      "value": 2
+    },
+    {
+      "name": "chart.ChartTitle.Text.set",
+      "ok": false,
+      "hresult": "0x80070005",
+      "error": "UnauthorizedAccessException"
+    },
+    {
+      "name": "workbook.cell.Value2.set",
+      "ok": true,
+      "value": {
+        "after": -2,
+        "chartValues": [
+          -2,
+          2.5,
+          3.5,
+          4.5
+        ]
+      }
+    },
+    {
+      "name": "shape.ConvertToShape",
+      "ok": true,
+      "value": true
+    },
+    {
+      "name": "floating.ID",
+      "ok": true,
+      "value": 1
+    },
+    {
+      "name": "floating.Name",
+      "ok": true,
+      "value": "Chart 1"
+    },
+    {
+      "name": "floating.HasChart",
+      "ok": true,
+      "value": -1
+    },
+    {
+      "name": "floating.Anchor.WordOpenXML",
+      "ok": true,
+      "value": {
+        "chars": 45896,
+        "chartSpaces": 1,
+        "series": 2,
+        "parts": [
+          "/_rels/.rels",
+          "/word/_rels/document.xml.rels",
+          "/word/document.xml",
+          "/docProps/app.xml",
+          "/docProps/core.xml",
+          "/word/charts/_rels/chart1.xml.rels",
+          "/word/charts/chart1.xml",
+          "/word/charts/colors1.xml",
+          "/word/charts/style1.xml",
+          "/word/embeddings/Workbook1.xlsx",
+          "/word/fontTable.xml",
+          "/word/settings.xml",
+          "/word/styles.xml",
+          "/word/theme/theme1.xml"
+        ],
+        "plotTypes": [
+          "layout",
+          "barChart",
+          "spPr"
+        ],
+        "drawingIds": [
+          {
+            "id": "1",
+            "name": "Chart 1"
+          }
+        ]
+      }
+    }
+  ],
+  "wordVersion": "12.0",
+  "wordBuild": "12.1.0.28485",
+  "limitations": [
+    "Disposable hidden Office automation instance and synthetic document; no personal file or physical hotkey/microphone input.",
+    "Single capture/apply/undo timing samples exclude shell IPC, cloud reasoning and foreground typing contention.",
+    "Paragraph fixtures or exploratory probes do not establish native chart qualification."
+  ]
+}

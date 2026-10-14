@@ -1,0 +1,61 @@
+{
+  "at": "2026-10-13T09:44:41.799Z",
+  "passed": true,
+  "provider": "openai-codex",
+  "model": "gpt-6.1-sol",
+  "authType": "oauth",
+  "native": {
+    "provider": "wps",
+    "apiVersion": "12.0",
+    "build": "12.1.0.28485",
+    "hiddenOwnedDocument": true,
+    "fixtureCapture": true,
+    "mixedFormat": true,
+    "repeatedParagraphUntouched": true
+  },
+  "transcript": "Make this paragraph clearer.",
+  "samples": 45440,
+  "timings": {
+    "heldToRecorderReadyMs": 683,
+    "releaseToPreviewMs": 6275,
+    "gesturePreparationMs": 1475,
+    "applyMs": 607,
+    "undoMs": 571
+  },
+  "source": "As regards the quarter, North had revenue that rose by 12% even though there were higher costs.",
+  "replacement": "For the quarter, North's revenue rose by 12% despite higher costs.",
+  "packet": {
+    "inputBytes": 1525,
+    "maxOutputTokens": 2048
+  },
+  "providerCalls": 1,
+  "nativeWrites": 2,
+  "durableRestart": true,
+  "conditionalUndo": true,
+  "credentialStorageChanged": false,
+  "settingsChanged": false,
+  "voiceMarkerChanged": false,
+  "checks": [
+    "new hidden Office process owns a supported mixed-format native paragraph",
+    "existing prepared local Whisper is available",
+    "exact configured cloud writer exists without a model substitution",
+    "actual local Whisper recognizes the synthetic bounded instruction",
+    "one bounded real provider call returns an applicable changed paragraph",
+    "protected phrases and source numbers remain intact",
+    "cloud generation and passive notices cause no native write",
+    "real native apply changes exactly one range and preserves formatting",
+    "verified receipt survives an actual host/store restart without redispatch",
+    "conditional native undo after restart restores text and tested formatting",
+    "undo makes no additional cloud request",
+    "installed credentials/settings and prepared voice marker remain unchanged"
+  ],
+  "limitations": [
+    "One synthetic English recording and paragraph on this account/model/WPS build; no statistical latency, broad writing quality or multilingual qualification.",
+    "Native capture uses a development-only hidden owned-range fixture. Physical hotkey, real foreground selection, microphone device, Word typing and user workflow timing remain unqualified.",
+    "Only the selected fixture paragraph/transcript reach the provider; no raw media, native handles, unrelated paragraphs or standing instructions.",
+    "This run does not qualify installed packaging, linked charts, Microsoft Word builds, full process-tree CPU/RAM, battery behavior or long-running reliability."
+  ],
+  "ownedOfficeExited": true,
+  "forcedOfficeCleanup": false,
+  "disposableProfileRemoved": true
+}

@@ -1,0 +1,158 @@
+{
+  "at": "2026-10-13T12:49:56.542Z",
+  "passed": true,
+  "packagedDirectory": true,
+  "provider": "openai-codex",
+  "model": "gpt-6.1-sol",
+  "authType": "oauth",
+  "checks": [
+    "user midnight.chart changed and passed host validation",
+    "real-model private chart preview uses the requested color",
+    "exact reviewed private chart activates",
+    "private chart activation preserves the color component",
+    "user midnight.theme changed and passed host validation",
+    "real-model private color preview matches all six requested tokens",
+    "generation and preview leave active colors unchanged",
+    "exact reviewed private colors activate",
+    "official midnight.chart changed and passed host validation",
+    "official chart preview starts from the official palette",
+    "official chart preview applies the requested margin",
+    "official midnight.theme changed and passed host validation",
+    "official colors exclude the private overlay",
+    "official proposals leave private colors active",
+    "official candidates provide reviewable output paths",
+    "four real-model jobs complete through the actual app engine and separate builder process",
+    "accepted private components survive process exit and store restart",
+    "persisted private colors load without generated-code execution",
+    "user midnight.chart used the exact configured route and changed its version",
+    "user midnight.chart used only maintenance tools with actual provider usage",
+    "user midnight.chart provider messages match the configured model",
+    "user midnight.theme used the exact configured route and changed its version",
+    "user midnight.theme used only maintenance tools with actual provider usage",
+    "user midnight.theme provider messages match the configured model",
+    "official midnight.chart used the exact configured route and changed its version",
+    "official midnight.chart used only maintenance tools with actual provider usage",
+    "official midnight.chart provider messages match the configured model",
+    "official midnight.chart has an exact source patch and candidate",
+    "official midnight.theme used the exact configured route and changed its version",
+    "official midnight.theme used only maintenance tools with actual provider usage",
+    "official midnight.theme provider messages match the configured model",
+    "official midnight.theme has an exact source patch and candidate",
+    "customizations remain isolated from another profile",
+    "installed settings/credentials and the disposable copied credential stay unchanged",
+    "packaged executable and archive stay unchanged"
+  ],
+  "jobs": [
+    {
+      "id": "change_a72599c2-5e62-4ce8-a7c1-76d82192d560",
+      "pluginId": "midnight.chart",
+      "scope": "user",
+      "elapsedMs": 84102,
+      "candidate": {
+        "id": "midnight.chart",
+        "digest": "sha256:685aa0d63abe51246e432d1ef28a3ff6ef6e4079e3d101d17f13ab92d349e0d5",
+        "api": 1,
+        "schema": 1,
+        "input": "chart-bar-1",
+        "output": "chart-svg-1"
+      },
+      "base": {
+        "id": "midnight.chart",
+        "digest": "sha256:fe7a8ca8344205d7586109fe9c7723e1b32533a268cab72457550225eb679b2c",
+        "api": 1,
+        "schema": 1,
+        "input": "chart-bar-1",
+        "output": "chart-svg-1"
+      },
+      "modelCalls": 6,
+      "tokens": 23427,
+      "baseVersion": "1.0.0",
+      "candidateVersion": "1.0.1"
+    },
+    {
+      "id": "change_d4f9e2fd-fa45-418a-b92a-b8b6151dd41a",
+      "pluginId": "midnight.theme",
+      "scope": "user",
+      "elapsedMs": 49988,
+      "candidate": {
+        "id": "midnight.theme",
+        "digest": "sha256:256ba949d62741cb58f24c6f953c41e94492c8a2b5de6ecee168b2c349747a86",
+        "api": 1,
+        "schema": 1,
+        "input": "ui-colors-1",
+        "output": "ui-colors-json-1"
+      },
+      "base": {
+        "id": "midnight.theme",
+        "digest": "sha256:ae66c6fad80a8a1b86276cb12fc930e48e78cbe2184201a5978586d3dc95926b",
+        "api": 1,
+        "schema": 1,
+        "input": "ui-colors-1",
+        "output": "ui-colors-json-1"
+      },
+      "modelCalls": 5,
+      "tokens": 8430,
+      "baseVersion": "1.0.0",
+      "candidateVersion": "1.0.1"
+    },
+    {
+      "id": "change_ea81fe42-155f-4174-87bd-651d548135ae",
+      "pluginId": "midnight.chart",
+      "scope": "official",
+      "elapsedMs": 54019,
+      "candidate": {
+        "id": "midnight.chart",
+        "digest": "sha256:c2c2efb1ef66d49615cf5f26c103d04442c975370aa47a59d675123a503eb2dd",
+        "api": 1,
+        "schema": 1,
+        "input": "chart-bar-1",
+        "output": "chart-svg-1"
+      },
+      "base": {
+        "id": "midnight.chart",
+        "digest": "sha256:fe7a8ca8344205d7586109fe9c7723e1b32533a268cab72457550225eb679b2c",
+        "api": 1,
+        "schema": 1,
+        "input": "chart-bar-1",
+        "output": "chart-svg-1"
+      },
+      "modelCalls": 6,
+      "tokens": 23393,
+      "baseVersion": "1.0.0",
+      "candidateVersion": "1.0.1"
+    },
+    {
+      "id": "change_8c8b0bed-cd05-449d-9595-c9a981376664",
+      "pluginId": "midnight.theme",
+      "scope": "official",
+      "elapsedMs": 46177,
+      "candidate": {
+        "id": "midnight.theme",
+        "digest": "sha256:45b0ff1cf8f757a1d67de528fa325bf22eea4729d0d75f23195242339f8294ad",
+        "api": 1,
+        "schema": 1,
+        "input": "ui-colors-1",
+        "output": "ui-colors-json-1"
+      },
+      "base": {
+        "id": "midnight.theme",
+        "digest": "sha256:ae66c6fad80a8a1b86276cb12fc930e48e78cbe2184201a5978586d3dc95926b",
+        "api": 1,
+        "schema": 1,
+        "input": "ui-colors-1",
+        "output": "ui-colors-json-1"
+      },
+      "modelCalls": 5,
+      "tokens": 8363,
+      "baseVersion": "1.0.0",
+      "candidateVersion": "1.0.1"
+    }
+  ],
+  "limitations": [
+    "Four synthetic requests on two registered components; no arbitrary core/build/dependency repair or broad coding-quality claim.",
+    "Actual app/engine/utility process and Chromium sandbox run with a disposable profile; no production activation, source merge, installation or publication.",
+    "Existing credentials are copied only for the selected route and checked unchanged; no login, refresh or account modification is authorized.",
+    "Directory build qualification does not establish signed installation, upgrades, recovery UI, physical microphone/Word use or full-day performance."
+  ],
+  "disposableProfileRemoved": true
+}

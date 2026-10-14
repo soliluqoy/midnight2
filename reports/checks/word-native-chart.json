@@ -1,0 +1,44 @@
+{
+  "at": "2026-10-13T08:18:37.531Z",
+  "passed": true,
+  "scope": "paragraph-and-native-chart",
+  "provider": "wps",
+  "timings": {
+    "mixedCaptureMs": 183,
+    "mixedApplyMs": 420,
+    "mixedUndoMs": 490,
+    "chartApplyMs": 191,
+    "chartUndoMs": 153,
+    "floatingChartApplyMs": 163,
+    "floatingChartUndoMs": 154
+  },
+  "wordVersion": "12.0",
+  "wordBuild": "12.1.0.28485",
+  "checks": [
+    "original-range-only; repeated-paragraph; duplicate-id; no-focus-change",
+    "paragraph-reverse-patch",
+    "stale-range-conflict",
+    "track-revisions-refused",
+    "unicode-and-surrogate-pairs",
+    "mixed-font-gap-rewrite; bold-italic-color-underline-highlight; paragraph-indent-spacing; original-range; no-focus-change",
+    "mixed-font-conditional-reversal",
+    "leading-trailing-plain-text-delete-and-conditional-reinsert",
+    "changed-duplicate-relocated-anchor-and-removed-gap-refused",
+    "format-only-stale-conflict",
+    "chart-source-exact-binding; external-traversal-duplicate-missing-and-DTD-refused",
+    "native-multi-series-refused",
+    "native-chart-pie; data-title-geometry-anchor; no-focus-change",
+    "native-chart-original-object-only; unrelated-chart-and-text-unchanged",
+    "chart-reverse-common-properties",
+    "negative-pie-refused",
+    "zero-total-pie-refused",
+    "native-chart-stale-geometry-conflict",
+    "floating-native-chart-pie-and-reversal; exact-drawing-binding; position-and-identity-preserved; unrelated-chart-text-focus-unchanged",
+    "native-2D-column-pie-and-reversal"
+  ],
+  "limitations": [
+    "Disposable hidden Office automation instance and synthetic document; no personal file or physical hotkey/microphone input.",
+    "Single capture/apply/undo timing samples exclude shell IPC, cloud reasoning and foreground typing contention.",
+    "Qualification is for this provider/build and prepared embedded chart sources; linked sources, other Office builds and all bar-axis styling remain separate work."
+  ]
+}

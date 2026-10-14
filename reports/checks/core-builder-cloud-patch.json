@@ -1,0 +1,70 @@
+{
+  "at": "2026-10-13T15:18:32.077Z",
+  "passed": true,
+  "provider": "openai-codex",
+  "model": "gpt-6.1-sol",
+  "checks": [
+    "real separate builder changes exactly the requested app source file",
+    "actual isolated full-source validation passes with explicit platform skips",
+    "quick queue error directs a fresh capture without changing capacity",
+    "official patch and exact source candidate are reviewable with Windows steps still pending",
+    "private plugin activation and the immutable app base are untouched",
+    "provider messages use the exact configured cloud model",
+    "source model uses only named maintenance tools",
+    "narrow source repair uses a digest-bound patch and flags kernel review"
+  ],
+  "elapsedMs": 414771,
+  "candidate": {
+    "kind": "core.source",
+    "digest": "sha256:d54b139a64320aec9117cbc0995486cb3ba2e55db7487a396c6c0bd752881e7a",
+    "baseDigest": "sha256:945a6c8dbbccafabb884eb7b368a11566398058a38c5a0f323d45ecdecd2e84c",
+    "version": "0.5.0"
+  },
+  "changed": [
+    "src/scheduler/queue.mjs"
+  ],
+  "validation": {
+    "ok": true,
+    "digest": "sha256:d54b139a64320aec9117cbc0995486cb3ba2e55db7487a396c6c0bd752881e7a",
+    "baseDigest": "sha256:945a6c8dbbccafabb884eb7b368a11566398058a38c5a0f323d45ecdecd2e84c",
+    "processesExited": true,
+    "counts": {
+      "tests": 316,
+      "failed": 0,
+      "passed": 307,
+      "cancelled": 0,
+      "skipped": 9,
+      "todo": 0,
+      "topLevel": 316,
+      "suites": 0
+    },
+    "policy": {
+      "image": "sha256:28388b76f14e702c6a42a4cfac35028e7c4f27f47b78dc5ee6791a761c5d33a7",
+      "network": "none",
+      "memoryBytes": 2147483648,
+      "cpuCount": 2,
+      "pids": 128,
+      "readonlySource": true
+    },
+    "platform": "linux",
+    "windowsBuild": "pending",
+    "appPreview": "pending",
+    "version": 1,
+    "changed": [
+      "src/scheduler/queue.mjs"
+    ],
+    "kernelChanges": [
+      "src/scheduler/queue.mjs"
+    ],
+    "requiresNativeBuild": false,
+    "at": "2026-10-13T15:18:05.016Z"
+  },
+  "modelCalls": 5,
+  "limitations": [
+    "One requested app-source wording improvement through the real separate SDK process and Docker validator; not broad repair quality, Windows build/preview, installed source capsules, signing, migration or publication.",
+    "Disposable profile/source candidates and existing selected credentials only; no production customization or checkout source change."
+  ],
+  "installedCredentialsUnchanged": true,
+  "checkoutSourceUnchanged": true,
+  "disposableProfileRemoved": true
+}
